@@ -19,10 +19,7 @@ type Interface interface {
 	CreatePod(ctx context.Context, pod *corev1.Pod) (*corev1.Pod, error)
 	DeletePod(ctx context.Context, namespace string, name string) error
 	CreateService(ctx context.Context, service *corev1.Service) (*corev1.Service, error)
-	DeleteService(ctx context.Context, namespace string, name string) error
 	CreateIngress(ctx context.Context, ingress *networkingv1.Ingress) (*networkingv1.Ingress, error)
-	DeleteIngress(ctx context.Context, namespace string, name string) error
-	GetConfigMap(ctx context.Context, namespace string, name string) (*corev1.ConfigMap, error)
 	CreateConfigMap(ctx context.Context, configMap *corev1.ConfigMap) (*corev1.ConfigMap, error)
 }
 
@@ -102,13 +99,6 @@ func (c *Client) CreateService(ctx context.Context, service *corev1.Service) (*c
 	return created, nil
 }
 
-func (c *Client) DeleteService(ctx context.Context, namespace string, name string) error {
-	if err := c.clientset.CoreV1().Services(namespace).Delete(ctx, name, metav1.DeleteOptions{}); err != nil {
-		return fmt.Errorf("deleting service %s/%s: %w", namespace, name, err)
-	}
-	return nil
-}
-
 func (c *Client) CreateIngress(
 	ctx context.Context,
 	ingress *networkingv1.Ingress,
@@ -118,21 +108,6 @@ func (c *Client) CreateIngress(
 		return nil, fmt.Errorf("creating ingress %s/%s: %w", ingress.Namespace, ingress.Name, err)
 	}
 	return created, nil
-}
-
-func (c *Client) DeleteIngress(ctx context.Context, namespace string, name string) error {
-	if err := c.clientset.NetworkingV1().Ingresses(namespace).Delete(ctx, name, metav1.DeleteOptions{}); err != nil {
-		return fmt.Errorf("deleting ingress %s/%s: %w", namespace, name, err)
-	}
-	return nil
-}
-
-func (c *Client) GetConfigMap(ctx context.Context, namespace string, name string) (*corev1.ConfigMap, error) {
-	configMap, err := c.clientset.CoreV1().ConfigMaps(namespace).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("getting configmap %s/%s: %w", namespace, name, err)
-	}
-	return configMap, nil
 }
 
 func (c *Client) CreateConfigMap(

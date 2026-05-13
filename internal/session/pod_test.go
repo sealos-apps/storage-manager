@@ -13,6 +13,7 @@ import (
 	"github.com/nixieboluo/sealos-stroage-manager/internal/state"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 )
 
@@ -21,7 +22,8 @@ func TestEnsurePodSessionCreatesResources(t *testing.T) {
 
 	cfg := testConfig()
 	store := state.New(cfg.Cache)
-	client := kube.New(fake.NewSimpleClientset())
+	clientset := fake.NewSimpleClientset()
+	client := kube.New(clientset)
 	service := NewPodService(cfg, store, client, observability.New(cfg.Observability, nil))
 	service.now = fixedNow
 
@@ -62,12 +64,36 @@ func TestEnsurePodSessionCreatesResources(t *testing.T) {
 	if pod.Spec.Volumes[0].PersistentVolumeClaim.ReadOnly {
 		t.Fatal("readwrite mode mounted readonly")
 	}
-	if pod.Spec.Volumes[1].ConfigMap == nil || pod.Spec.Volumes[1].ConfigMap.Name != "viewer-filebrowser-hook" {
+	if pod.Spec.Volumes[1].ConfigMap == nil || pod.Spec.Volumes[1].ConfigMap.Name != podSession.PodName {
 		t.Fatalf("hook configmap volume missing: %#v", pod.Spec.Volumes)
 	}
-	if _, err := client.GetConfigMap(context.Background(), "default", "viewer-filebrowser-hook"); err != nil {
+	hookConfigMap, err := clientset.CoreV1().ConfigMaps("default").Get(
+		context.Background(),
+		podSession.PodName,
+		metav1.GetOptions{},
+	)
+	if err != nil {
 		t.Fatalf("hook configmap was not created: %v", err)
 	}
+	assertOwnedByPod(t, hookConfigMap.OwnerReferences, pod)
+	serviceResource, err := clientset.CoreV1().Services("default").Get(
+		context.Background(),
+		podSession.ServiceName,
+		metav1.GetOptions{},
+	)
+	if err != nil {
+		t.Fatalf("service was not created: %v", err)
+	}
+	assertOwnedByPod(t, serviceResource.OwnerReferences, pod)
+	ingress, err := clientset.NetworkingV1().Ingresses("default").Get(
+		context.Background(),
+		podSession.ServiceName,
+		metav1.GetOptions{},
+	)
+	if err != nil {
+		t.Fatalf("ingress was not created: %v", err)
+	}
+	assertOwnedByPod(t, ingress.OwnerReferences, pod)
 }
 
 func TestEnsurePodSessionReusesExistingViewerPod(t *testing.T) {
@@ -110,6 +136,45 @@ func TestEnsurePodSessionReusesExistingViewerPod(t *testing.T) {
 	}
 	if podSession.ID != "ps_existing" || podSession.Status != domain.PodStatusReady {
 		t.Fatalf("pod session = %#v", podSession)
+	}
+}
+
+func TestEnsurePodSessionSkipsTerminatingViewerPod(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	deletionTime := metav1.NewTime(fixedNow())
+	existing := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:         "default",
+			Name:              "viewer-ps-terminating",
+			CreationTimestamp: metav1.NewTime(fixedNow().Add(-time.Minute)),
+			DeletionTimestamp: &deletionTime,
+			Labels: map[string]string{
+				labelComponent:    componentViewer,
+				labelPVCUID:       "uid",
+				labelPodSessionID: "ps_terminating",
+			},
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodRunning},
+	}
+	store := state.New(cfg.Cache)
+	client := kube.New(fake.NewSimpleClientset(existing))
+	service := NewPodService(cfg, store, client, observability.New(cfg.Observability, nil))
+	service.now = fixedNow
+
+	podSession, err := service.EnsurePodSession(context.Background(), EnsurePodSessionInput{
+		Namespace:  "default",
+		PVCName:    "data",
+		PVCUID:     "uid",
+		AccessMode: domain.AccessModeReadWriteMany,
+		Mode:       domain.ModeReadWrite,
+	})
+	if err != nil {
+		t.Fatalf("EnsurePodSession() error = %v", err)
+	}
+	if podSession.ID == "ps_terminating" {
+		t.Fatal("terminating pod was reused")
 	}
 }
 
@@ -181,6 +246,38 @@ func TestSyncPodStatusReportsCrashLoop(t *testing.T) {
 	}
 }
 
+func TestClosePodSessionTreatsMissingPodAsClosed(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	store := state.New(cfg.Cache)
+	service := NewPodService(
+		cfg,
+		store,
+		kube.New(fake.NewSimpleClientset()),
+		observability.New(cfg.Observability, nil),
+	)
+	service.now = fixedNow
+	store.PutPodSession(&domain.PodSession{
+		ID:          "ps_missing",
+		Namespace:   "default",
+		PodName:     "viewer-ps-missing",
+		ServiceName: "viewer-ps-missing",
+		ExpiresAt:   fixedNow().Add(time.Minute),
+	})
+
+	closed, err := service.ClosePodSession(context.Background(), "ps_missing")
+	if err != nil {
+		t.Fatalf("ClosePodSession() error = %v", err)
+	}
+	if closed.Status != domain.PodStatusTerminated {
+		t.Fatalf("closed session = %#v", closed)
+	}
+	if _, ok := store.GetPodSessionIncludingExpired("ps_missing"); ok {
+		t.Fatal("closed pod session remained in state")
+	}
+}
+
 func TestFileBrowserHookScriptValidatesGeneratedIDs(t *testing.T) {
 	t.Parallel()
 
@@ -214,6 +311,34 @@ func TestDNSLabelSanitizesGeneratedSessionID(t *testing.T) {
 	}
 	if strings.Contains(host, "_") {
 		t.Fatalf("viewerHost() contains underscore: %q", host)
+	}
+}
+
+func TestPodOwnerReferenceIncludesPodIdentity(t *testing.T) {
+	t.Parallel()
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "viewer-ps-1",
+			UID:  types.UID("pod-uid"),
+		},
+	}
+
+	owner := podOwnerReference(pod)
+	if owner.APIVersion != "v1" || owner.Kind != "Pod" || owner.Name != pod.Name || owner.UID != pod.UID {
+		t.Fatalf("owner reference = %#v", owner)
+	}
+}
+
+func assertOwnedByPod(t *testing.T, refs []metav1.OwnerReference, pod *corev1.Pod) {
+	t.Helper()
+
+	if len(refs) != 1 {
+		t.Fatalf("owner references = %#v", refs)
+	}
+	owner := refs[0]
+	if owner.APIVersion != "v1" || owner.Kind != "Pod" || owner.Name != pod.Name || owner.UID != pod.UID {
+		t.Fatalf("owner reference = %#v, pod = %#v", owner, pod.ObjectMeta)
 	}
 }
 

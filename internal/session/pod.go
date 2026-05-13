@@ -16,6 +16,7 @@ import (
 	"github.com/nixieboluo/sealos-stroage-manager/internal/state"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -119,24 +120,28 @@ func (s *PodService) EnsurePodSession(
 	}
 
 	pod := s.buildPod(podSession, input.MountInfo)
-	service := s.buildService(podSession)
-	ingress, err := s.buildIngress(podSession)
+	createdPod, err := s.client.CreatePod(ctx, pod)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.ensureHookConfigMap(ctx, input.Namespace); err != nil {
+	owner := podOwnerReference(createdPod)
+	hookConfigMap := s.buildHookConfigMap(podSession, owner)
+	if _, err := s.client.CreateConfigMap(ctx, hookConfigMap); err != nil {
+		_ = s.client.DeletePod(ctx, createdPod.Namespace, createdPod.Name)
 		return nil, err
 	}
-	if _, err := s.client.CreatePod(ctx, pod); err != nil {
+	service := s.buildService(podSession, owner)
+	ingress, err := s.buildIngress(podSession, owner)
+	if err != nil {
+		_ = s.client.DeletePod(ctx, createdPod.Namespace, createdPod.Name)
 		return nil, err
 	}
 	if _, err := s.client.CreateService(ctx, service); err != nil {
-		_ = s.client.DeletePod(ctx, pod.Namespace, pod.Name)
+		_ = s.client.DeletePod(ctx, createdPod.Namespace, createdPod.Name)
 		return nil, err
 	}
 	if _, err := s.client.CreateIngress(ctx, ingress); err != nil {
-		_ = s.client.DeleteService(ctx, service.Namespace, service.Name)
-		_ = s.client.DeletePod(ctx, pod.Namespace, pod.Name)
+		_ = s.client.DeletePod(ctx, createdPod.Namespace, createdPod.Name)
 		return nil, err
 	}
 
@@ -145,23 +150,21 @@ func (s *PodService) EnsurePodSession(
 	return podSession, nil
 }
 
-func (s *PodService) ensureHookConfigMap(ctx context.Context, namespace string) error {
-	if _, err := s.client.GetConfigMap(ctx, namespace, "viewer-filebrowser-hook"); err == nil {
-		return nil
-	}
-	_, err := s.client.CreateConfigMap(ctx, &corev1.ConfigMap{
+func (s *PodService) buildHookConfigMap(
+	session *domain.PodSession,
+	owner metav1.OwnerReference,
+) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
-			Name:      "viewer-filebrowser-hook",
-			Labels: map[string]string{
-				labelComponent: componentViewer,
-			},
+			Namespace:       session.Namespace,
+			Name:            hookConfigMapName(session),
+			Labels:          managedLabels(session),
+			OwnerReferences: []metav1.OwnerReference{owner},
 		},
 		Data: map[string]string{
 			"filebrowser-auth-hook.sh": fileBrowserHookScript,
 		},
-	})
-	return err
+	}
 }
 
 func (s *PodService) SyncPodStatus(ctx context.Context, podSession *domain.PodSession) (*domain.PodSession, error) {
@@ -224,9 +227,9 @@ func (s *PodService) ClosePodSession(ctx context.Context, podSessionID string) (
 	podSession.UpdatedAt = now
 	s.store.PutPodSession(podSession)
 
-	_ = s.client.DeleteIngress(ctx, podSession.Namespace, podSession.ServiceName)
-	_ = s.client.DeleteService(ctx, podSession.Namespace, podSession.ServiceName)
-	_ = s.client.DeletePod(ctx, podSession.Namespace, podSession.PodName)
+	if err := s.deletePodIfExists(ctx, podSession.Namespace, podSession.PodName); err != nil {
+		return nil, fmt.Errorf("closing pod session %q: %w", podSessionID, err)
+	}
 
 	podSession.Status = domain.PodStatusTerminated
 	podSession.UpdatedAt = now
@@ -265,11 +268,18 @@ func (s *PodService) ReconcileViewerPods(ctx context.Context, namespace string) 
 			continue
 		}
 		if age > s.cfg.Sessions.OrphanGrace {
-			_ = s.client.DeleteIngress(ctx, pod.Namespace, pod.Name)
-			_ = s.client.DeleteService(ctx, pod.Namespace, pod.Name)
-			_ = s.client.DeletePod(ctx, pod.Namespace, pod.Name)
+			if err := s.deletePodIfExists(ctx, pod.Namespace, pod.Name); err != nil {
+				return err
+			}
 			s.recorder.Metrics().CleanupDeleted.Add(1)
 		}
+	}
+	return nil
+}
+
+func (s *PodService) deletePodIfExists(ctx context.Context, namespace string, name string) error {
+	if err := s.client.DeletePod(ctx, namespace, name); err != nil && !apierrors.IsNotFound(err) {
+		return err
 	}
 	return nil
 }
@@ -287,6 +297,9 @@ func (s *PodService) findExistingViewerPod(
 		return nil, err
 	}
 	for i := range pods {
+		if pods[i].DeletionTimestamp != nil {
+			continue
+		}
 		if pods[i].Status.Phase == corev1.PodFailed || pods[i].Status.Phase == corev1.PodSucceeded {
 			continue
 		}
@@ -401,7 +414,7 @@ func (s *PodService) buildPod(session *domain.PodSession, mountInfo *domain.PVCM
 					VolumeSource: corev1.VolumeSource{
 						ConfigMap: &corev1.ConfigMapVolumeSource{
 							LocalObjectReference: corev1.LocalObjectReference{
-								Name: "viewer-filebrowser-hook",
+								Name: hookConfigMapName(session),
 							},
 							DefaultMode: ptrInt32(0o555),
 						},
@@ -432,12 +445,16 @@ func (s *PodService) buildPod(session *domain.PodSession, mountInfo *domain.PVCM
 	return pod
 }
 
-func (s *PodService) buildService(session *domain.PodSession) *corev1.Service {
+func (s *PodService) buildService(
+	session *domain.PodSession,
+	owner metav1.OwnerReference,
+) *corev1.Service {
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: session.Namespace,
-			Name:      session.ServiceName,
-			Labels:    managedLabels(session),
+			Namespace:       session.Namespace,
+			Name:            session.ServiceName,
+			Labels:          managedLabels(session),
+			OwnerReferences: []metav1.OwnerReference{owner},
 		},
 		Spec: corev1.ServiceSpec{
 			Type: corev1.ServiceType(s.cfg.Viewer.Service.Type),
@@ -455,7 +472,10 @@ func (s *PodService) buildService(session *domain.PodSession) *corev1.Service {
 	}
 }
 
-func (s *PodService) buildIngress(session *domain.PodSession) (*networkingv1.Ingress, error) {
+func (s *PodService) buildIngress(
+	session *domain.PodSession,
+	owner metav1.OwnerReference,
+) (*networkingv1.Ingress, error) {
 	host, err := s.viewerHost(session.ID)
 	if err != nil {
 		return nil, err
@@ -463,9 +483,10 @@ func (s *PodService) buildIngress(session *domain.PodSession) (*networkingv1.Ing
 	pathType := networkingv1.PathTypePrefix
 	ingress := &networkingv1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: session.Namespace,
-			Name:      session.ServiceName,
-			Labels:    managedLabels(session),
+			Namespace:       session.Namespace,
+			Name:            session.ServiceName,
+			Labels:          managedLabels(session),
+			OwnerReferences: []metav1.OwnerReference{owner},
 		},
 		Spec: networkingv1.IngressSpec{
 			IngressClassName: &s.cfg.Viewer.Ingress.ClassName,
@@ -564,6 +585,19 @@ func shellQuote(value string) string {
 
 func ptrInt32(value int32) *int32 {
 	return &value
+}
+
+func hookConfigMapName(session *domain.PodSession) string {
+	return session.PodName
+}
+
+func podOwnerReference(pod *corev1.Pod) metav1.OwnerReference {
+	return metav1.OwnerReference{
+		APIVersion: "v1",
+		Kind:       "Pod",
+		Name:       pod.Name,
+		UID:        pod.UID,
+	}
 }
 
 func managedLabels(session *domain.PodSession) map[string]string {
