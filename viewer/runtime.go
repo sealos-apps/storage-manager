@@ -61,7 +61,7 @@ func runtimeHandler() *Handler {
 	if defaultHandler != nil {
 		return defaultHandler
 	}
-	return NewHandler(unavailableViewerService{}, unavailablePodService{}, unavailableAuthService{}, nil, denyAuthorizer{})
+	return NewHandler(unavailableViewerService{}, unavailablePodService{}, unavailableAuthService{}, nil, nil, denyAuthorizer{})
 }
 
 func newRuntimeFromConfig(cfg config.Config) (*Runtime, error) {
@@ -89,8 +89,9 @@ func newRuntimeFromConfig(cfg config.Config) (*Runtime, error) {
 		viewers,
 		pods,
 		auth,
+		clientset,
 		recorder,
-		kubernetesAuthorizer{},
+		nil,
 	)
 	return &Runtime{
 		Handler: handler,

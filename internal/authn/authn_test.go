@@ -86,3 +86,20 @@ func TestPrincipalFromAuthorization(t *testing.T) {
 		t.Fatalf("principal id is unsafe: %q", principal.ID)
 	}
 }
+
+func TestPrincipalIDIncludesClusterMaterial(t *testing.T) {
+	t.Parallel()
+
+	otherCluster := strings.ReplaceAll(testKubeconfig, "https://127.0.0.1:6443", "https://127.0.0.2:6443")
+	first, err := PrincipalFromAuthorization(url.QueryEscape(testKubeconfig))
+	if err != nil {
+		t.Fatalf("PrincipalFromAuthorization(first) error = %v", err)
+	}
+	second, err := PrincipalFromAuthorization(url.QueryEscape(otherCluster))
+	if err != nil {
+		t.Fatalf("PrincipalFromAuthorization(second) error = %v", err)
+	}
+	if first.ID == second.ID {
+		t.Fatal("principal ids should differ when kubeconfig cluster material differs")
+	}
+}

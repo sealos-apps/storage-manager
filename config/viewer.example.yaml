@@ -60,5 +60,6 @@ observability:
 
 integration:
   kubeconfig_path: kubeconfig.test.yaml
+  management_kubeconfig_path: kubeconfig.management.yaml
   namespace: default
   storage_class_name: ""

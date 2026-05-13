@@ -15,7 +15,12 @@ import (
 	"github.com/nixieboluo/sealos-stroage-manager/internal/session"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
+
+var kubernetesClientsetForConfig = func(c *rest.Config) (kubernetes.Interface, error) {
+	return kubernetes.NewForConfig(c)
+}
 
 type viewerService interface {
 	ListPVCs(ctx context.Context, namespace string) ([]domain.PVC, error)
@@ -65,11 +70,12 @@ func NewHandler(
 	viewers viewerService,
 	pods podService,
 	auth authService,
+	managementClient kubernetes.Interface,
 	recorder *observability.Recorder,
 	authz authorizer,
 ) *Handler {
 	if authz == nil {
-		authz = kubernetesAuthorizer{}
+		authz = newKubernetesAuthorizer(managementClient)
 	}
 	return &Handler{
 		viewers:  viewers,
@@ -151,6 +157,9 @@ func (h *Handler) GetViewerSession(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			return apienv.FromError(err).Status, err
 		}
+		if err := h.authorizePodSessionPVC(req.Context(), principal, session.PodSessionID); err != nil {
+			return apienv.FromError(err).Status, err
+		}
 		apienv.WriteSuccess(w, http.StatusOK, "viewer_session", session)
 		return http.StatusOK, nil
 	})
@@ -164,6 +173,9 @@ func (h *Handler) IssueToken(w http.ResponseWriter, req *http.Request) {
 		}
 		req = req.WithContext(authn.WithPrincipal(req.Context(), principal))
 		id := strings.TrimSuffix(pathID(req.URL.Path, "/api/viewer-sessions/"), "/token")
+		if err := h.authorizeViewerSessionPVC(req.Context(), principal, id); err != nil {
+			return apienv.FromError(err).Status, err
+		}
 		token, err := h.viewers.IssueToken(req.Context(), id, principal.ID)
 		if err != nil {
 			return apienv.FromError(err).Status, err
@@ -183,6 +195,9 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, req *http.Request) {
 		}
 		req = req.WithContext(authn.WithPrincipal(req.Context(), principal))
 		id := strings.TrimSuffix(pathID(req.URL.Path, "/api/viewer-sessions/"), "/heartbeat")
+		if err := h.authorizeViewerSessionPVC(req.Context(), principal, id); err != nil {
+			return apienv.FromError(err).Status, err
+		}
 		heartbeat, err := h.viewers.HeartbeatForUser(id, principal.ID)
 		if err != nil {
 			return apienv.FromError(err).Status, err
@@ -199,7 +214,11 @@ func (h *Handler) CloseViewerSession(w http.ResponseWriter, req *http.Request) {
 			return 401, err
 		}
 		req = req.WithContext(authn.WithPrincipal(req.Context(), principal))
-		session, err := h.viewers.CloseViewerSessionForUser(pathID(req.URL.Path, "/api/viewer-sessions/"), principal.ID)
+		id := pathID(req.URL.Path, "/api/viewer-sessions/")
+		if err := h.authorizeViewerSessionPVC(req.Context(), principal, id); err != nil {
+			return apienv.FromError(err).Status, err
+		}
+		session, err := h.viewers.CloseViewerSessionForUser(id, principal.ID)
 		if err != nil {
 			return apienv.FromError(err).Status, err
 		}
@@ -215,7 +234,11 @@ func (h *Handler) ClosePodSession(w http.ResponseWriter, req *http.Request) {
 			return 401, err
 		}
 		req = req.WithContext(authn.WithPrincipal(req.Context(), principal))
-		podSession, err := h.pods.ClosePodSession(req.Context(), pathID(req.URL.Path, "/api/pod-sessions/"))
+		id := pathID(req.URL.Path, "/api/pod-sessions/")
+		if err := h.authorizePodSessionPVC(req.Context(), principal, id); err != nil {
+			return apienv.FromError(err).Status, err
+		}
+		podSession, err := h.pods.ClosePodSession(req.Context(), id)
 		if err != nil {
 			return apienv.FromError(err).Status, err
 		}
@@ -231,7 +254,11 @@ func (h *Handler) GetPodSession(w http.ResponseWriter, req *http.Request) {
 			return 401, err
 		}
 		req = req.WithContext(authn.WithPrincipal(req.Context(), principal))
-		podSession, err := h.viewers.GetPodSession(pathID(req.URL.Path, "/api/pod-sessions/"))
+		id := pathID(req.URL.Path, "/api/pod-sessions/")
+		if err := h.authorizePodSessionPVC(req.Context(), principal, id); err != nil {
+			return apienv.FromError(err).Status, err
+		}
+		podSession, err := h.viewers.GetPodSession(id)
 		if err != nil {
 			return apienv.FromError(err).Status, err
 		}
@@ -275,6 +302,33 @@ func (h *Handler) authenticate(req *http.Request) (*authn.Principal, error) {
 	return principal, nil
 }
 
+func (h *Handler) authorizeViewerSessionPVC(
+	ctx context.Context,
+	principal *authn.Principal,
+	viewerSessionID string,
+) error {
+	session, err := h.viewers.GetViewerSession(ctx, viewerSessionID, principal.ID)
+	if err != nil {
+		return err
+	}
+	return h.authorizePodSessionPVC(ctx, principal, session.PodSessionID)
+}
+
+func (h *Handler) authorizePodSessionPVC(
+	ctx context.Context,
+	principal *authn.Principal,
+	podSessionID string,
+) error {
+	podSession, err := h.viewers.GetPodSession(podSessionID)
+	if err != nil {
+		return err
+	}
+	if err := h.authz.CanGetPVC(ctx, principal, podSession.Namespace, podSession.PVCName); err != nil {
+		return apienv.NewError(403, apienv.CodePVCAccessDenied, "PVC access denied", nil)
+	}
+	return nil
+}
+
 func (h *Handler) withObserved(
 	w http.ResponseWriter,
 	req *http.Request,
@@ -301,31 +355,74 @@ func pathID(path string, prefix string) string {
 
 var errRuntimeUnavailable = errors.New("viewer runtime is not configured")
 
-type kubernetesAuthorizer struct{}
+type kubernetesAuthorizer struct {
+	management kubernetes.Interface
+}
 
-func (kubernetesAuthorizer) CanListPVCs(
+func newKubernetesAuthorizer(management kubernetes.Interface) kubernetesAuthorizer {
+	return kubernetesAuthorizer{management: management}
+}
+
+func (a kubernetesAuthorizer) CanListPVCs(
 	ctx context.Context,
 	principal *authn.Principal,
 	namespace string,
 ) error {
-	clientset, err := kubernetes.NewForConfig(principal.ClientConfig)
+	clientset, err := kubernetesClientsetForConfig(principal.ClientConfig)
 	if err != nil {
 		return err
+	}
+	if a.management != nil {
+		if err := a.sameNamespace(ctx, clientset, namespace); err != nil {
+			return err
+		}
 	}
 	_, err = clientset.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{Limit: 1})
 	return err
 }
 
-func (kubernetesAuthorizer) CanGetPVC(
+func (a kubernetesAuthorizer) CanGetPVC(
 	ctx context.Context,
 	principal *authn.Principal,
 	namespace string,
 	name string,
 ) error {
-	clientset, err := kubernetes.NewForConfig(principal.ClientConfig)
+	clientset, err := kubernetesClientsetForConfig(principal.ClientConfig)
 	if err != nil {
 		return err
 	}
-	_, err = clientset.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, name, metav1.GetOptions{})
-	return err
+	userPVC, err := clientset.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	if a.management == nil {
+		return nil
+	}
+	managedPVC, err := a.management.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	if userPVC.UID != managedPVC.UID {
+		return errors.New("user kubeconfig and management kubeconfig resolved different PVCs")
+	}
+	return nil
+}
+
+func (a kubernetesAuthorizer) sameNamespace(
+	ctx context.Context,
+	userClient kubernetes.Interface,
+	namespace string,
+) error {
+	userNamespace, err := userClient.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	managedNamespace, err := a.management.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	if userNamespace.UID != managedNamespace.UID {
+		return errors.New("user kubeconfig and management kubeconfig resolved different namespaces")
+	}
+	return nil
 }

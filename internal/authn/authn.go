@@ -11,7 +11,6 @@ import (
 
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
 type Principal struct {
@@ -63,7 +62,7 @@ func PrincipalFromAuthorization(header string) (*Principal, error) {
 	}
 
 	return &Principal{
-		ID:           principalID(apiConfig),
+		ID:           SafeIDFromKubeconfig(raw),
 		ContextName:  contextName,
 		Namespace:    namespace,
 		ClientConfig: restConfig,
@@ -77,15 +76,6 @@ func WithPrincipal(ctx context.Context, principal *Principal) context.Context {
 func PrincipalFromContext(ctx context.Context) (*Principal, bool) {
 	principal, ok := ctx.Value(contextKey{}).(*Principal)
 	return principal, ok
-}
-
-func principalID(apiConfig *clientcmdapi.Config) string {
-	identity := apiConfig.CurrentContext
-	if ctx, ok := apiConfig.Contexts[apiConfig.CurrentContext]; ok {
-		identity = ctx.AuthInfo
-	}
-	sum := sha256.Sum256([]byte(identity))
-	return hex.EncodeToString(sum[:8])
 }
 
 func SafeIDFromKubeconfig(raw string) string {

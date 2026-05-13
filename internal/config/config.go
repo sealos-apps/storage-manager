@@ -99,9 +99,10 @@ type ObservabilityConfig struct {
 }
 
 type IntegrationConfig struct {
-	KubeconfigPath   string `yaml:"kubeconfig_path"`
-	Namespace        string `yaml:"namespace"`
-	StorageClassName string `yaml:"storage_class_name"`
+	KubeconfigPath           string `yaml:"kubeconfig_path"`
+	ManagementKubeconfigPath string `yaml:"management_kubeconfig_path"`
+	Namespace                string `yaml:"namespace"`
+	StorageClassName         string `yaml:"storage_class_name"`
 }
 
 func LoadFile(path string) (Config, error) {
@@ -193,8 +194,9 @@ func Default() Config {
 			LogLevel:         "info",
 		},
 		Integration: IntegrationConfig{
-			KubeconfigPath: "kubeconfig.test.yaml",
-			Namespace:      "default",
+			KubeconfigPath:           "kubeconfig.test.yaml",
+			ManagementKubeconfigPath: "kubeconfig.management.yaml",
+			Namespace:                "default",
 		},
 	}
 }

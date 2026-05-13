@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,6 +16,12 @@ import (
 	"github.com/nixieboluo/sealos-stroage-manager/internal/domain"
 	"github.com/nixieboluo/sealos-stroage-manager/internal/observability"
 	"github.com/nixieboluo/sealos-stroage-manager/internal/session"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
 )
 
 type fakeViewerService struct {
@@ -99,6 +106,8 @@ func (f fakeAuthService) VerifyHook(input session.HookVerifyInput) domain.FileBr
 
 type allowAuthorizer struct{}
 
+var clientsetFactoryMu sync.Mutex
+
 func (allowAuthorizer) CanListPVCs(ctx context.Context, principal *authn.Principal, namespace string) error {
 	return nil
 }
@@ -121,6 +130,7 @@ func TestHandlerListPVCsUsesEnvelope(t *testing.T) {
 		},
 		fakePodService{},
 		fakeAuthService{},
+		nil,
 		observability.New(testObservability(), nil),
 		allowAuthorizer{},
 	)
@@ -149,15 +159,25 @@ func TestHandlerIssueTokenNoStore(t *testing.T) {
 
 	handler := NewHandler(
 		&fakeViewerService{
+			created: &domain.ViewerSession{
+				ID:           "vs_1",
+				PodSessionID: "ps_1",
+			},
 			token: &domain.ViewerToken{
 				ViewerSessionID: "vs_1",
 				Token:           "fb-token",
 				TokenType:       "Bearer",
 				ExpiresAt:       time.Now().Add(time.Minute),
 			},
+			podSession: &domain.PodSession{
+				ID:        "ps_1",
+				Namespace: "ns",
+				PVCName:   "data",
+			},
 		},
 		fakePodService{},
 		fakeAuthService{},
+		nil,
 		observability.New(testObservability(), nil),
 		allowAuthorizer{},
 	)
@@ -185,6 +205,7 @@ func TestHandlerVerifyHookReturnsAllowEnvelope(t *testing.T) {
 		&fakeViewerService{},
 		fakePodService{},
 		fakeAuthService{result: domain.FileBrowserHookVerification{Allow: true, Scope: "/"}},
+		nil,
 		observability.New(testObservability(), nil),
 		allowAuthorizer{},
 	)
@@ -215,6 +236,7 @@ func TestHandlerMetricsReturnsPrometheusText(t *testing.T) {
 		&fakeViewerService{},
 		fakePodService{},
 		fakeAuthService{},
+		nil,
 		recorder,
 		allowAuthorizer{},
 	)
@@ -227,6 +249,71 @@ func TestHandlerMetricsReturnsPrometheusText(t *testing.T) {
 	}
 	if !strings.Contains(response.Body.String(), "viewer_sessions_created_total 1") {
 		t.Fatalf("metrics = %s", response.Body.String())
+	}
+}
+
+func TestKubernetesAuthorizerRequiresSameNamespaceUID(t *testing.T) {
+	clientsetFactoryMu.Lock()
+	defer clientsetFactoryMu.Unlock()
+
+	principal, err := authn.PrincipalFromAuthorization(url.QueryEscape(testKubeconfig))
+	if err != nil {
+		t.Fatalf("PrincipalFromAuthorization() error = %v", err)
+	}
+	userClient := fake.NewSimpleClientset(namespaceWithUID("ns", "user-uid"))
+	authorizer := newKubernetesAuthorizer(fake.NewSimpleClientset(namespaceWithUID("ns", "managed-uid")))
+	newClientset := kubernetesClientsetForConfig
+	kubernetesClientsetForConfig = func(_ *rest.Config) (kubernetes.Interface, error) {
+		return userClient, nil
+	}
+	defer func() {
+		kubernetesClientsetForConfig = newClientset
+	}()
+
+	if err := authorizer.CanListPVCs(context.Background(), principal, "ns"); err == nil {
+		t.Fatal("CanListPVCs() allowed namespace UID mismatch")
+	}
+}
+
+func TestKubernetesAuthorizerRequiresSamePVCUID(t *testing.T) {
+	clientsetFactoryMu.Lock()
+	defer clientsetFactoryMu.Unlock()
+
+	principal, err := authn.PrincipalFromAuthorization(url.QueryEscape(testKubeconfig))
+	if err != nil {
+		t.Fatalf("PrincipalFromAuthorization() error = %v", err)
+	}
+	userClient := fake.NewSimpleClientset(pvcWithUID("ns", "data", "user-uid"))
+	authorizer := newKubernetesAuthorizer(fake.NewSimpleClientset(pvcWithUID("ns", "data", "managed-uid")))
+	newClientset := kubernetesClientsetForConfig
+	kubernetesClientsetForConfig = func(_ *rest.Config) (kubernetes.Interface, error) {
+		return userClient, nil
+	}
+	defer func() {
+		kubernetesClientsetForConfig = newClientset
+	}()
+
+	if err := authorizer.CanGetPVC(context.Background(), principal, "ns", "data"); err == nil {
+		t.Fatal("CanGetPVC() allowed PVC UID mismatch")
+	}
+}
+
+func namespaceWithUID(name string, uid string) *corev1.Namespace {
+	return &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+			UID:  types.UID(uid),
+		},
+	}
+}
+
+func pvcWithUID(namespace string, name string, uid string) *corev1.PersistentVolumeClaim {
+	return &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      name,
+			UID:       types.UID(uid),
+		},
 	}
 }
 

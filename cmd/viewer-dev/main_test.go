@@ -85,6 +85,7 @@ func TestRoutesDispatchMetrics(t *testing.T) {
 		fakeViewerService{},
 		fakePodService{},
 		fakeAuthService{},
+		nil,
 		observability.New(config.ObservabilityConfig{LogLevel: "error"}, nil),
 		allowAuthorizer{},
 	)
@@ -111,6 +112,7 @@ func TestRoutesRejectWrongMethod(t *testing.T) {
 		fakeViewerService{},
 		fakePodService{},
 		fakeAuthService{},
+		nil,
 		observability.New(config.ObservabilityConfig{LogLevel: "error"}, nil),
 		allowAuthorizer{},
 	)
