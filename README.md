@@ -29,6 +29,10 @@ make build-image IMAGE=registry.example.com/viewer-backend:dev
 
 `make test-integration` reads the kubeconfig path from the YAML config and is intended for local protected development only.
 
+Create a local `config/viewer.yaml` from `config/viewer.example.yaml` and point
+`integration.kubeconfig_path` at `kubeconfig.test.yaml`. Both files are ignored
+by git.
+
 ## Encore MCP
 
 The Encore MCP server should point at the same app id as `encore.app`.
