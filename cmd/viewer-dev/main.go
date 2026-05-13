@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -15,19 +16,24 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		slog.Error("viewer dev server failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	listen := flag.String("listen", "127.0.0.1:4000", "HTTP listen address")
 	configPath := flag.String("config", config.DefaultPath, "viewer YAML config path")
 	flag.Parse()
 
 	cfg, err := config.LoadFile(*configPath)
 	if err != nil {
-		slog.Error("loading dev server config", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("loading dev server config: %w", err)
 	}
 	runtime, err := viewer.NewRuntime(*configPath)
 	if err != nil {
-		slog.Error("building viewer runtime", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("building viewer runtime: %w", err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -51,10 +57,10 @@ func main() {
 
 	slog.Info("starting viewer dev server", "listen", *listen, "config_path", *configPath)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		slog.Error("running dev server", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("running dev server: %w", err)
 	}
 	<-cleanupDone
+	return nil
 }
 
 func routes(handler *viewer.Handler) http.Handler {
