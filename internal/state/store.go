@@ -58,6 +58,42 @@ func (s *Store) GetPodSession(id string, now time.Time) (*domain.PodSession, boo
 	return clonePodSession(session), true
 }
 
+func (s *Store) GetPodSessionIncludingExpired(id string) (*domain.PodSession, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item, ok := s.podSessions.items[id]
+	if !ok {
+		return nil, false
+	}
+	return clonePodSession(item.value), true
+}
+
+func (s *Store) ListPodSessions(now time.Time) []*domain.PodSession {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	sessions := make([]*domain.PodSession, 0, s.podSessions.len())
+	for _, session := range s.podSessions.values(now) {
+		sessions = append(sessions, clonePodSession(session))
+	}
+	return sessions
+}
+
+func (s *Store) ListExpiredPodSessions(now time.Time) []*domain.PodSession {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	sessions := make([]*domain.PodSession, 0, s.podSessions.len())
+	for _, item := range s.podSessions.items {
+		if item.expiresAt.IsZero() || now.Before(item.expiresAt) {
+			continue
+		}
+		sessions = append(sessions, clonePodSession(item.value))
+	}
+	return sessions
+}
+
 func (s *Store) DeletePodSession(id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -304,6 +340,22 @@ func (c *cache[K, V]) purgeExpired(now time.Time) []K {
 		delete(c.items, key)
 	}
 	return keys
+}
+
+func (c *cache[K, V]) values(now time.Time) []V {
+	values := make([]V, 0, len(c.items))
+	for key, item := range c.items {
+		if !item.expiresAt.IsZero() && !now.Before(item.expiresAt) {
+			c.delete(key)
+			continue
+		}
+		values = append(values, item.value)
+	}
+	return values
+}
+
+func (c *cache[K, V]) len() int {
+	return len(c.items)
 }
 
 func clonePodSession(session *domain.PodSession) *domain.PodSession {

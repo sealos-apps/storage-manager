@@ -77,6 +77,83 @@ func TestStoreLRUEvictsOldest(t *testing.T) {
 	}
 }
 
+func TestListPodSessionsReturnsClones(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	store := New(config.Default().Cache)
+	store.PutPodSession(&domain.PodSession{
+		ID:        "ps_1",
+		Namespace: "default",
+		PVCUID:    "uid",
+		ExpiresAt: now.Add(time.Hour),
+	})
+	sessions := store.ListPodSessions(now)
+	if len(sessions) != 1 {
+		t.Fatalf("pod sessions = %d", len(sessions))
+	}
+	sessions[0].ID = "mutated"
+	again, ok := store.GetPodSession("ps_1", now)
+	if !ok || again.ID != "ps_1" {
+		t.Fatalf("store returned mutable pointer: %#v ok=%v", again, ok)
+	}
+}
+
+func TestListExpiredPodSessionsReturnsExpiredClones(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	store := New(config.Default().Cache)
+	store.PutPodSession(&domain.PodSession{
+		ID:        "expired",
+		Namespace: "default",
+		PVCUID:    "expired",
+		ExpiresAt: now.Add(-time.Second),
+	})
+	store.PutPodSession(&domain.PodSession{
+		ID:        "active",
+		Namespace: "default",
+		PVCUID:    "active",
+		ExpiresAt: now.Add(time.Hour),
+	})
+
+	sessions := store.ListExpiredPodSessions(now)
+	if len(sessions) != 1 || sessions[0].ID != "expired" {
+		t.Fatalf("expired pod sessions = %#v", sessions)
+	}
+	sessions[0].ID = "mutated"
+	got := store.ListExpiredPodSessions(now)
+	if len(got) != 1 || got[0].ID != "expired" {
+		t.Fatalf("store returned mutable expired pointer: %#v", got)
+	}
+}
+
+func TestGetPodSessionIncludingExpired(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	store := New(config.Default().Cache)
+	store.PutPodSession(&domain.PodSession{
+		ID:        "expired",
+		Namespace: "default",
+		PVCUID:    "uid",
+		ExpiresAt: now.Add(-time.Second),
+	})
+
+	got, ok := store.GetPodSessionIncludingExpired("expired")
+	if !ok || got.ID != "expired" {
+		t.Fatalf("GetPodSessionIncludingExpired() = %#v ok=%v", got, ok)
+	}
+	got.ID = "mutated"
+	again, ok := store.GetPodSessionIncludingExpired("expired")
+	if !ok || again.ID != "expired" {
+		t.Fatalf("store returned mutable expired pointer: %#v ok=%v", again, ok)
+	}
+	if _, ok := store.GetPodSession("expired", now); ok {
+		t.Fatal("GetPodSession() returned expired session")
+	}
+}
+
 func TestConsumeAuthRequestIsAtomic(t *testing.T) {
 	t.Parallel()
 

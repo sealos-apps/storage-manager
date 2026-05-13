@@ -167,7 +167,7 @@ func (s *PodService) SyncPodStatus(ctx context.Context, podSession *domain.PodSe
 
 func (s *PodService) ClosePodSession(ctx context.Context, podSessionID string) (*domain.PodSession, error) {
 	now := s.now()
-	podSession, ok := s.store.GetPodSession(podSessionID, now)
+	podSession, ok := s.store.GetPodSessionIncludingExpired(podSessionID)
 	if !ok {
 		return nil, fmt.Errorf("pod session %q not found", podSessionID)
 	}
