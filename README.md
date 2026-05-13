@@ -33,6 +33,20 @@ Create a local `config/viewer.yaml` from `config/viewer.example.yaml` and point
 `integration.kubeconfig_path` at `kubeconfig.test.yaml`. Both files are ignored
 by git.
 
+## Local Dev Server
+
+The Encore CLI may try to fetch development secrets from Encore Cloud during
+`encore run`. For self-hosted development without Encore Cloud, use the local
+dev server instead:
+
+```sh
+make dev
+```
+
+It serves the same REST handlers on `0.0.0.0:4000`, reads all business
+configuration from `config/viewer.yaml`, and runs scheduled cleanup from the
+configured purge interval.
+
 ## Encore MCP
 
 The Encore MCP server should point at the same app id as `encore.app`.

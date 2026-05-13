@@ -28,14 +28,35 @@ var _ = cron.NewJob("viewer-cleanup", cron.JobConfig{
 	Endpoint: CleanupViewerState,
 })
 
+type Runtime struct {
+	Handler *Handler
+	cleanup *session.CleanupService
+}
+
+func NewRuntime(configPath string) (*Runtime, error) {
+	cfg, err := config.LoadFile(configPath)
+	if err != nil {
+		return nil, err
+	}
+	return newRuntimeFromConfig(cfg)
+}
+
+func (r *Runtime) Cleanup(ctx context.Context) error {
+	if r == nil || r.cleanup == nil {
+		return nil
+	}
+	return r.cleanup.RunOnce(ctx)
+}
+
 func runtimeHandler() *Handler {
 	runtimeOnce.Do(func() {
-		handler, err := buildRuntimeHandler()
+		runtime, err := NewRuntime(config.DefaultPath)
 		if err != nil {
 			slog.Error("viewer runtime unavailable", "error", err)
 			return
 		}
-		defaultHandler = handler
+		defaultHandler = runtime.Handler
+		runtimeCleanup = runtime.cleanup
 	})
 	if defaultHandler != nil {
 		return defaultHandler
@@ -43,11 +64,7 @@ func runtimeHandler() *Handler {
 	return NewHandler(unavailableViewerService{}, unavailablePodService{}, unavailableAuthService{}, nil, denyAuthorizer{})
 }
 
-func buildRuntimeHandler() (*Handler, error) {
-	cfg, err := config.LoadFile(config.DefaultPath)
-	if err != nil {
-		return nil, err
-	}
+func newRuntimeFromConfig(cfg config.Config) (*Runtime, error) {
 	restConfig, err := managementRESTConfig(cfg)
 	if err != nil {
 		return nil, err
@@ -67,14 +84,18 @@ func buildRuntimeHandler() (*Handler, error) {
 		recorder,
 	)
 	viewers := session.NewViewerService(cfg, store, kubeClient, pods, auth, recorder)
-	runtimeCleanup = session.NewCleanupService(cfg, store, pods, recorder)
-	return NewHandler(
+	cleanup := session.NewCleanupService(cfg, store, pods, recorder)
+	handler := NewHandler(
 		viewers,
 		pods,
 		auth,
 		recorder,
 		kubernetesAuthorizer{},
-	), nil
+	)
+	return &Runtime{
+		Handler: handler,
+		cleanup: cleanup,
+	}, nil
 }
 
 func managementRESTConfig(cfg config.Config) (*rest.Config, error) {
@@ -99,12 +120,13 @@ func managementRESTConfig(cfg config.Config) (*rest.Config, error) {
 //encore:api private
 func CleanupViewerState(ctx context.Context) error {
 	runtimeOnce.Do(func() {
-		handler, err := buildRuntimeHandler()
+		runtime, err := NewRuntime(config.DefaultPath)
 		if err != nil {
 			slog.Error("viewer runtime unavailable", "error", err)
 			return
 		}
-		defaultHandler = handler
+		defaultHandler = runtime.Handler
+		runtimeCleanup = runtime.cleanup
 	})
 	if runtimeCleanup == nil {
 		return nil
