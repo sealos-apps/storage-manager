@@ -278,18 +278,32 @@ func TestClosePodSessionTreatsMissingPodAsClosed(t *testing.T) {
 	}
 }
 
-func TestFileBrowserHookScriptValidatesGeneratedIDs(t *testing.T) {
+func TestHookConfigMapUsesConfiguredScript(t *testing.T) {
 	t.Parallel()
 
-	for _, want := range []string{"vs_[A-Za-z0-9_-]*", "ar_[A-Za-z0-9_-]*", "ps_[A-Za-z0-9_-]*"} {
-		t.Run(want, func(t *testing.T) {
-			if !strings.Contains(fileBrowserHookScript, want) {
-				t.Fatalf("hook script missing validation pattern %q", want)
-			}
-		})
-	}
-	if !strings.Contains(fileBrowserHookScript, "printf '{\"pod_session_id\"") {
-		t.Fatal("hook script should build JSON through printf template")
+	cfg := testConfig()
+	cfg.Viewer.HookScript = "#!/bin/sh\necho configured-hook\n"
+	service := NewPodService(
+		cfg,
+		state.New(cfg.Cache),
+		kube.New(fake.NewSimpleClientset()),
+		observability.New(cfg.Observability, nil),
+	)
+	configMap := service.buildHookConfigMap(&domain.PodSession{
+		ID:        "ps_1",
+		Namespace: "default",
+		PodName:   "viewer-ps-1",
+		PVCName:   "data",
+		PVCUID:    "uid",
+	}, metav1.OwnerReference{
+		APIVersion: "v1",
+		Kind:       "Pod",
+		Name:       "viewer-ps-1",
+		UID:        types.UID("pod-uid"),
+	})
+
+	if got := configMap.Data["filebrowser-auth-hook.sh"]; got != cfg.Viewer.HookScript {
+		t.Fatalf("hook script = %q", got)
 	}
 }
 
@@ -346,6 +360,21 @@ func testConfig() config.Config {
 	cfg := config.Default()
 	cfg.Viewer.HookClientToken = "hook-token"
 	cfg.Viewer.BackendVerifyURL = "http://backend/internal/filebrowser-hook/verify"
+	cfg.Viewer.HookScript = "#!/bin/sh\necho hook.action=block\n"
+	cfg.Viewer.FileBrowser.Image = "filebrowser/filebrowser:v2.30.0"
+	cfg.Viewer.FileBrowser.BinaryPath = "/filebrowser"
+	cfg.Viewer.FileBrowser.Port = 8080
+	cfg.Viewer.FileBrowser.TokenTTL = 15 * time.Minute
+	cfg.Viewer.FileBrowser.LoginTimeout = 2 * time.Second
+	cfg.Viewer.Pod.MountPath = "/srv"
+	cfg.Viewer.Pod.DatabasePath = "/tmp/filebrowser.db"
+	cfg.Viewer.Pod.CPURequest = "50m"
+	cfg.Viewer.Pod.MemoryRequest = "64Mi"
+	cfg.Viewer.Pod.CPULimit = "500m"
+	cfg.Viewer.Pod.MemoryLimit = "512Mi"
+	cfg.Viewer.Service.Type = "ClusterIP"
+	cfg.Viewer.Service.Port = 80
+	cfg.Viewer.Ingress.ClassName = "nginx"
 	cfg.Viewer.Ingress.HostTemplate = "viewer-{{ .PodSessionID }}.example.test"
 	return cfg
 }

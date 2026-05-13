@@ -162,7 +162,7 @@ func (s *PodService) buildHookConfigMap(
 			OwnerReferences: []metav1.OwnerReference{owner},
 		},
 		Data: map[string]string{
-			"filebrowser-auth-hook.sh": fileBrowserHookScript,
+			"filebrowser-auth-hook.sh": s.cfg.Viewer.HookScript,
 		},
 	}
 }

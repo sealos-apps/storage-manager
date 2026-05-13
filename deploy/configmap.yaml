@@ -5,5 +5,93 @@ metadata:
   namespace: sealos-storage-manager
 data:
   viewer.yaml: |
-    # Replace with config/viewer.example.yaml values for the target cluster.
-    viewer: {}
+    # Replace every example value before deploying.
+    viewer:
+      namespace_allowlist: []
+      backend_verify_url: https://storage-manager.example.com/internal/filebrowser-hook/verify
+      hook_client_token: replace-me
+      hook_script: |
+        #!/bin/sh
+        set -eu
+
+        fail() {
+          echo "hook.action=block"
+          exit 0
+        }
+
+        case "${PASSWORD:-}" in
+          *.*) ;;
+          *) fail ;;
+        esac
+
+        case "${USERNAME:-}" in
+          vs_[A-Za-z0-9_-]*) ;;
+          *) fail ;;
+        esac
+
+        AUTH_REQUEST_ID="${PASSWORD%%.*}"
+        SECRET="${PASSWORD#*.}"
+        case "$AUTH_REQUEST_ID" in
+          ar_[A-Za-z0-9_-]*) ;;
+          *) fail ;;
+        esac
+        PASSWORD_HASH="$(printf "%s" "$SECRET" | sha256sum | awk '{print $1}')"
+
+        case "${POD_SESSION_ID:-}" in
+          ps_[A-Za-z0-9_-]*) ;;
+          *) fail ;;
+        esac
+
+        BODY="$(printf '{"pod_session_id":"%s","viewer_pod_name":"%s","username":"%s","auth_request_id":"%s","password_hash":"%s"}' \
+          "$POD_SESSION_ID" \
+          "$VIEWER_POD_NAME" \
+          "$USERNAME" \
+          "$AUTH_REQUEST_ID" \
+          "$PASSWORD_HASH")"
+
+        RESPONSE="$(curl -fsS --max-time 2 \
+          -H "Authorization: Bearer ${HOOK_CLIENT_TOKEN:-}" \
+          -H "Content-Type: application/json" \
+          -d "$BODY" \
+          "${BACKEND_VERIFY_URL:-}")" || fail
+
+        echo "$RESPONSE" | grep -q '"allow":true' || fail
+
+        echo "hook.action=auth"
+        echo "user.scope=/"
+        echo "user.perm.admin=false"
+        echo "user.perm.execute=false"
+        echo "user.perm.share=false"
+        echo "user.perm.download=true"
+        if echo "$RESPONSE" | grep -q '"create":true'; then
+          echo "user.perm.create=true"
+          echo "user.perm.rename=true"
+          echo "user.perm.modify=true"
+          echo "user.perm.delete=true"
+        else
+          echo "user.perm.create=false"
+          echo "user.perm.rename=false"
+          echo "user.perm.modify=false"
+          echo "user.perm.delete=false"
+        fi
+      filebrowser:
+        image: filebrowser/filebrowser:v2.30.0
+        binary_path: /filebrowser
+        port: 8080
+        token_ttl: 15m
+        login_timeout: 2s
+      pod:
+        service_account_name: ""
+        mount_path: /srv
+        database_path: /tmp/filebrowser.db
+        cpu_request: 50m
+        memory_request: 64Mi
+        cpu_limit: 500m
+        memory_limit: 512Mi
+      service:
+        type: ClusterIP
+        port: 80
+      ingress:
+        class_name: nginx
+        host_template: viewer-{{ .PodSessionID }}.example.com
+        tls_secret_name: ""

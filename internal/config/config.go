@@ -34,6 +34,7 @@ type ViewerConfig struct {
 	NamespaceAllowlist []string          `yaml:"namespace_allowlist"`
 	BackendVerifyURL   string            `yaml:"backend_verify_url"`
 	HookClientToken    string            `yaml:"hook_client_token"`
+	HookScript         string            `yaml:"hook_script"`
 	FileBrowser        FileBrowserConfig `yaml:"filebrowser"`
 	Pod                PodConfig         `yaml:"pod"`
 	Service            ServiceConfig     `yaml:"service"`
@@ -142,31 +143,6 @@ func Default() Config {
 		Kubernetes: KubernetesConfig{},
 		Viewer: ViewerConfig{
 			NamespaceAllowlist: []string{},
-			BackendVerifyURL:   "http://viewer-backend/internal/filebrowser-hook/verify",
-			HookClientToken:    "",
-			FileBrowser: FileBrowserConfig{
-				Image:        "filebrowser/filebrowser:v2.30.0",
-				BinaryPath:   "/filebrowser",
-				Port:         8080,
-				TokenTTL:     15 * time.Minute,
-				LoginTimeout: 2 * time.Second,
-			},
-			Pod: PodConfig{
-				MountPath:     "/srv",
-				DatabasePath:  "/tmp/filebrowser.db",
-				CPURequest:    "50m",
-				MemoryRequest: "64Mi",
-				CPULimit:      "500m",
-				MemoryLimit:   "512Mi",
-			},
-			Service: ServiceConfig{
-				Type: "ClusterIP",
-				Port: 80,
-			},
-			Ingress: IngressConfig{
-				ClassName:    "nginx",
-				HostTemplate: "viewer-{{ .PodSessionID }}.example.com",
-			},
 		},
 		Sessions: SessionsConfig{
 			HeartbeatInterval:   30 * time.Second,
@@ -203,6 +179,15 @@ func Default() Config {
 
 func (cfg Config) Validate() error {
 	var problems []string
+	if strings.TrimSpace(cfg.Viewer.BackendVerifyURL) == "" {
+		problems = append(problems, "viewer.backend_verify_url is required")
+	}
+	if strings.TrimSpace(cfg.Viewer.HookClientToken) == "" {
+		problems = append(problems, "viewer.hook_client_token is required")
+	}
+	if strings.TrimSpace(cfg.Viewer.HookScript) == "" {
+		problems = append(problems, "viewer.hook_script is required")
+	}
 	if strings.TrimSpace(cfg.Viewer.FileBrowser.Image) == "" {
 		problems = append(problems, "viewer.filebrowser.image is required")
 	}
@@ -224,8 +209,29 @@ func (cfg Config) Validate() error {
 	if strings.TrimSpace(cfg.Viewer.Pod.DatabasePath) == "" {
 		problems = append(problems, "viewer.pod.database_path is required")
 	}
+	if strings.TrimSpace(cfg.Viewer.Pod.CPURequest) == "" {
+		problems = append(problems, "viewer.pod.cpu_request is required")
+	}
+	if strings.TrimSpace(cfg.Viewer.Pod.MemoryRequest) == "" {
+		problems = append(problems, "viewer.pod.memory_request is required")
+	}
+	if strings.TrimSpace(cfg.Viewer.Pod.CPULimit) == "" {
+		problems = append(problems, "viewer.pod.cpu_limit is required")
+	}
+	if strings.TrimSpace(cfg.Viewer.Pod.MemoryLimit) == "" {
+		problems = append(problems, "viewer.pod.memory_limit is required")
+	}
 	if strings.Contains(cfg.Viewer.Pod.DatabasePath, cfg.Viewer.Pod.MountPath+"/") {
 		problems = append(problems, "viewer.pod.database_path must not be inside viewer.pod.mount_path")
+	}
+	if strings.TrimSpace(cfg.Viewer.Service.Type) == "" {
+		problems = append(problems, "viewer.service.type is required")
+	}
+	if cfg.Viewer.Service.Port <= 0 {
+		problems = append(problems, "viewer.service.port must be positive")
+	}
+	if strings.TrimSpace(cfg.Viewer.Ingress.ClassName) == "" {
+		problems = append(problems, "viewer.ingress.class_name is required")
 	}
 	if strings.TrimSpace(cfg.Viewer.Ingress.HostTemplate) == "" {
 		problems = append(problems, "viewer.ingress.host_template is required")
@@ -260,6 +266,7 @@ func (cfg Config) Redacted() map[string]any {
 			"namespace_allowlist": cfg.Viewer.NamespaceAllowlist,
 			"backend_verify_url":  cfg.Viewer.BackendVerifyURL,
 			"hook_client_token":   "redacted",
+			"hook_script":         "redacted",
 			"filebrowser":         cfg.Viewer.FileBrowser,
 			"pod":                 cfg.Viewer.Pod,
 			"service":             cfg.Viewer.Service,
