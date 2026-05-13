@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,8 +50,17 @@ func TestEnsurePodSessionCreatesResources(t *testing.T) {
 	if pod.Spec.Containers[0].Image != cfg.Viewer.FileBrowser.Image {
 		t.Fatalf("image = %q", pod.Spec.Containers[0].Image)
 	}
+	if !strings.Contains(pod.Spec.Containers[0].Args[0], "--auth.command=/hooks/filebrowser-auth-hook.sh") {
+		t.Fatalf("filebrowser command did not configure hook auth: %q", pod.Spec.Containers[0].Args[0])
+	}
 	if pod.Spec.Volumes[0].PersistentVolumeClaim.ReadOnly {
 		t.Fatal("readwrite mode mounted readonly")
+	}
+	if pod.Spec.Volumes[1].ConfigMap == nil || pod.Spec.Volumes[1].ConfigMap.Name != "viewer-filebrowser-hook" {
+		t.Fatalf("hook configmap volume missing: %#v", pod.Spec.Volumes)
+	}
+	if _, err := client.GetConfigMap(context.Background(), "default", "viewer-filebrowser-hook"); err != nil {
+		t.Fatalf("hook configmap was not created: %v", err)
 	}
 }
 
@@ -119,6 +129,21 @@ func TestBuildReadOnlyPod(t *testing.T) {
 	}
 	if !pod.Spec.Containers[0].VolumeMounts[0].ReadOnly {
 		t.Fatal("read-only mode did not set mount readonly")
+	}
+}
+
+func TestFileBrowserHookScriptValidatesGeneratedIDs(t *testing.T) {
+	t.Parallel()
+
+	for _, want := range []string{"vs_[A-Za-z0-9_-]*", "ar_[A-Za-z0-9_-]*", "ps_[A-Za-z0-9_-]*"} {
+		t.Run(want, func(t *testing.T) {
+			if !strings.Contains(fileBrowserHookScript, want) {
+				t.Fatalf("hook script missing validation pattern %q", want)
+			}
+		})
+	}
+	if !strings.Contains(fileBrowserHookScript, "printf '{\"pod_session_id\"") {
+		t.Fatal("hook script should build JSON through printf template")
 	}
 }
 

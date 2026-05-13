@@ -114,3 +114,26 @@ func TestVerifyHookDeniesReadOnlyMutationPermissions(t *testing.T) {
 		t.Fatalf("readonly permissions = %#v", perms)
 	}
 }
+
+func TestConstantTimeEqualRejectsEmptyToken(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		a    string
+		b    string
+		want bool
+	}{
+		{name: "both match", a: "hook-token", b: "hook-token", want: true},
+		{name: "different", a: "hook-token", b: "other", want: false},
+		{name: "empty left", a: "", b: "hook-token", want: false},
+		{name: "empty right", a: "hook-token", b: "", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := constantTimeEqual(tt.a, tt.b); got != tt.want {
+				t.Fatalf("constantTimeEqual() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

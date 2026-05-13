@@ -121,6 +121,9 @@ func (s *PodService) EnsurePodSession(
 	if err != nil {
 		return nil, err
 	}
+	if err := s.ensureHookConfigMap(ctx, input.Namespace); err != nil {
+		return nil, err
+	}
 	if _, err := s.client.CreatePod(ctx, pod); err != nil {
 		return nil, err
 	}
@@ -137,6 +140,25 @@ func (s *PodService) EnsurePodSession(
 	s.store.PutPodSession(podSession)
 	s.recorder.Metrics().PodCreated.Add(1)
 	return podSession, nil
+}
+
+func (s *PodService) ensureHookConfigMap(ctx context.Context, namespace string) error {
+	if _, err := s.client.GetConfigMap(ctx, namespace, "viewer-filebrowser-hook"); err == nil {
+		return nil
+	}
+	_, err := s.client.CreateConfigMap(ctx, &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      "viewer-filebrowser-hook",
+			Labels: map[string]string{
+				labelComponent: componentViewer,
+			},
+		},
+		Data: map[string]string{
+			"filebrowser-auth-hook.sh": fileBrowserHookScript,
+		},
+	})
+	return err
 }
 
 func (s *PodService) SyncPodStatus(ctx context.Context, podSession *domain.PodSession) (*domain.PodSession, error) {
@@ -292,16 +314,25 @@ func (s *PodService) buildPod(session *domain.PodSession, mountInfo *domain.PVCM
 			ServiceAccountName: s.cfg.Viewer.Pod.ServiceAccountName,
 			Containers: []corev1.Container{
 				{
-					Name:  "filebrowser",
-					Image: s.cfg.Viewer.FileBrowser.Image,
+					Name:    "filebrowser",
+					Image:   s.cfg.Viewer.FileBrowser.Image,
+					Command: []string{"/bin/sh", "-c"},
 					Args: []string{
-						"--root", s.cfg.Viewer.Pod.MountPath,
-						"--address", "0.0.0.0",
-						"--port", fmt.Sprint(s.cfg.Viewer.FileBrowser.Port),
-						"--auth.method=hook",
-						"--auth.header=",
-						"--tokenExpirationTime=" + s.cfg.Viewer.FileBrowser.TokenTTL.String(),
-						"--database", s.cfg.Viewer.Pod.DatabasePath,
+						"filebrowser config init " +
+							"--database " + shellQuote(s.cfg.Viewer.Pod.DatabasePath) + " " +
+							"--root " + shellQuote(s.cfg.Viewer.Pod.MountPath) + " " +
+							"--address 0.0.0.0 " +
+							"--port " + fmt.Sprint(s.cfg.Viewer.FileBrowser.Port) + " " +
+							"--auth.method=hook " +
+							"--auth.command=/hooks/filebrowser-auth-hook.sh " +
+							"--auth.header= " +
+							"--token-expiration-time " + shellQuote(s.cfg.Viewer.FileBrowser.TokenTTL.String()) + " " +
+							"--disable-exec " +
+							"&& exec filebrowser " +
+							"--database " + shellQuote(s.cfg.Viewer.Pod.DatabasePath) + " " +
+							"--root " + shellQuote(s.cfg.Viewer.Pod.MountPath) + " " +
+							"--address 0.0.0.0 " +
+							"--port " + fmt.Sprint(s.cfg.Viewer.FileBrowser.Port),
 					},
 					Ports: []corev1.ContainerPort{{ContainerPort: s.cfg.Viewer.FileBrowser.Port}},
 					Env: []corev1.EnvVar{
@@ -315,6 +346,11 @@ func (s *PodService) buildPod(session *domain.PodSession, mountInfo *domain.PVCM
 							Name:      "pvc",
 							MountPath: s.cfg.Viewer.Pod.MountPath,
 							ReadOnly:  readOnly,
+						},
+						{
+							Name:      "hook",
+							MountPath: "/hooks",
+							ReadOnly:  true,
 						},
 					},
 					Resources: corev1.ResourceRequirements{
@@ -330,6 +366,17 @@ func (s *PodService) buildPod(session *domain.PodSession, mountInfo *domain.PVCM
 						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 							ClaimName: session.PVCName,
 							ReadOnly:  readOnly,
+						},
+					},
+				},
+				{
+					Name: "hook",
+					VolumeSource: corev1.VolumeSource{
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "viewer-filebrowser-hook",
+							},
+							DefaultMode: ptrInt32(0o555),
 						},
 					},
 				},
@@ -472,6 +519,14 @@ func resourceList(cpu string, memory string) corev1.ResourceList {
 		resources[corev1.ResourceMemory] = resource.MustParse(memory)
 	}
 	return resources
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
+
+func ptrInt32(value int32) *int32 {
+	return &value
 }
 
 func managedLabels(session *domain.PodSession) map[string]string {

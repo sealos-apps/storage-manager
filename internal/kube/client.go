@@ -22,6 +22,8 @@ type Interface interface {
 	DeleteService(ctx context.Context, namespace string, name string) error
 	CreateIngress(ctx context.Context, ingress *networkingv1.Ingress) (*networkingv1.Ingress, error)
 	DeleteIngress(ctx context.Context, namespace string, name string) error
+	GetConfigMap(ctx context.Context, namespace string, name string) (*corev1.ConfigMap, error)
+	CreateConfigMap(ctx context.Context, configMap *corev1.ConfigMap) (*corev1.ConfigMap, error)
 }
 
 type Client struct {
@@ -123,4 +125,23 @@ func (c *Client) DeleteIngress(ctx context.Context, namespace string, name strin
 		return fmt.Errorf("deleting ingress %s/%s: %w", namespace, name, err)
 	}
 	return nil
+}
+
+func (c *Client) GetConfigMap(ctx context.Context, namespace string, name string) (*corev1.ConfigMap, error) {
+	configMap, err := c.clientset.CoreV1().ConfigMaps(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("getting configmap %s/%s: %w", namespace, name, err)
+	}
+	return configMap, nil
+}
+
+func (c *Client) CreateConfigMap(
+	ctx context.Context,
+	configMap *corev1.ConfigMap,
+) (*corev1.ConfigMap, error) {
+	created, err := c.clientset.CoreV1().ConfigMaps(configMap.Namespace).Create(ctx, configMap, metav1.CreateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("creating configmap %s/%s: %w", configMap.Namespace, configMap.Name, err)
+	}
+	return created, nil
 }

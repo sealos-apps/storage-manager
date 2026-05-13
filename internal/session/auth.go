@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"time"
@@ -104,7 +105,7 @@ func (s *AuthService) IssueToken(
 }
 
 func (s *AuthService) VerifyHook(input HookVerifyInput) domain.FileBrowserHookVerification {
-	if input.HookClientToken != s.cfg.Viewer.HookClientToken {
+	if !constantTimeEqual(input.HookClientToken, s.cfg.Viewer.HookClientToken) {
 		s.recorder.Metrics().AuthDenied.Add(1)
 		return deny("invalid hook token")
 	}
@@ -136,6 +137,13 @@ func (s *AuthService) VerifyHook(input HookVerifyInput) domain.FileBrowserHookVe
 		Scope:       "/",
 		Permissions: permissionsForMode(viewer.Permission),
 	}
+}
+
+func constantTimeEqual(a string, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
 func permissionsForMode(mode string) domain.FileBrowserPermissions {
