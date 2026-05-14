@@ -24,7 +24,7 @@ func TestCleanupPurgesExpiredViewerSession(t *testing.T) {
 		PodSessionID: "ps_1",
 		ExpiresAt:    fixedNow().Add(-time.Second),
 	})
-	recorder := observability.New(cfg.Observability, nil)
+	recorder := observability.MustNew(cfg.Observability, nil)
 	cleanup := NewCleanupService(
 		cfg,
 		store,
@@ -52,7 +52,7 @@ func TestCleanupClosesExpiredIdlePodSession(t *testing.T) {
 		serviceFixture("default", "viewer-ps_idle"),
 		ingressFixture("default", "viewer-ps_idle"),
 	)
-	pods := NewPodService(cfg, store, kube.New(clientset), observability.New(cfg.Observability, nil))
+	pods := NewPodService(cfg, store, kube.New(clientset), observability.MustNew(cfg.Observability, nil))
 	store.PutPodSession(&domain.PodSession{
 		ID:          "ps_idle",
 		Namespace:   "default",
@@ -62,7 +62,7 @@ func TestCleanupClosesExpiredIdlePodSession(t *testing.T) {
 		Status:      domain.PodStatusReady,
 		ExpiresAt:   fixedNow().Add(-time.Second),
 	})
-	cleanup := NewCleanupService(cfg, store, pods, observability.New(cfg.Observability, nil))
+	cleanup := NewCleanupService(cfg, store, pods, observability.MustNew(cfg.Observability, nil))
 	cleanup.now = fixedNow
 
 	if err := cleanup.RunOnce(t.Context()); err != nil {
@@ -85,7 +85,7 @@ func TestCleanupKeepsExpiredPodWithActiveViewer(t *testing.T) {
 		cfg,
 		store,
 		kube.New(fake.NewSimpleClientset(viewerPodFixture("default", "viewer-ps_active", "ps_active"))),
-		observability.New(cfg.Observability, nil),
+		observability.MustNew(cfg.Observability, nil),
 	)
 	store.PutPodSession(&domain.PodSession{
 		ID:          "ps_active",
@@ -102,7 +102,7 @@ func TestCleanupKeepsExpiredPodWithActiveViewer(t *testing.T) {
 		Status:       domain.ViewerStatusReady,
 		ExpiresAt:    fixedNow().Add(time.Minute),
 	})
-	cleanup := NewCleanupService(cfg, store, pods, observability.New(cfg.Observability, nil))
+	cleanup := NewCleanupService(cfg, store, pods, observability.MustNew(cfg.Observability, nil))
 	cleanup.now = fixedNow
 
 	if err := cleanup.RunOnce(t.Context()); err != nil {
@@ -136,7 +136,7 @@ func TestReconcileViewerPodsRecoversRecentPod(t *testing.T) {
 		cfg,
 		store,
 		kube.New(fake.NewSimpleClientset(pod)),
-		observability.New(cfg.Observability, nil),
+		observability.MustNew(cfg.Observability, nil),
 	)
 	service.now = fixedNow
 

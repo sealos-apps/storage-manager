@@ -41,8 +41,8 @@ func TestViewerServiceListPVCs(t *testing.T) {
 		testMountedPod("default", "app", "node-a", "data"),
 	))
 	store := state.New(cfg.Cache)
-	pods := NewPodService(cfg, store, client, observability.New(cfg.Observability, nil))
-	service := NewViewerService(cfg, store, client, pods, nil, observability.New(cfg.Observability, nil))
+	pods := NewPodService(cfg, store, client, observability.MustNew(cfg.Observability, nil))
+	service := NewViewerService(cfg, store, client, pods, nil, observability.MustNew(cfg.Observability, nil))
 
 	items, err := service.ListPVCs(t.Context(), "default")
 	if err != nil {
@@ -67,8 +67,8 @@ func TestCreateViewerSessionRejectsRWOP(t *testing.T) {
 		},
 	}))
 	store := state.New(cfg.Cache)
-	pods := NewPodService(cfg, store, client, observability.New(cfg.Observability, nil))
-	service := NewViewerService(cfg, store, client, pods, nil, observability.New(cfg.Observability, nil))
+	pods := NewPodService(cfg, store, client, observability.MustNew(cfg.Observability, nil))
+	service := NewViewerService(cfg, store, client, pods, nil, observability.MustNew(cfg.Observability, nil))
 
 	if _, err := service.CreateViewerSession(t.Context(), CreateViewerSessionInput{
 		Namespace: "default",
@@ -90,7 +90,7 @@ func TestHeartbeatExtendsSession(t *testing.T) {
 		kube.New(fake.NewSimpleClientset()),
 		nil,
 		nil,
-		observability.New(cfg.Observability, nil),
+		observability.MustNew(cfg.Observability, nil),
 	)
 	service.now = fixedNow
 	store.PutViewerSession(&domain.ViewerSession{
@@ -126,9 +126,9 @@ func TestIssueTokenSyncsPodStatusBeforeReadinessCheck(t *testing.T) {
 		},
 	}
 	client := kube.New(fake.NewSimpleClientset(pod))
-	pods := NewPodService(cfg, store, client, observability.New(cfg.Observability, nil))
-	auth := NewAuthService(cfg, store, staticLogin{token: "fb-token"}, observability.New(cfg.Observability, nil))
-	service := NewViewerService(cfg, store, client, pods, auth, observability.New(cfg.Observability, nil))
+	pods := NewPodService(cfg, store, client, observability.MustNew(cfg.Observability, nil))
+	auth := NewAuthService(cfg, store, staticLogin{token: "fb-token"}, observability.MustNew(cfg.Observability, nil))
+	service := NewViewerService(cfg, store, client, pods, auth, observability.MustNew(cfg.Observability, nil))
 	now := fixedNow()
 	service.now = func() time.Time { return now }
 	store.PutPodSession(&domain.PodSession{
@@ -166,7 +166,7 @@ func TestViewerServiceRejectsCrossUserSessionAccess(t *testing.T) {
 		kube.New(fake.NewSimpleClientset()),
 		nil,
 		nil,
-		observability.New(cfg.Observability, nil),
+		observability.MustNew(cfg.Observability, nil),
 	)
 	store.PutViewerSession(&domain.ViewerSession{
 		ID:           "vs_1",

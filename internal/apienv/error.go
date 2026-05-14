@@ -55,8 +55,7 @@ func FromError(err error) *Error {
 	if err == nil {
 		return nil
 	}
-	var apiErr *Error
-	if errors.As(err, &apiErr) {
+	if apiErr, ok := errors.AsType[*Error](err); ok {
 		return apiErr
 	}
 	return NewError(http.StatusInternalServerError, CodeInternal, "Internal server error", nil)

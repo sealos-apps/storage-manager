@@ -2,6 +2,7 @@ package viewer
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/nixieboluo/sealos-storage-manager/internal/authn"
 	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
@@ -85,9 +86,9 @@ func VerifyFileBrowserHook(
 	return runtimeHandler().VerifyFileBrowserHookData(ctx, req)
 }
 
-//encore:api public method=GET path=/metrics
-func Metrics(ctx context.Context) (*MetricsResponse, error) {
-	return runtimeHandler().MetricsData(ctx)
+//encore:api public raw method=GET path=/metrics
+func Metrics(w http.ResponseWriter, req *http.Request) {
+	runtimeHandler().Metrics(w, req)
 }
 
 type unavailableViewerService struct{}

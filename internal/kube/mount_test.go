@@ -163,8 +163,7 @@ func testPod(
 func podObjects(pods []corev1.Pod) []runtime.Object {
 	objects := make([]runtime.Object, 0, len(pods))
 	for i := range pods {
-		pod := pods[i]
-		objects = append(objects, &pod)
+		objects = append(objects, new(pods[i]))
 	}
 	return objects
 }

@@ -95,3 +95,9 @@ data:
         class_name: nginx
         host_template: viewer-{{ .PodSessionID }}.example.com
         tls_secret_name: ""
+
+    observability:
+      service_name: sealos-storage-manager-viewer
+      logs:
+        exporter: encore
+        level: info

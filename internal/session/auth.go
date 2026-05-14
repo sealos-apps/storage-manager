@@ -58,7 +58,7 @@ func (s *AuthService) IssueToken(
 	viewer *domain.ViewerSession,
 	pod *domain.PodSession,
 ) (viewerToken *domain.ViewerToken, err error) {
-	ctx, finish := s.recorder.StartSpan(ctx,
+	ctx, finish := s.recorder.TraceOperation(ctx,
 		"auth.issue_token",
 		slog.String("viewer_session_id", viewer.ID),
 		slog.String("pod_session_id", pod.ID),
@@ -86,10 +86,10 @@ func (s *AuthService) IssueToken(
 		ExpiresAt:       now.Add(s.cfg.Sessions.AuthRequestTTL),
 		CreatedAt:       now,
 	}, passwordHash)
-	s.recorder.Metrics().AuthCreated.Add(1)
+	s.recorder.ObserveAuthRequest("created")
 
 	password := authID + "." + secret
-	loginCtx, finishLogin := s.recorder.StartSpan(ctx,
+	loginCtx, finishLogin := s.recorder.TraceOperation(ctx,
 		"filebrowser.login",
 		slog.String("viewer_session_id", viewer.ID),
 		slog.String("pod_session_id", pod.ID),
@@ -98,10 +98,10 @@ func (s *AuthService) IssueToken(
 	token, err := s.login.Login(loginCtx, pod.ViewerURL, viewer.ID, password)
 	finishLogin(err)
 	if err != nil {
-		s.recorder.Metrics().FileBrowserErrors.Add(1)
+		s.recorder.ObserveFileBrowserLogin("error")
 		return nil, fmt.Errorf("issuing filebrowser token: %w", err)
 	}
-	s.recorder.Metrics().FileBrowserLogins.Add(1)
+	s.recorder.ObserveFileBrowserLogin("success")
 
 	tokenHash := filebrowser.HashSecret(token)
 	expiresAt := now.Add(s.cfg.Viewer.FileBrowser.TokenTTL)
@@ -129,31 +129,31 @@ func (s *AuthService) IssueToken(
 
 func (s *AuthService) VerifyHook(input HookVerifyInput) domain.FileBrowserHookVerification {
 	if !constantTimeEqual(input.HookClientToken, s.cfg.Viewer.HookClientToken) {
-		s.recorder.Metrics().AuthDenied.Add(1)
+		s.recorder.ObserveAuthRequest("denied")
 		return deny("invalid hook token")
 	}
 	now := s.now()
 	req, ok := s.store.ConsumeAuthRequest(input.AuthRequestID, input.PasswordHash, now)
 	if !ok {
-		s.recorder.Metrics().AuthDenied.Add(1)
+		s.recorder.ObserveAuthRequest("denied")
 		return deny("invalid auth request")
 	}
 	if req.ViewerSessionID != input.Username || req.PodSessionID != input.PodSessionID {
-		s.recorder.Metrics().AuthDenied.Add(1)
+		s.recorder.ObserveAuthRequest("denied")
 		return deny("auth request scope mismatch")
 	}
 	viewer, ok := s.store.GetViewerSession(req.ViewerSessionID, now)
 	if !ok || viewer.Status == domain.ViewerStatusClosed || viewer.Status == domain.ViewerStatusExpired {
-		s.recorder.Metrics().AuthDenied.Add(1)
+		s.recorder.ObserveAuthRequest("denied")
 		return deny("viewer session is not active")
 	}
 	pod, ok := s.store.GetPodSession(req.PodSessionID, now)
 	if !ok || pod.Status != domain.PodStatusReady {
-		s.recorder.Metrics().AuthDenied.Add(1)
+		s.recorder.ObserveAuthRequest("denied")
 		return deny("pod session is not ready")
 	}
 
-	s.recorder.Metrics().AuthConsumed.Add(1)
+	s.recorder.ObserveAuthRequest("consumed")
 	return domain.FileBrowserHookVerification{
 		Allow:       true,
 		Reason:      "",

@@ -109,28 +109,6 @@ type FileBrowserHookVerificationResponse struct {
 	FileBrowserHookVerification domain.FileBrowserHookVerification `json:"filebrowser_hook_verification"`
 }
 
-type MetricsSnapshot struct {
-	HTTPRequests       int64 `json:"http_requests_total"`
-	HTTPErrors         int64 `json:"http_errors_total"`
-	ViewerCreated      int64 `json:"viewer_sessions_created_total"`
-	ViewerClosed       int64 `json:"viewer_sessions_closed_total"`
-	PodCreated         int64 `json:"pod_sessions_created_total"`
-	PodReused          int64 `json:"pod_sessions_reused_total"`
-	PodDeleted         int64 `json:"pod_sessions_deleted_total"`
-	AuthCreated        int64 `json:"auth_requests_created_total"`
-	AuthConsumed       int64 `json:"auth_requests_consumed_total"`
-	AuthDenied         int64 `json:"auth_requests_denied_total"`
-	FileBrowserLogins  int64 `json:"filebrowser_logins_total"`
-	FileBrowserErrors  int64 `json:"filebrowser_errors_total"`
-	KubernetesRequests int64 `json:"kubernetes_requests_total"`
-	KubernetesErrors   int64 `json:"kubernetes_errors_total"`
-	CleanupDeleted     int64 `json:"cleanup_deleted_total"`
-}
-
-type MetricsResponse struct {
-	Metrics MetricsSnapshot `json:"metrics"`
-}
-
 type ErrorDetails struct {
 	Code string `json:"code"`
 }
@@ -232,10 +210,6 @@ func (h *Handler) VerifyFileBrowserHookData(
 	return response, toEncoreError(apiErr)
 }
 
-func (h *Handler) MetricsData(_ context.Context) (*MetricsResponse, error) {
-	return &MetricsResponse{Metrics: metricsSnapshot(h.recorder)}, nil
-}
-
 func (h *Handler) ListPVCs(w http.ResponseWriter, req *http.Request) {
 	response, err := h.listPVCs(req.Context(), &ListPVCsRequest{
 		Authorization: req.Header.Get("Authorization"),
@@ -315,8 +289,7 @@ func (h *Handler) VerifyFileBrowserHook(w http.ResponseWriter, req *http.Request
 }
 
 func (h *Handler) Metrics(w http.ResponseWriter, req *http.Request) {
-	response, err := h.MetricsData(req.Context())
-	writeHTTPResponse(w, response, apienv.FromError(err))
+	h.recorder.WritePrometheus(w, req)
 }
 
 func (h *Handler) listPVCs(ctx context.Context, req *ListPVCsRequest) (*ListPVCsResponse, *apienv.Error) {
@@ -561,7 +534,7 @@ func (h *Handler) verifyFileBrowserHook(
 	req *VerifyFileBrowserHookRequest,
 ) (*FileBrowserHookVerificationResponse, *apienv.Error) {
 	start := time.Now()
-	ctx, finish := h.recorder.StartSpan(ctx,
+	ctx, finish := h.recorder.TraceOperation(ctx,
 		"filebrowser.verify_hook",
 		slog.String("pod_session_id", req.PodSessionID),
 		slog.String("viewer_pod_name", req.ViewerPodName),
@@ -689,27 +662,6 @@ func toEncoreErrorCode(status int) errs.ErrCode {
 	}
 }
 
-func metricsSnapshot(recorder *observability.Recorder) MetricsSnapshot {
-	metrics := recorder.Metrics()
-	return MetricsSnapshot{
-		HTTPRequests:       metrics.HTTPRequests.Load(),
-		HTTPErrors:         metrics.HTTPErrors.Load(),
-		ViewerCreated:      metrics.ViewerCreated.Load(),
-		ViewerClosed:       metrics.ViewerClosed.Load(),
-		PodCreated:         metrics.PodCreated.Load(),
-		PodReused:          metrics.PodReused.Load(),
-		PodDeleted:         metrics.PodDeleted.Load(),
-		AuthCreated:        metrics.AuthCreated.Load(),
-		AuthConsumed:       metrics.AuthConsumed.Load(),
-		AuthDenied:         metrics.AuthDenied.Load(),
-		FileBrowserLogins:  metrics.FileBrowserLogins.Load(),
-		FileBrowserErrors:  metrics.FileBrowserErrors.Load(),
-		KubernetesRequests: metrics.KubernetesRequests.Load(),
-		KubernetesErrors:   metrics.KubernetesErrors.Load(),
-		CleanupDeleted:     metrics.CleanupDeleted.Load(),
-	}
-}
-
 func (h *Handler) authorizeViewerSessionPVC(
 	ctx context.Context,
 	principal *authn.Principal,
@@ -763,7 +715,7 @@ func (a kubernetesAuthorizer) CanListPVCs(
 	principal *authn.Principal,
 	namespace string,
 ) (err error) {
-	ctx, finish := a.recorder.StartSpan(ctx,
+	ctx, finish := a.recorder.TraceOperation(ctx,
 		"kubernetes.authorize.list_pvcs",
 		slog.String("namespace", namespace),
 		slog.Bool("management_client", a.management != nil),
@@ -793,7 +745,7 @@ func (a kubernetesAuthorizer) CanGetPVC(
 	namespace string,
 	name string,
 ) (err error) {
-	ctx, finish := a.recorder.StartSpan(ctx,
+	ctx, finish := a.recorder.TraceOperation(ctx,
 		"kubernetes.authorize.get_pvc",
 		slog.String("namespace", namespace),
 		slog.String("pvc_name", name),
@@ -883,7 +835,7 @@ func (a kubernetesAuthorizer) observeKubernetes(
 	name string,
 	call func(context.Context) error,
 ) (err error) {
-	a.recorder.Metrics().KubernetesRequests.Add(1)
+	start := time.Now()
 	attrs := []slog.Attr{
 		slog.String("operation", operation),
 		slog.String("resource", resource),
@@ -892,11 +844,9 @@ func (a kubernetesAuthorizer) observeKubernetes(
 	if name != "" {
 		attrs = append(attrs, slog.String("name", name))
 	}
-	ctx, finish := a.recorder.StartSpan(ctx, "kubernetes."+operation, attrs...)
+	ctx, finish := a.recorder.TraceOperation(ctx, "kubernetes."+operation, attrs...)
 	defer func() {
-		if err != nil {
-			a.recorder.Metrics().KubernetesErrors.Add(1)
-		}
+		a.recorder.ObserveKubernetes(operation, resource, err, time.Since(start))
 		finish(err)
 	}()
 	return call(ctx)

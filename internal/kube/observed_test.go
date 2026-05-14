@@ -1,8 +1,8 @@
 package kube
 
 import (
-	"bytes"
 	"errors"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -16,10 +16,9 @@ import (
 )
 
 func TestObservedClientRecordsKubernetesRequest(t *testing.T) {
-	t.Parallel()
+	t.Setenv("ENCORERUNTIME_NOPANIC", "1")
 
-	var out bytes.Buffer
-	recorder := observability.New(config.ObservabilityConfig{LogLevel: "debug"}, &out)
+	recorder := observability.MustNew(testObservability(), nil)
 	client := WithObservability(New(fake.NewSimpleClientset(&corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: "default",
@@ -30,24 +29,16 @@ func TestObservedClientRecordsKubernetesRequest(t *testing.T) {
 	if _, err := client.GetPVC(t.Context(), "default", "data"); err != nil {
 		t.Fatalf("GetPVC() error = %v", err)
 	}
-	if recorder.Metrics().KubernetesRequests.Load() != 1 {
-		t.Fatalf("kubernetes requests = %d", recorder.Metrics().KubernetesRequests.Load())
-	}
-	if recorder.Metrics().KubernetesErrors.Load() != 0 {
-		t.Fatalf("kubernetes errors = %d", recorder.Metrics().KubernetesErrors.Load())
-	}
-	logs := out.String()
-	if !strings.Contains(logs, `"span":"kubernetes.get"`) ||
-		!strings.Contains(logs, `"resource":"persistentvolumeclaim"`) {
-		t.Fatalf("missing kubernetes span fields: %s", logs)
+	metrics := prometheusText(t, recorder)
+	if !strings.Contains(metrics, `viewer_kubernetes_operation_requests_total{Operation="get",Resource="persistentvolumeclaim",Result="success"} 1`) {
+		t.Fatalf("missing kubernetes request metric: %s", metrics)
 	}
 }
 
 func TestObservedClientRecordsKubernetesError(t *testing.T) {
-	t.Parallel()
+	t.Setenv("ENCORERUNTIME_NOPANIC", "1")
 
-	var out bytes.Buffer
-	recorder := observability.New(config.ObservabilityConfig{LogLevel: "debug"}, &out)
+	recorder := observability.MustNew(testObservability(), nil)
 	clientset := fake.NewSimpleClientset()
 	clientset.PrependReactor(
 		"get",
@@ -61,13 +52,23 @@ func TestObservedClientRecordsKubernetesError(t *testing.T) {
 	if _, err := client.GetPVC(t.Context(), "default", "data"); err == nil {
 		t.Fatal("GetPVC() error = nil")
 	}
-	if recorder.Metrics().KubernetesRequests.Load() != 1 {
-		t.Fatalf("kubernetes requests = %d", recorder.Metrics().KubernetesRequests.Load())
+	metrics := prometheusText(t, recorder)
+	if !strings.Contains(metrics, `viewer_kubernetes_operation_errors_total{Operation="get",Resource="persistentvolumeclaim"} 1`) {
+		t.Fatalf("missing kubernetes error metric: %s", metrics)
 	}
-	if recorder.Metrics().KubernetesErrors.Load() != 1 {
-		t.Fatalf("kubernetes errors = %d", recorder.Metrics().KubernetesErrors.Load())
-	}
-	if !strings.Contains(out.String(), "kube unavailable") {
-		t.Fatalf("missing error in span log: %s", out.String())
-	}
+}
+
+func testObservability() config.ObservabilityConfig {
+	cfg := config.Default().Observability
+	cfg.Logs.Exporter = "discard"
+	cfg.Logs.Level = "error"
+	return cfg
+}
+
+func prometheusText(t *testing.T, recorder *observability.Recorder) string {
+	t.Helper()
+
+	response := httptest.NewRecorder()
+	recorder.WritePrometheus(response, httptest.NewRequest("GET", "/metrics", nil))
+	return response.Body.String()
 }

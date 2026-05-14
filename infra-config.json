@@ -2,7 +2,16 @@
   "$schema": "https://encore.dev/schemas/infra.schema.json",
   "metadata": {
     "app_id": "sealos-storage-manager-viewer",
-    "environment": "self-hosted"
+    "env_name": "self-hosted",
+    "env_type": "production"
+  },
+  "log_config": "trace",
+  "metrics": {
+    "type": "prometheus",
+    "collection_interval": 15,
+    "remote_write_url": {
+      "$env": "PROMETHEUS_REMOTE_WRITE_URL"
+    }
   },
   "graceful_shutdown": {
     "total": 30

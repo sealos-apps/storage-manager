@@ -34,7 +34,7 @@ func TestIssueTokenCreatesOneTimeAuthRequestAndTokenRecord(t *testing.T) {
 	cfg := testConfig()
 	store := state.New(cfg.Cache)
 	login := &fakeLogin{token: "fb-token"}
-	auth := NewAuthService(cfg, store, login, observability.New(cfg.Observability, nil))
+	auth := NewAuthService(cfg, store, login, observability.MustNew(cfg.Observability, nil))
 	auth.now = fixedNow
 	viewer := &domain.ViewerSession{ID: "vs_1", Permission: domain.ModeReadWrite}
 	pod := &domain.PodSession{ID: "ps_1", ViewerURL: "http://viewer", Status: domain.PodStatusReady}
@@ -62,7 +62,7 @@ func TestVerifyHookAllowsAndConsumesAuthRequestOnce(t *testing.T) {
 
 	cfg := testConfig()
 	store := state.New(cfg.Cache)
-	auth := NewAuthService(cfg, store, &fakeLogin{token: "unused"}, observability.New(cfg.Observability, nil))
+	auth := NewAuthService(cfg, store, &fakeLogin{token: "unused"}, observability.MustNew(cfg.Observability, nil))
 	auth.now = fixedNow
 	store.PutViewerSession(&domain.ViewerSession{
 		ID:           "vs_1",

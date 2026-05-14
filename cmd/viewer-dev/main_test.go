@@ -86,7 +86,7 @@ func TestRoutesDispatchMetrics(t *testing.T) {
 		fakePodService{},
 		fakeAuthService{},
 		nil,
-		observability.New(config.ObservabilityConfig{LogLevel: "error"}, nil),
+		observability.MustNew(testObservability(), nil),
 		allowAuthorizer{},
 	)
 	server := httptest.NewServer(routes(handler))
@@ -113,7 +113,7 @@ func TestRoutesRejectWrongMethod(t *testing.T) {
 		fakePodService{},
 		fakeAuthService{},
 		nil,
-		observability.New(config.ObservabilityConfig{LogLevel: "error"}, nil),
+		observability.MustNew(testObservability(), nil),
 		allowAuthorizer{},
 	)
 	server := httptest.NewServer(routes(handler))
@@ -130,4 +130,11 @@ func TestRoutesRejectWrongMethod(t *testing.T) {
 	if response.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d", response.StatusCode)
 	}
+}
+
+func testObservability() config.ObservabilityConfig {
+	cfg := config.Default().Observability
+	cfg.Logs.Exporter = "discard"
+	cfg.Logs.Level = "error"
+	return cfg
 }

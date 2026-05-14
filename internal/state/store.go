@@ -196,8 +196,7 @@ func (s *Store) ConsumeAuthRequest(id string, passwordHash string, now time.Time
 	if subtle.ConstantTimeCompare([]byte(req.PasswordHash), []byte(passwordHash)) != 1 {
 		return nil, false
 	}
-	usedAt := now
-	req.UsedAt = &usedAt
+	req.UsedAt = new(now)
 	s.authRequests.delete(id)
 	return cloneAuthRequest(req), true
 }
@@ -362,16 +361,14 @@ func clonePodSession(session *domain.PodSession) *domain.PodSession {
 	if session == nil {
 		return nil
 	}
-	copySession := *session
-	return &copySession
+	return new(*session)
 }
 
 func cloneViewerSession(session *domain.ViewerSession) *domain.ViewerSession {
 	if session == nil {
 		return nil
 	}
-	copySession := *session
-	return &copySession
+	return new(*session)
 }
 
 func cloneAuthRequest(req *domain.AuthRequest) *domain.AuthRequest {
@@ -380,8 +377,7 @@ func cloneAuthRequest(req *domain.AuthRequest) *domain.AuthRequest {
 	}
 	copyReq := *req
 	if req.UsedAt != nil {
-		usedAt := *req.UsedAt
-		copyReq.UsedAt = &usedAt
+		copyReq.UsedAt = new(*req.UsedAt)
 	}
 	return &copyReq
 }
@@ -390,8 +386,7 @@ func cloneTokenRecord(record *domain.TokenRecord) *domain.TokenRecord {
 	if record == nil {
 		return nil
 	}
-	copyRecord := *record
-	return &copyRecord
+	return new(*record)
 }
 
 func (item ExpiredItem) String() string {

@@ -75,7 +75,7 @@ func (s *PodService) EnsurePodSession(
 	ctx context.Context,
 	input EnsurePodSessionInput,
 ) (podSession *domain.PodSession, err error) {
-	ctx, finish := s.recorder.StartSpan(ctx,
+	ctx, finish := s.recorder.TraceOperation(ctx,
 		"pod.ensure_session",
 		slog.String("namespace", input.Namespace),
 		slog.String("pvc_name", input.PVCName),
@@ -89,7 +89,7 @@ func (s *PodService) EnsurePodSession(
 	now := s.now()
 	if session, ok := s.store.FindPodSessionByPVC(input.Namespace, input.PVCUID, now); ok {
 		if session.Status != domain.PodStatusTerminated && now.Before(session.ExpiresAt) {
-			s.recorder.Metrics().PodReused.Add(1)
+			s.recorder.ObservePodSession("reused")
 			s.recorder.Logger().LogAttrs(ctx, slog.LevelDebug, "pod.session_reused",
 				slog.String("pod_session_id", session.ID),
 				slog.String("namespace", session.Namespace),
@@ -108,7 +108,7 @@ func (s *PodService) EnsurePodSession(
 	if existing != nil {
 		session := s.rebuildPodSession(existing, input, now)
 		s.store.PutPodSession(session)
-		s.recorder.Metrics().PodReused.Add(1)
+		s.recorder.ObservePodSession("reused")
 		s.recorder.Logger().LogAttrs(ctx, slog.LevelInfo, "pod.session_rebuilt",
 			slog.String("pod_session_id", session.ID),
 			slog.String("namespace", session.Namespace),
@@ -172,7 +172,7 @@ func (s *PodService) EnsurePodSession(
 	}
 
 	s.store.PutPodSession(podSession)
-	s.recorder.Metrics().PodCreated.Add(1)
+	s.recorder.ObservePodSession("created")
 	s.recorder.Logger().LogAttrs(ctx, slog.LevelInfo, "pod.session_created",
 		slog.String("pod_session_id", podSession.ID),
 		slog.String("namespace", podSession.Namespace),
@@ -204,7 +204,7 @@ func (s *PodService) SyncPodStatus(
 	ctx context.Context,
 	podSession *domain.PodSession,
 ) (synced *domain.PodSession, err error) {
-	ctx, finish := s.recorder.StartSpan(ctx,
+	ctx, finish := s.recorder.TraceOperation(ctx,
 		"pod.sync_status",
 		slog.String("pod_session_id", podSession.ID),
 		slog.String("namespace", podSession.Namespace),
@@ -275,7 +275,7 @@ func (s *PodService) ClosePodSession(
 	ctx context.Context,
 	podSessionID string,
 ) (closed *domain.PodSession, err error) {
-	ctx, finish := s.recorder.StartSpan(ctx,
+	ctx, finish := s.recorder.TraceOperation(ctx,
 		"pod.close_session",
 		slog.String("pod_session_id", podSessionID),
 	)
@@ -299,7 +299,7 @@ func (s *PodService) ClosePodSession(
 	podSession.Status = domain.PodStatusTerminated
 	podSession.UpdatedAt = now
 	s.store.DeletePodSession(podSessionID)
-	s.recorder.Metrics().PodDeleted.Add(1)
+	s.recorder.ObservePodSession("deleted")
 	s.recorder.Logger().LogAttrs(ctx, slog.LevelInfo, "pod.session_closed",
 		slog.String("pod_session_id", podSession.ID),
 		slog.String("namespace", podSession.Namespace),
@@ -309,7 +309,7 @@ func (s *PodService) ClosePodSession(
 }
 
 func (s *PodService) ReconcileViewerPods(ctx context.Context, namespace string) (err error) {
-	ctx, finish := s.recorder.StartSpan(ctx,
+	ctx, finish := s.recorder.TraceOperation(ctx,
 		"pod.reconcile_viewer_pods",
 		slog.String("namespace", namespace),
 	)
@@ -358,7 +358,7 @@ func (s *PodService) ReconcileViewerPods(ctx context.Context, namespace string) 
 			if err := s.deletePodIfExists(ctx, pod.Namespace, pod.Name); err != nil {
 				return err
 			}
-			s.recorder.Metrics().CleanupDeleted.Add(1)
+			s.recorder.ObserveCleanupDeleted()
 			deleted++
 		}
 	}
@@ -568,7 +568,6 @@ func (s *PodService) buildIngress(
 	if err != nil {
 		return nil, err
 	}
-	pathType := networkingv1.PathTypePrefix
 	ingress := &networkingv1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:       session.Namespace,
@@ -586,7 +585,7 @@ func (s *PodService) buildIngress(
 							Paths: []networkingv1.HTTPIngressPath{
 								{
 									Path:     "/",
-									PathType: &pathType,
+									PathType: ptr(networkingv1.PathTypePrefix),
 									Backend: networkingv1.IngressBackend{
 										Service: &networkingv1.IngressServiceBackend{
 											Name: session.ServiceName,
@@ -672,7 +671,11 @@ func shellQuote(value string) string {
 }
 
 func ptrInt32(value int32) *int32 {
-	return new(value)
+	return ptr(value)
+}
+
+func ptr[T any](value T) *T {
+	return &value
 }
 
 func hookConfigMapName(session *domain.PodSession) string {

@@ -90,13 +90,13 @@ type CacheConfig struct {
 }
 
 type ObservabilityConfig struct {
-	ServiceName      string  `yaml:"service_name"`
-	MetricsEnabled   bool    `yaml:"metrics_enabled"`
-	MetricsPath      string  `yaml:"metrics_path"`
-	TracingEnabled   bool    `yaml:"tracing_enabled"`
-	TraceSampleRatio float64 `yaml:"trace_sample_ratio"`
-	OTLPEndpoint     string  `yaml:"otlp_endpoint"`
-	LogLevel         string  `yaml:"log_level"`
+	ServiceName string     `yaml:"service_name"`
+	Logs        LogsConfig `yaml:"logs"`
+}
+
+type LogsConfig struct {
+	Exporter string `yaml:"exporter"`
+	Level    string `yaml:"level"`
 }
 
 type IntegrationConfig struct {
@@ -162,12 +162,11 @@ func Default() Config {
 			ReconcileInterval:        45 * time.Second,
 		},
 		Observability: ObservabilityConfig{
-			ServiceName:      "sealos-storage-manager-viewer",
-			MetricsEnabled:   true,
-			MetricsPath:      "/metrics",
-			TracingEnabled:   true,
-			TraceSampleRatio: 1,
-			LogLevel:         "info",
+			ServiceName: "sealos-storage-manager-viewer",
+			Logs: LogsConfig{
+				Exporter: "encore",
+				Level:    "info",
+			},
 		},
 		Integration: IntegrationConfig{
 			KubeconfigPath:           "kubeconfig.test.yaml",
@@ -249,8 +248,22 @@ func (cfg Config) Validate() error {
 		cfg.Cache.IndexesMaxEntries <= 0 {
 		problems = append(problems, "cache max entry values must be positive")
 	}
-	if cfg.Observability.TraceSampleRatio < 0 || cfg.Observability.TraceSampleRatio > 1 {
-		problems = append(problems, "observability.trace_sample_ratio must be between 0 and 1")
+	if strings.TrimSpace(cfg.Observability.ServiceName) == "" {
+		problems = append(problems, "observability.service_name is required")
+	}
+	switch strings.ToLower(strings.TrimSpace(cfg.Observability.Logs.Exporter)) {
+	case "":
+		problems = append(problems, "observability.logs.exporter is required")
+	case "encore", "stdout", "discard", "none":
+	default:
+		problems = append(problems, "observability.logs.exporter must be one of encore, stdout, discard, none")
+	}
+	switch strings.ToLower(strings.TrimSpace(cfg.Observability.Logs.Level)) {
+	case "":
+		problems = append(problems, "observability.logs.level is required")
+	case "debug", "info", "warn", "error":
+	default:
+		problems = append(problems, "observability.logs.level must be one of debug, info, warn, error")
 	}
 	if len(problems) > 0 {
 		return errors.New(strings.Join(problems, "; "))

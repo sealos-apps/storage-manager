@@ -70,7 +70,8 @@ viewer:
     class_name: nginx
     host_template: viewer-{{ .PodSessionID }}.example.test
 observability:
-  trace_sample_ratio: 0.5
+  logs:
+    level: debug
 `))
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -87,8 +88,8 @@ observability:
 	if cfg.Viewer.FileBrowser.TokenTTL != 20*time.Minute {
 		t.Fatalf("token ttl = %s", cfg.Viewer.FileBrowser.TokenTTL)
 	}
-	if cfg.Observability.TraceSampleRatio != 0.5 {
-		t.Fatalf("trace sample ratio = %f", cfg.Observability.TraceSampleRatio)
+	if cfg.Observability.Logs.Level != "debug" {
+		t.Fatalf("log level = %q", cfg.Observability.Logs.Level)
 	}
 }
 
@@ -137,9 +138,9 @@ func TestLoadRejectsInvalidConfig(t *testing.T) {
 			want: "database_path must not be inside",
 		},
 		{
-			name: "bad trace ratio",
-			body: validConfigYAML + "\nobservability:\n  trace_sample_ratio: 2\n",
-			want: "trace_sample_ratio",
+			name: "bad log exporter",
+			body: validConfigYAML + "\nobservability:\n  logs:\n    exporter: otlp\n",
+			want: "logs.exporter",
 		},
 	}
 	for _, tt := range tests {

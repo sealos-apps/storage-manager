@@ -115,12 +115,9 @@ cache:
 
 observability:
   service_name: sealos-storage-manager-viewer
-  metrics_enabled: true
-  metrics_path: /metrics
-  tracing_enabled: true
-  trace_sample_ratio: 1.0
-  otlp_endpoint: ""
-  log_level: info
+  logs:
+    exporter: encore
+    level: info
 
 integration:
   kubeconfig_path: kubeconfig.test.yaml

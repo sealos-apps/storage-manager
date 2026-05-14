@@ -66,7 +66,7 @@ func runtimeHandler() *Handler {
 		unavailablePodService{},
 		unavailableAuthService{},
 		nil,
-		observability.New(config.Default().Observability, nil),
+		observability.MustNew(config.Default().Observability, nil),
 		denyAuthorizer{},
 	)
 }
@@ -80,7 +80,15 @@ func newRuntimeFromConfig(cfg config.Config) (*Runtime, error) {
 	if err != nil {
 		return nil, fmt.Errorf("building management kubernetes client: %w", err)
 	}
-	recorder := observability.New(cfg.Observability, os.Stdout)
+	recorder, err := observability.New(
+		context.Background(),
+		cfg.Observability,
+		os.Stdout,
+		observability.WithMetrics(encoreMetricSources()),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("configuring observability: %w", err)
+	}
 	store := state.New(cfg.Cache)
 	kubeClient := kube.WithObservability(kube.New(clientset), recorder)
 	pods := session.NewPodService(cfg, store, kubeClient, recorder)

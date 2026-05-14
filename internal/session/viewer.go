@@ -50,7 +50,7 @@ func NewViewerService(
 }
 
 func (s *ViewerService) ListPVCs(ctx context.Context, namespace string) (items []domain.PVC, err error) {
-	ctx, finish := s.recorder.StartSpan(ctx,
+	ctx, finish := s.recorder.TraceOperation(ctx,
 		"viewer.list_pvcs",
 		slog.String("namespace", namespace),
 	)
@@ -99,7 +99,7 @@ func (s *ViewerService) CreateViewerSession(
 	ctx context.Context,
 	input CreateViewerSessionInput,
 ) (viewer *domain.ViewerSession, err error) {
-	ctx, finish := s.recorder.StartSpan(ctx,
+	ctx, finish := s.recorder.TraceOperation(ctx,
 		"viewer.create_session",
 		slog.String("namespace", input.Namespace),
 		slog.String("pvc_name", input.PVCName),
@@ -168,7 +168,7 @@ func (s *ViewerService) CreateViewerSession(
 		ExpiresAt:       now.Add(s.cfg.Sessions.ViewerSessionTimout),
 	}
 	s.store.PutViewerSession(viewer)
-	s.recorder.Metrics().ViewerCreated.Add(1)
+	s.recorder.ObserveViewerSession("created")
 	s.recorder.Logger().LogAttrs(ctx, slog.LevelInfo, "viewer.session_created",
 		slog.String("viewer_session_id", viewer.ID),
 		slog.String("pod_session_id", podSession.ID),
@@ -185,7 +185,7 @@ func (s *ViewerService) GetViewerSession(
 	id string,
 	userID string,
 ) (viewer *domain.ViewerSession, err error) {
-	ctx, finish := s.recorder.StartSpan(ctx,
+	ctx, finish := s.recorder.TraceOperation(ctx,
 		"viewer.get_session",
 		slog.String("viewer_session_id", id),
 	)
@@ -225,7 +225,7 @@ func (s *ViewerService) IssueToken(
 	id string,
 	userID string,
 ) (token *domain.ViewerToken, err error) {
-	ctx, finish := s.recorder.StartSpan(ctx,
+	ctx, finish := s.recorder.TraceOperation(ctx,
 		"viewer.issue_token",
 		slog.String("viewer_session_id", id),
 	)
@@ -299,7 +299,7 @@ func (s *ViewerService) CloseViewerSessionForUser(id string, userID string) (*do
 	viewer.Status = domain.ViewerStatusClosed
 	viewer.ExpiresAt = now
 	s.store.DeleteViewerSession(id)
-	s.recorder.Metrics().ViewerClosed.Add(1)
+	s.recorder.ObserveViewerSession("closed")
 	return viewer, nil
 }
 
@@ -316,7 +316,7 @@ func (s *ViewerService) detectPVCMounts(
 	namespace string,
 	pvcName string,
 ) (mountInfo *domain.PVCMountInfo, err error) {
-	ctx, finish := s.recorder.StartSpan(ctx,
+	ctx, finish := s.recorder.TraceOperation(ctx,
 		"pvc.detect_mounts",
 		slog.String("namespace", namespace),
 		slog.String("pvc_name", pvcName),

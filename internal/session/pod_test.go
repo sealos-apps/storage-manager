@@ -23,7 +23,7 @@ func TestEnsurePodSessionCreatesResources(t *testing.T) {
 	store := state.New(cfg.Cache)
 	clientset := fake.NewSimpleClientset()
 	client := kube.New(clientset)
-	service := NewPodService(cfg, store, client, observability.New(cfg.Observability, nil))
+	service := NewPodService(cfg, store, client, observability.MustNew(cfg.Observability, nil))
 	service.now = fixedNow
 
 	podSession, err := service.EnsurePodSession(t.Context(), EnsurePodSessionInput{
@@ -120,7 +120,7 @@ func TestEnsurePodSessionReusesExistingViewerPod(t *testing.T) {
 	}
 	store := state.New(cfg.Cache)
 	client := kube.New(fake.NewSimpleClientset(existing))
-	service := NewPodService(cfg, store, client, observability.New(cfg.Observability, nil))
+	service := NewPodService(cfg, store, client, observability.MustNew(cfg.Observability, nil))
 	service.now = fixedNow
 
 	podSession, err := service.EnsurePodSession(t.Context(), EnsurePodSessionInput{
@@ -142,13 +142,12 @@ func TestEnsurePodSessionSkipsTerminatingViewerPod(t *testing.T) {
 	t.Parallel()
 
 	cfg := testConfig()
-	deletionTime := metav1.NewTime(fixedNow())
 	existing := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:         "default",
 			Name:              "viewer-ps-terminating",
 			CreationTimestamp: metav1.NewTime(fixedNow().Add(-time.Minute)),
-			DeletionTimestamp: &deletionTime,
+			DeletionTimestamp: new(metav1.NewTime(fixedNow())),
 			Labels: map[string]string{
 				labelComponent:    componentViewer,
 				labelPVCUID:       "uid",
@@ -159,7 +158,7 @@ func TestEnsurePodSessionSkipsTerminatingViewerPod(t *testing.T) {
 	}
 	store := state.New(cfg.Cache)
 	client := kube.New(fake.NewSimpleClientset(existing))
-	service := NewPodService(cfg, store, client, observability.New(cfg.Observability, nil))
+	service := NewPodService(cfg, store, client, observability.MustNew(cfg.Observability, nil))
 	service.now = fixedNow
 
 	podSession, err := service.EnsurePodSession(t.Context(), EnsurePodSessionInput{
@@ -185,7 +184,7 @@ func TestBuildReadOnlyPod(t *testing.T) {
 		cfg,
 		state.New(cfg.Cache),
 		kube.New(fake.NewSimpleClientset()),
-		observability.New(cfg.Observability, nil),
+		observability.MustNew(cfg.Observability, nil),
 	)
 	pod := service.buildPod(&domain.PodSession{
 		ID:        "ps_1",
@@ -228,7 +227,7 @@ func TestSyncPodStatusReportsCrashLoop(t *testing.T) {
 		cfg,
 		store,
 		kube.New(fake.NewSimpleClientset(pod)),
-		observability.New(cfg.Observability, nil),
+		observability.MustNew(cfg.Observability, nil),
 	)
 
 	updated, err := service.SyncPodStatus(t.Context(), &domain.PodSession{
@@ -254,7 +253,7 @@ func TestClosePodSessionTreatsMissingPodAsClosed(t *testing.T) {
 		cfg,
 		store,
 		kube.New(fake.NewSimpleClientset()),
-		observability.New(cfg.Observability, nil),
+		observability.MustNew(cfg.Observability, nil),
 	)
 	service.now = fixedNow
 	store.PutPodSession(&domain.PodSession{
@@ -286,7 +285,7 @@ func TestHookConfigMapUsesConfiguredScript(t *testing.T) {
 		cfg,
 		state.New(cfg.Cache),
 		kube.New(fake.NewSimpleClientset()),
-		observability.New(cfg.Observability, nil),
+		observability.MustNew(cfg.Observability, nil),
 	)
 	configMap := service.buildHookConfigMap(&domain.PodSession{
 		ID:        "ps_1",
@@ -316,7 +315,7 @@ func TestDNSLabelSanitizesGeneratedSessionID(t *testing.T) {
 		testConfig(),
 		state.New(testConfig().Cache),
 		kube.New(fake.NewSimpleClientset()),
-		observability.New(testConfig().Observability, nil),
+		observability.MustNew(testConfig().Observability, nil),
 	)
 	host, err := service.viewerHost("ps_ABC123")
 	if err != nil {
@@ -375,6 +374,8 @@ func testConfig() config.Config {
 	cfg.Viewer.Service.Port = 80
 	cfg.Viewer.Ingress.ClassName = "nginx"
 	cfg.Viewer.Ingress.HostTemplate = "viewer-{{ .PodSessionID }}.example.test"
+	cfg.Observability.Logs.Exporter = "discard"
+	cfg.Observability.Logs.Level = "error"
 	return cfg
 }
 

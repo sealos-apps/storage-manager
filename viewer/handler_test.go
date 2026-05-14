@@ -131,7 +131,7 @@ func TestHandlerListPVCsUsesEnvelope(t *testing.T) {
 		fakePodService{},
 		fakeAuthService{},
 		nil,
-		observability.New(testObservability(), nil),
+		observability.MustNew(testObservability(), nil),
 		allowAuthorizer{},
 	)
 	req := httptest.NewRequest(http.MethodGet, "/api/pvcs?namespace=ns", nil)
@@ -178,7 +178,7 @@ func TestHandlerIssueTokenNoStore(t *testing.T) {
 		fakePodService{},
 		fakeAuthService{},
 		nil,
-		observability.New(testObservability(), nil),
+		observability.MustNew(testObservability(), nil),
 		allowAuthorizer{},
 	)
 	req := httptest.NewRequest(http.MethodPost, "/api/viewer-sessions/vs_1/token", nil)
@@ -206,7 +206,7 @@ func TestHandlerVerifyHookReturnsAllowEnvelope(t *testing.T) {
 		fakePodService{},
 		fakeAuthService{result: domain.FileBrowserHookVerification{Allow: true, Scope: "/"}},
 		nil,
-		observability.New(testObservability(), nil),
+		observability.MustNew(testObservability(), nil),
 		allowAuthorizer{},
 	)
 	req := httptest.NewRequest(
@@ -227,11 +227,11 @@ func TestHandlerVerifyHookReturnsAllowEnvelope(t *testing.T) {
 	}
 }
 
-func TestHandlerMetricsReturnsSchemaEnvelope(t *testing.T) {
-	t.Parallel()
+func TestHandlerMetricsReturnsPrometheusText(t *testing.T) {
+	t.Setenv("ENCORERUNTIME_NOPANIC", "1")
 
-	recorder := observability.New(testObservability(), nil)
-	recorder.Metrics().ViewerCreated.Add(1)
+	recorder := observability.MustNew(testObservability(), nil)
+	recorder.ObserveViewerSession("created")
 	handler := NewHandler(
 		&fakeViewerService{},
 		fakePodService{},
@@ -247,11 +247,10 @@ func TestHandlerMetricsReturnsSchemaEnvelope(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", response.Code, response.Body.String())
 	}
-	var body MetricsResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatalf("unmarshal: %v", err)
+	if contentType := response.Header().Get("Content-Type"); !strings.Contains(contentType, "text/plain") {
+		t.Fatalf("content type = %q", contentType)
 	}
-	if body.Metrics.ViewerCreated != 1 {
+	if !strings.Contains(response.Body.String(), `viewer_session_events_total{Event="created"} 1`) {
 		t.Fatalf("metrics = %s", response.Body.String())
 	}
 }
@@ -266,7 +265,7 @@ func TestHandlerListPVCsDataReturnsDocumentedResponse(t *testing.T) {
 		fakePodService{},
 		fakeAuthService{},
 		nil,
-		observability.New(testObservability(), nil),
+		observability.MustNew(testObservability(), nil),
 		allowAuthorizer{},
 	)
 
@@ -294,7 +293,7 @@ func TestKubernetesAuthorizerRequiresSameNamespaceUID(t *testing.T) {
 	userClient := fake.NewSimpleClientset(namespaceWithUID("ns", "user-uid"))
 	authorizer := newKubernetesAuthorizer(
 		fake.NewSimpleClientset(namespaceWithUID("ns", "managed-uid")),
-		observability.New(testObservability(), nil),
+		observability.MustNew(testObservability(), nil),
 	)
 	newClientset := kubernetesClientsetForConfig
 	kubernetesClientsetForConfig = func(_ *rest.Config) (kubernetes.Interface, error) {
@@ -320,7 +319,7 @@ func TestKubernetesAuthorizerRequiresSamePVCUID(t *testing.T) {
 	userClient := fake.NewSimpleClientset(pvcWithUID("ns", "data", "user-uid"))
 	authorizer := newKubernetesAuthorizer(
 		fake.NewSimpleClientset(pvcWithUID("ns", "data", "managed-uid")),
-		observability.New(testObservability(), nil),
+		observability.MustNew(testObservability(), nil),
 	)
 	newClientset := kubernetesClientsetForConfig
 	kubernetesClientsetForConfig = func(_ *rest.Config) (kubernetes.Interface, error) {
@@ -355,5 +354,8 @@ func pvcWithUID(namespace string, name string, uid string) *corev1.PersistentVol
 }
 
 func testObservability() config.ObservabilityConfig {
-	return config.ObservabilityConfig{LogLevel: "error"}
+	cfg := config.Default().Observability
+	cfg.Logs.Exporter = "discard"
+	cfg.Logs.Level = "error"
+	return cfg
 }

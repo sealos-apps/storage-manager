@@ -3,6 +3,7 @@ package kube
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/nixieboluo/sealos-storage-manager/internal/observability"
 	corev1 "k8s.io/api/core/v1"
@@ -136,7 +137,7 @@ func (c observedClient) observe(
 	name string,
 	call func(context.Context) error,
 ) (err error) {
-	c.recorder.Metrics().KubernetesRequests.Add(1)
+	start := time.Now()
 	attrs := []slog.Attr{
 		slog.String("operation", operation),
 		slog.String("resource", resource),
@@ -145,11 +146,9 @@ func (c observedClient) observe(
 	if name != "" {
 		attrs = append(attrs, slog.String("name", name))
 	}
-	ctx, finish := c.recorder.StartSpan(ctx, "kubernetes."+operation, attrs...)
+	ctx, finish := c.recorder.TraceOperation(ctx, "kubernetes."+operation, attrs...)
 	defer func() {
-		if err != nil {
-			c.recorder.Metrics().KubernetesErrors.Add(1)
-		}
+		c.recorder.ObserveKubernetes(operation, resource, err, time.Since(start))
 		finish(err)
 	}()
 	return call(ctx)

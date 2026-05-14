@@ -67,8 +67,24 @@ request and response schemas:
 encore gen client --lang=openapi --output openapi.json
 ```
 
-`GET /metrics` returns a JSON metrics snapshot rather than Prometheus text so it
-can stay documented as a typed endpoint.
+`GET /metrics` is the only raw endpoint. It is reserved for Prometheus text
+scraping and local debugging, so it is exempt from the business endpoint schema
+rule.
+
+Application metrics use `encore.dev/metrics` counters. In self-hosted images,
+Encore exports them according to `infra-config.json`, for example through the
+Prometheus `remote_write_url` environment reference. Operation logs use
+`encore.dev/rlog`; Encore attaches those logs to its built-in distributed traces
+when `log_config` is set to `trace` in the infra config. The application YAML
+only selects the log exporter and level:
+
+```yaml
+observability:
+  service_name: sealos-storage-manager-viewer
+  logs:
+    exporter: encore
+    level: info
+```
 
 ## Encore MCP
 

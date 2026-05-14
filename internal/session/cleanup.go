@@ -34,7 +34,7 @@ func NewCleanupService(
 }
 
 func (s *CleanupService) RunOnce(ctx context.Context) (err error) {
-	ctx, finish := s.recorder.StartSpan(ctx, "cleanup.run_once")
+	ctx, finish := s.recorder.TraceOperation(ctx, "cleanup.run_once")
 	var idlePodsDeleted, expiredViewerSessions int
 	defer func() {
 		s.recorder.Logger().LogAttrs(ctx, slog.LevelDebug, "cleanup.run_once.result",
@@ -52,7 +52,7 @@ func (s *CleanupService) RunOnce(ctx context.Context) (err error) {
 	expired := s.store.PurgeExpired(now)
 	for _, item := range expired {
 		if item.Kind == "viewer_session" {
-			s.recorder.Metrics().ViewerClosed.Add(1)
+			s.recorder.ObserveViewerSession("closed")
 			expiredViewerSessions++
 		}
 	}
@@ -71,7 +71,7 @@ func (s *CleanupService) cleanupIdlePods(ctx context.Context, now time.Time) (de
 		if _, err := s.pods.ClosePodSession(ctx, podSession.ID); err != nil {
 			return deleted, err
 		}
-		s.recorder.Metrics().CleanupDeleted.Add(1)
+		s.recorder.ObserveCleanupDeleted()
 		deleted++
 	}
 	return deleted, nil

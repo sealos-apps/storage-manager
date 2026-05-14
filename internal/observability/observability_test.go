@@ -2,7 +2,9 @@ package observability
 
 import (
 	"bytes"
+	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -11,17 +13,18 @@ import (
 )
 
 func TestObserveHTTPRecordsMetricsAndStructuredLog(t *testing.T) {
-	t.Parallel()
+	t.Setenv("ENCORERUNTIME_NOPANIC", "1")
 
 	var out bytes.Buffer
-	recorder := New(config.ObservabilityConfig{LogLevel: "info"}, &out)
+	cfg := testConfig()
+	cfg.Logs.Exporter = "stdout"
+	cfg.Logs.Level = "info"
+	recorder := MustNew(cfg, &out)
 	recorder.ObserveHTTP(t.Context(), "GET", "/api/pvcs", 500, time.Millisecond)
 
-	if recorder.Metrics().HTTPRequests.Load() != 1 {
-		t.Fatal("http request metric not incremented")
-	}
-	if recorder.Metrics().HTTPErrors.Load() != 1 {
-		t.Fatal("http error metric not incremented")
+	body := prometheusText(recorder)
+	if !strings.Contains(body, `viewer_http_route_requests_total{Method="GET",Route="/api/pvcs",StatusClass="5xx"} 1`) {
+		t.Fatalf("metrics missing HTTP request count: %s", body)
 	}
 	logLine := out.String()
 	if !strings.Contains(logLine, `"route":"/api/pvcs"`) {
@@ -32,21 +35,54 @@ func TestObserveHTTPRecordsMetricsAndStructuredLog(t *testing.T) {
 	}
 }
 
-func TestWritePrometheusExposesCounters(t *testing.T) {
-	t.Parallel()
+func TestWritePrometheusExposesMetrics(t *testing.T) {
+	t.Setenv("ENCORERUNTIME_NOPANIC", "1")
 
-	recorder := New(config.ObservabilityConfig{LogLevel: "error"}, nil)
-	recorder.Metrics().HTTPRequests.Add(2)
-	recorder.Metrics().CleanupDeleted.Add(1)
-	response := httptest.NewRecorder()
+	recorder := MustNew(testConfig(), nil)
+	recorder.ObserveHTTP(t.Context(), "GET", "/api/pvcs", http.StatusOK, time.Millisecond)
+	recorder.ObserveHTTP(t.Context(), "GET", "/api/pvcs", http.StatusInternalServerError, 2*time.Millisecond)
+	recorder.ObserveCleanupDeleted()
 
-	recorder.WritePrometheus(response)
-
-	body := response.Body.String()
-	if !strings.Contains(body, "viewer_http_requests_total 2") {
+	body := prometheusText(recorder)
+	if !strings.Contains(body, `viewer_http_route_requests_total{Method="GET",Route="/api/pvcs",StatusClass="2xx"} 1`) ||
+		!strings.Contains(body, `viewer_http_route_requests_total{Method="GET",Route="/api/pvcs",StatusClass="5xx"} 1`) {
 		t.Fatalf("metrics body missing HTTP count: %s", body)
 	}
 	if !strings.Contains(body, "viewer_cleanup_deleted_total 1") {
 		t.Fatalf("metrics body missing cleanup count: %s", body)
 	}
+}
+
+func TestTraceOperationRecordsOperationMetrics(t *testing.T) {
+	t.Setenv("ENCORERUNTIME_NOPANIC", "1")
+
+	recorder := MustNew(testConfig(), nil)
+	_, finish := recorder.TraceOperation(t.Context(), "viewer.list_pvcs")
+	finish(nil)
+
+	body := prometheusText(recorder)
+	if !strings.Contains(body, `viewer_operation_requests_total{Operation="viewer.list_pvcs",Result="success"} 1`) {
+		t.Fatalf("metrics body missing operation count: %s", body)
+	}
+	if !strings.Contains(body, `viewer_operation_duration_milliseconds_total{Operation="viewer.list_pvcs",Result="success"} `) {
+		t.Fatalf("metrics body missing operation duration: %s", body)
+	}
+}
+
+func testConfig() config.ObservabilityConfig {
+	cfg := config.Default().Observability
+	cfg.Logs.Exporter = "discard"
+	cfg.Logs.Level = "error"
+	return cfg
+}
+
+func prometheusText(recorder *Recorder) string {
+	response := httptest.NewRecorder()
+	recorder.WritePrometheus(response, httptest.NewRequest("GET", "/metrics", nil))
+	return response.Body.String()
+}
+
+func TestMain(m *testing.M) {
+	os.Setenv("ENCORERUNTIME_NOPANIC", "1")
+	os.Exit(m.Run())
 }
