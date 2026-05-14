@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/nixieboluo/sealos-stroage-manager/internal/config"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/domain"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/filebrowser"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/observability"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/state"
+	"github.com/nixieboluo/sealos-storage-manager/internal/config"
+	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
+	"github.com/nixieboluo/sealos-storage-manager/internal/filebrowser"
+	"github.com/nixieboluo/sealos-storage-manager/internal/observability"
+	"github.com/nixieboluo/sealos-storage-manager/internal/state"
 )
 
 type FileBrowserLogin interface {

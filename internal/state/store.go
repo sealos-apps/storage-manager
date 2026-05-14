@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nixieboluo/sealos-stroage-manager/internal/config"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/domain"
+	"github.com/nixieboluo/sealos-storage-manager/internal/config"
+	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
 )
 
 type Store struct {

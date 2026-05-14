@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/nixieboluo/sealos-stroage-manager/internal/config"
+	"github.com/nixieboluo/sealos-storage-manager/internal/config"
 )
 
 type Metrics struct {

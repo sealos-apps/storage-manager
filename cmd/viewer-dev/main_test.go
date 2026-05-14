@@ -6,74 +6,74 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/nixieboluo/sealos-stroage-manager/internal/authn"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/config"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/domain"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/observability"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/session"
-	"github.com/nixieboluo/sealos-stroage-manager/viewer"
+	"github.com/nixieboluo/sealos-storage-manager/internal/authn"
+	"github.com/nixieboluo/sealos-storage-manager/internal/config"
+	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
+	"github.com/nixieboluo/sealos-storage-manager/internal/observability"
+	"github.com/nixieboluo/sealos-storage-manager/internal/session"
+	"github.com/nixieboluo/sealos-storage-manager/viewer"
 )
 
 type fakeViewerService struct{}
 
-func (fakeViewerService) ListPVCs(ctx context.Context, namespace string) ([]domain.PVC, error) {
+func (fakeViewerService) ListPVCs(_ context.Context, _ string) ([]domain.PVC, error) {
 	return []domain.PVC{}, nil
 }
 
 func (fakeViewerService) CreateViewerSession(
-	ctx context.Context,
-	input session.CreateViewerSessionInput,
+	_ context.Context,
+	_ session.CreateViewerSessionInput,
 ) (*domain.ViewerSession, error) {
 	return &domain.ViewerSession{}, nil
 }
 
 func (fakeViewerService) GetViewerSession(
-	ctx context.Context,
-	id string,
-	userID string,
+	_ context.Context,
+	_ string,
+	_ string,
 ) (*domain.ViewerSession, error) {
 	return &domain.ViewerSession{}, nil
 }
 
-func (fakeViewerService) IssueToken(ctx context.Context, id string, userID string) (*domain.ViewerToken, error) {
+func (fakeViewerService) IssueToken(_ context.Context, _ string, _ string) (*domain.ViewerToken, error) {
 	return &domain.ViewerToken{}, nil
 }
 
-func (fakeViewerService) HeartbeatForUser(id string, userID string) (*domain.Heartbeat, error) {
+func (fakeViewerService) HeartbeatForUser(_ string, _ string) (*domain.Heartbeat, error) {
 	return &domain.Heartbeat{}, nil
 }
 
-func (fakeViewerService) CloseViewerSessionForUser(id string, userID string) (*domain.ViewerSession, error) {
+func (fakeViewerService) CloseViewerSessionForUser(_ string, _ string) (*domain.ViewerSession, error) {
 	return &domain.ViewerSession{}, nil
 }
 
-func (fakeViewerService) GetPodSession(id string) (*domain.PodSession, error) {
+func (fakeViewerService) GetPodSession(_ string) (*domain.PodSession, error) {
 	return &domain.PodSession{}, nil
 }
 
 type fakePodService struct{}
 
-func (fakePodService) ClosePodSession(ctx context.Context, id string) (*domain.PodSession, error) {
+func (fakePodService) ClosePodSession(_ context.Context, _ string) (*domain.PodSession, error) {
 	return &domain.PodSession{}, nil
 }
 
 type fakeAuthService struct{}
 
-func (fakeAuthService) VerifyHook(input session.HookVerifyInput) domain.FileBrowserHookVerification {
+func (fakeAuthService) VerifyHook(_ session.HookVerifyInput) domain.FileBrowserHookVerification {
 	return domain.FileBrowserHookVerification{}
 }
 
 type allowAuthorizer struct{}
 
-func (allowAuthorizer) CanListPVCs(ctx context.Context, principal *authn.Principal, namespace string) error {
+func (allowAuthorizer) CanListPVCs(_ context.Context, _ *authn.Principal, _ string) error {
 	return nil
 }
 
 func (allowAuthorizer) CanGetPVC(
-	ctx context.Context,
-	principal *authn.Principal,
-	namespace string,
-	name string,
+	_ context.Context,
+	_ *authn.Principal,
+	_ string,
+	_ string,
 ) error {
 	return nil
 }

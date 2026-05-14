@@ -1,14 +1,13 @@
 package session
 
 import (
-	"context"
 	"testing"
 	"time"
 
-	"github.com/nixieboluo/sealos-stroage-manager/internal/domain"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/kube"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/observability"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/state"
+	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
+	"github.com/nixieboluo/sealos-storage-manager/internal/kube"
+	"github.com/nixieboluo/sealos-storage-manager/internal/observability"
+	"github.com/nixieboluo/sealos-storage-manager/internal/state"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -34,7 +33,7 @@ func TestCleanupPurgesExpiredViewerSession(t *testing.T) {
 	)
 	cleanup.now = fixedNow
 
-	if err := cleanup.RunOnce(context.Background()); err != nil {
+	if err := cleanup.RunOnce(t.Context()); err != nil {
 		t.Fatalf("RunOnce() error = %v", err)
 	}
 	if got := store.ListViewerSessionsByPod("ps_1", fixedNow()); len(got) != 0 {
@@ -66,13 +65,13 @@ func TestCleanupClosesExpiredIdlePodSession(t *testing.T) {
 	cleanup := NewCleanupService(cfg, store, pods, observability.New(cfg.Observability, nil))
 	cleanup.now = fixedNow
 
-	if err := cleanup.RunOnce(context.Background()); err != nil {
+	if err := cleanup.RunOnce(t.Context()); err != nil {
 		t.Fatalf("RunOnce() error = %v", err)
 	}
 	if _, ok := store.GetPodSession("ps_idle", fixedNow()); ok {
 		t.Fatal("expired idle pod session remained in state")
 	}
-	if _, err := clientset.CoreV1().Pods("default").Get(context.Background(), "viewer-ps_idle", metav1.GetOptions{}); err == nil {
+	if _, err := clientset.CoreV1().Pods("default").Get(t.Context(), "viewer-ps_idle", metav1.GetOptions{}); err == nil {
 		t.Fatal("viewer pod was not deleted")
 	}
 }
@@ -106,7 +105,7 @@ func TestCleanupKeepsExpiredPodWithActiveViewer(t *testing.T) {
 	cleanup := NewCleanupService(cfg, store, pods, observability.New(cfg.Observability, nil))
 	cleanup.now = fixedNow
 
-	if err := cleanup.RunOnce(context.Background()); err != nil {
+	if err := cleanup.RunOnce(t.Context()); err != nil {
 		t.Fatalf("RunOnce() error = %v", err)
 	}
 	if _, ok := store.GetPodSession("ps_active", fixedNow()); !ok {
@@ -141,7 +140,7 @@ func TestReconcileViewerPodsRecoversRecentPod(t *testing.T) {
 	)
 	service.now = fixedNow
 
-	if err := service.ReconcileViewerPods(context.Background(), "default"); err != nil {
+	if err := service.ReconcileViewerPods(t.Context(), "default"); err != nil {
 		t.Fatalf("ReconcileViewerPods() error = %v", err)
 	}
 	if _, ok := store.GetPodSession("ps_recent", fixedNow()); !ok {

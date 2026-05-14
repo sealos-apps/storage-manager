@@ -9,11 +9,11 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/nixieboluo/sealos-stroage-manager/internal/config"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/domain"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/kube"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/observability"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/state"
+	"github.com/nixieboluo/sealos-storage-manager/internal/config"
+	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
+	"github.com/nixieboluo/sealos-storage-manager/internal/kube"
+	"github.com/nixieboluo/sealos-storage-manager/internal/observability"
+	"github.com/nixieboluo/sealos-storage-manager/internal/state"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -584,7 +584,7 @@ func shellQuote(value string) string {
 }
 
 func ptrInt32(value int32) *int32 {
-	return &value
+	return new(value)
 }
 
 func hookConfigMapName(session *domain.PodSession) string {

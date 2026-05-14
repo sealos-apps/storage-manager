@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/nixieboluo/sealos-stroage-manager/internal/config"
+	"github.com/nixieboluo/sealos-storage-manager/internal/config"
 )
 
 func TestManagementRESTConfigUsesConfiguredKubeconfig(t *testing.T) {

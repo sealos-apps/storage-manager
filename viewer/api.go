@@ -4,9 +4,9 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/nixieboluo/sealos-stroage-manager/internal/authn"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/domain"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/session"
+	"github.com/nixieboluo/sealos-storage-manager/internal/authn"
+	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
+	"github.com/nixieboluo/sealos-storage-manager/internal/session"
 )
 
 var defaultHandler *Handler
@@ -63,50 +63,50 @@ func Metrics(w http.ResponseWriter, req *http.Request) {
 
 type unavailableViewerService struct{}
 
-func (unavailableViewerService) ListPVCs(ctx context.Context, namespace string) ([]domain.PVC, error) {
+func (unavailableViewerService) ListPVCs(_ context.Context, _ string) ([]domain.PVC, error) {
 	return nil, errRuntimeUnavailable
 }
 
 func (unavailableViewerService) CreateViewerSession(
-	ctx context.Context,
-	input session.CreateViewerSessionInput,
+	_ context.Context,
+	_ session.CreateViewerSessionInput,
 ) (*domain.ViewerSession, error) {
 	return nil, errRuntimeUnavailable
 }
 
 func (unavailableViewerService) GetViewerSession(
-	ctx context.Context,
-	id string,
-	userID string,
+	_ context.Context,
+	_ string,
+	_ string,
 ) (*domain.ViewerSession, error) {
 	return nil, errRuntimeUnavailable
 }
 
-func (unavailableViewerService) IssueToken(ctx context.Context, id string, userID string) (*domain.ViewerToken, error) {
+func (unavailableViewerService) IssueToken(_ context.Context, _ string, _ string) (*domain.ViewerToken, error) {
 	return nil, errRuntimeUnavailable
 }
 
-func (unavailableViewerService) HeartbeatForUser(id string, userID string) (*domain.Heartbeat, error) {
+func (unavailableViewerService) HeartbeatForUser(_ string, _ string) (*domain.Heartbeat, error) {
 	return nil, errRuntimeUnavailable
 }
 
-func (unavailableViewerService) CloseViewerSessionForUser(id string, userID string) (*domain.ViewerSession, error) {
+func (unavailableViewerService) CloseViewerSessionForUser(_ string, _ string) (*domain.ViewerSession, error) {
 	return nil, errRuntimeUnavailable
 }
 
-func (unavailableViewerService) GetPodSession(id string) (*domain.PodSession, error) {
+func (unavailableViewerService) GetPodSession(_ string) (*domain.PodSession, error) {
 	return nil, errRuntimeUnavailable
 }
 
 type unavailablePodService struct{}
 
-func (unavailablePodService) ClosePodSession(ctx context.Context, id string) (*domain.PodSession, error) {
+func (unavailablePodService) ClosePodSession(_ context.Context, _ string) (*domain.PodSession, error) {
 	return nil, errRuntimeUnavailable
 }
 
 type unavailableAuthService struct{}
 
-func (unavailableAuthService) VerifyHook(input session.HookVerifyInput) domain.FileBrowserHookVerification {
+func (unavailableAuthService) VerifyHook(_ session.HookVerifyInput) domain.FileBrowserHookVerification {
 	return domain.FileBrowserHookVerification{
 		Allow:  false,
 		Reason: errRuntimeUnavailable.Error(),
@@ -116,15 +116,15 @@ func (unavailableAuthService) VerifyHook(input session.HookVerifyInput) domain.F
 
 type denyAuthorizer struct{}
 
-func (denyAuthorizer) CanListPVCs(ctx context.Context, principal *authn.Principal, namespace string) error {
+func (denyAuthorizer) CanListPVCs(_ context.Context, _ *authn.Principal, _ string) error {
 	return errRuntimeUnavailable
 }
 
 func (denyAuthorizer) CanGetPVC(
-	ctx context.Context,
-	principal *authn.Principal,
-	namespace string,
-	name string,
+	_ context.Context,
+	_ *authn.Principal,
+	_ string,
+	_ string,
 ) error {
 	return errRuntimeUnavailable
 }

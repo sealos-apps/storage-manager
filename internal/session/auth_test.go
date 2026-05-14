@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nixieboluo/sealos-stroage-manager/internal/domain"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/observability"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/state"
+	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
+	"github.com/nixieboluo/sealos-storage-manager/internal/observability"
+	"github.com/nixieboluo/sealos-storage-manager/internal/state"
 )
 
 type fakeLogin struct {
@@ -18,7 +18,7 @@ type fakeLogin struct {
 	err       error
 }
 
-func (f *fakeLogin) Login(ctx context.Context, viewerURL string, username string, password string) (string, error) {
+func (f *fakeLogin) Login(_ context.Context, viewerURL string, username string, password string) (string, error) {
 	f.viewerURL = viewerURL
 	f.username = username
 	f.password = password
@@ -39,7 +39,7 @@ func TestIssueTokenCreatesOneTimeAuthRequestAndTokenRecord(t *testing.T) {
 	viewer := &domain.ViewerSession{ID: "vs_1", Permission: domain.ModeReadWrite}
 	pod := &domain.PodSession{ID: "ps_1", ViewerURL: "http://viewer", Status: domain.PodStatusReady}
 
-	token, err := auth.IssueToken(context.Background(), viewer, pod)
+	token, err := auth.IssueToken(t.Context(), viewer, pod)
 	if err != nil {
 		t.Fatalf("IssueToken() error = %v", err)
 	}

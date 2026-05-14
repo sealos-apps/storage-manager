@@ -4,7 +4,7 @@ import (
 	"context"
 	"slices"
 
-	"github.com/nixieboluo/sealos-stroage-manager/internal/domain"
+	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
 	corev1 "k8s.io/api/core/v1"
 )
 

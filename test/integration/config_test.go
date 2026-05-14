@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nixieboluo/sealos-stroage-manager/internal/config"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/kube"
+	"github.com/nixieboluo/sealos-storage-manager/internal/config"
+	"github.com/nixieboluo/sealos-storage-manager/internal/kube"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -30,7 +30,7 @@ func TestIntegrationKubeconfigCanListPVCs(t *testing.T) {
 	cfg := loadIntegrationConfig(t, root)
 	userClient := integrationClient(t, root, cfg.Integration.KubeconfigPath)
 	client := kube.New(userClient)
-	if _, err := client.ListPVCs(context.Background(), cfg.Integration.Namespace); err != nil {
+	if _, err := client.ListPVCs(t.Context(), cfg.Integration.Namespace); err != nil {
 		t.Fatalf("list pvcs in %q: %v", cfg.Integration.Namespace, err)
 	}
 }
@@ -46,7 +46,7 @@ func TestIntegrationUserAndManagementKubeconfigsResolveSameNamespace(t *testing.
 	managementClient := integrationClient(t, root, managementPath)
 
 	userNamespace, err := userClient.CoreV1().Namespaces().Get(
-		context.Background(),
+		t.Context(),
 		cfg.Integration.Namespace,
 		metav1.GetOptions{},
 	)
@@ -54,7 +54,7 @@ func TestIntegrationUserAndManagementKubeconfigsResolveSameNamespace(t *testing.
 		t.Fatalf("user kubeconfig get namespace %q: %v", cfg.Integration.Namespace, err)
 	}
 	managementNamespace, err := managementClient.CoreV1().Namespaces().Get(
-		context.Background(),
+		t.Context(),
 		cfg.Integration.Namespace,
 		metav1.GetOptions{},
 	)
@@ -76,7 +76,7 @@ func TestIntegrationOwnerReferencesGarbageCollectViewerAttachments(t *testing.T)
 	client := integrationClient(t, root, managementPath)
 	namespace := cfg.Integration.Namespace
 	name := integrationResourceName(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	pod, err := client.CoreV1().Pods(namespace).Create(ctx, &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -99,7 +99,9 @@ func TestIntegrationOwnerReferencesGarbageCollectViewerAttachments(t *testing.T)
 		t.Fatalf("create owner pod: %v", err)
 	}
 	t.Cleanup(func() {
-		_ = client.CoreV1().Pods(namespace).Delete(context.Background(), name, metav1.DeleteOptions{})
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), 10*time.Second)
+		defer cancel()
+		_ = client.CoreV1().Pods(namespace).Delete(cleanupCtx, name, metav1.DeleteOptions{})
 	})
 
 	owner := metav1.OwnerReference{
@@ -239,7 +241,7 @@ func integrationResourceName(t *testing.T) string {
 func waitForNotFound(t *testing.T, resource string, get func(context.Context) error) {
 	t.Helper()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()

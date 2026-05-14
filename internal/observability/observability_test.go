@@ -2,13 +2,12 @@ package observability
 
 import (
 	"bytes"
-	"context"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/nixieboluo/sealos-stroage-manager/internal/config"
+	"github.com/nixieboluo/sealos-storage-manager/internal/config"
 )
 
 func TestObserveHTTPRecordsMetricsAndStructuredLog(t *testing.T) {
@@ -16,7 +15,7 @@ func TestObserveHTTPRecordsMetricsAndStructuredLog(t *testing.T) {
 
 	var out bytes.Buffer
 	recorder := New(config.ObservabilityConfig{LogLevel: "info"}, &out)
-	recorder.ObserveHTTP(context.Background(), "GET", "/api/pvcs", 500, time.Millisecond)
+	recorder.ObserveHTTP(t.Context(), "GET", "/api/pvcs", 500, time.Millisecond)
 
 	if recorder.Metrics().HTTPRequests.Load() != 1 {
 		t.Fatal("http request metric not incremented")

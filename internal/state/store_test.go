@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nixieboluo/sealos-stroage-manager/internal/config"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/domain"
+	"github.com/nixieboluo/sealos-storage-manager/internal/config"
+	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
 )
 
 func TestStorePodSessionByPVC(t *testing.T) {
@@ -170,13 +170,11 @@ func TestConsumeAuthRequestIsAtomic(t *testing.T) {
 	var wg sync.WaitGroup
 	successes := make(chan struct{}, 10)
 	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			if _, ok := store.ConsumeAuthRequest("ar_1", "hash", now); ok {
 				successes <- struct{}{}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	close(successes)

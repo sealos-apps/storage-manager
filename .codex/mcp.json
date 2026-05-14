@@ -3,7 +3,7 @@
     "encore": {
       "command": "encore",
       "args": ["mcp", "run", "--app=sealos-storage-manager-viewer"],
-      "cwd": "/Users/nixieboluo/Workspace/sealos-stroage-manager"
+      "cwd": "/Users/nixieboluo/Workspace/sealos-storage-manager"
     }
   }
 }

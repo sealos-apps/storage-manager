@@ -1,16 +1,15 @@
 package session
 
 import (
-	"context"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/nixieboluo/sealos-stroage-manager/internal/config"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/domain"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/kube"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/observability"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/state"
+	"github.com/nixieboluo/sealos-storage-manager/internal/config"
+	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
+	"github.com/nixieboluo/sealos-storage-manager/internal/kube"
+	"github.com/nixieboluo/sealos-storage-manager/internal/observability"
+	"github.com/nixieboluo/sealos-storage-manager/internal/state"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -27,7 +26,7 @@ func TestEnsurePodSessionCreatesResources(t *testing.T) {
 	service := NewPodService(cfg, store, client, observability.New(cfg.Observability, nil))
 	service.now = fixedNow
 
-	podSession, err := service.EnsurePodSession(context.Background(), EnsurePodSessionInput{
+	podSession, err := service.EnsurePodSession(t.Context(), EnsurePodSessionInput{
 		Namespace:  "default",
 		PVCName:    "data",
 		PVCUID:     "uid",
@@ -45,7 +44,7 @@ func TestEnsurePodSessionCreatesResources(t *testing.T) {
 		t.Fatalf("kubernetes resource identifiers must be DNS-safe: pod=%q url=%q", podSession.PodName, podSession.ViewerURL)
 	}
 
-	pod, err := client.GetPod(context.Background(), "default", podSession.PodName)
+	pod, err := client.GetPod(t.Context(), "default", podSession.PodName)
 	if err != nil {
 		t.Fatalf("GetPod() error = %v", err)
 	}
@@ -68,7 +67,7 @@ func TestEnsurePodSessionCreatesResources(t *testing.T) {
 		t.Fatalf("hook configmap volume missing: %#v", pod.Spec.Volumes)
 	}
 	hookConfigMap, err := clientset.CoreV1().ConfigMaps("default").Get(
-		context.Background(),
+		t.Context(),
 		podSession.PodName,
 		metav1.GetOptions{},
 	)
@@ -77,7 +76,7 @@ func TestEnsurePodSessionCreatesResources(t *testing.T) {
 	}
 	assertOwnedByPod(t, hookConfigMap.OwnerReferences, pod)
 	serviceResource, err := clientset.CoreV1().Services("default").Get(
-		context.Background(),
+		t.Context(),
 		podSession.ServiceName,
 		metav1.GetOptions{},
 	)
@@ -86,7 +85,7 @@ func TestEnsurePodSessionCreatesResources(t *testing.T) {
 	}
 	assertOwnedByPod(t, serviceResource.OwnerReferences, pod)
 	ingress, err := clientset.NetworkingV1().Ingresses("default").Get(
-		context.Background(),
+		t.Context(),
 		podSession.ServiceName,
 		metav1.GetOptions{},
 	)
@@ -124,7 +123,7 @@ func TestEnsurePodSessionReusesExistingViewerPod(t *testing.T) {
 	service := NewPodService(cfg, store, client, observability.New(cfg.Observability, nil))
 	service.now = fixedNow
 
-	podSession, err := service.EnsurePodSession(context.Background(), EnsurePodSessionInput{
+	podSession, err := service.EnsurePodSession(t.Context(), EnsurePodSessionInput{
 		Namespace:  "default",
 		PVCName:    "data",
 		PVCUID:     "uid",
@@ -163,7 +162,7 @@ func TestEnsurePodSessionSkipsTerminatingViewerPod(t *testing.T) {
 	service := NewPodService(cfg, store, client, observability.New(cfg.Observability, nil))
 	service.now = fixedNow
 
-	podSession, err := service.EnsurePodSession(context.Background(), EnsurePodSessionInput{
+	podSession, err := service.EnsurePodSession(t.Context(), EnsurePodSessionInput{
 		Namespace:  "default",
 		PVCName:    "data",
 		PVCUID:     "uid",
@@ -232,7 +231,7 @@ func TestSyncPodStatusReportsCrashLoop(t *testing.T) {
 		observability.New(cfg.Observability, nil),
 	)
 
-	updated, err := service.SyncPodStatus(context.Background(), &domain.PodSession{
+	updated, err := service.SyncPodStatus(t.Context(), &domain.PodSession{
 		ID:        "ps_crash",
 		Namespace: "default",
 		PodName:   "viewer-ps-crash",
@@ -266,7 +265,7 @@ func TestClosePodSessionTreatsMissingPodAsClosed(t *testing.T) {
 		ExpiresAt:   fixedNow().Add(time.Minute),
 	})
 
-	closed, err := service.ClosePodSession(context.Background(), "ps_missing")
+	closed, err := service.ClosePodSession(t.Context(), "ps_missing")
 	if err != nil {
 		t.Fatalf("ClosePodSession() error = %v", err)
 	}

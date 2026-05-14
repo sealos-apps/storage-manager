@@ -1,4 +1,4 @@
-module github.com/nixieboluo/sealos-stroage-manager
+module github.com/nixieboluo/sealos-storage-manager
 
 go 1.26.3
 

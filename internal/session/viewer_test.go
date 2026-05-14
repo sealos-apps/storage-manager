@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nixieboluo/sealos-stroage-manager/internal/domain"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/kube"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/observability"
-	"github.com/nixieboluo/sealos-stroage-manager/internal/state"
+	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
+	"github.com/nixieboluo/sealos-storage-manager/internal/kube"
+	"github.com/nixieboluo/sealos-storage-manager/internal/observability"
+	"github.com/nixieboluo/sealos-storage-manager/internal/state"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -20,7 +20,7 @@ type staticLogin struct {
 	token string
 }
 
-func (s staticLogin) Login(ctx context.Context, viewerURL string, username string, password string) (string, error) {
+func (s staticLogin) Login(_ context.Context, _ string, _ string, _ string) (string, error) {
 	return s.token, nil
 }
 
@@ -44,7 +44,7 @@ func TestViewerServiceListPVCs(t *testing.T) {
 	pods := NewPodService(cfg, store, client, observability.New(cfg.Observability, nil))
 	service := NewViewerService(cfg, store, client, pods, nil, observability.New(cfg.Observability, nil))
 
-	items, err := service.ListPVCs(context.Background(), "default")
+	items, err := service.ListPVCs(t.Context(), "default")
 	if err != nil {
 		t.Fatalf("ListPVCs() error = %v", err)
 	}
@@ -70,7 +70,7 @@ func TestCreateViewerSessionRejectsRWOP(t *testing.T) {
 	pods := NewPodService(cfg, store, client, observability.New(cfg.Observability, nil))
 	service := NewViewerService(cfg, store, client, pods, nil, observability.New(cfg.Observability, nil))
 
-	if _, err := service.CreateViewerSession(context.Background(), CreateViewerSessionInput{
+	if _, err := service.CreateViewerSession(t.Context(), CreateViewerSessionInput{
 		Namespace: "default",
 		PVCName:   "data",
 		UserID:    "user",
@@ -146,7 +146,7 @@ func TestIssueTokenSyncsPodStatusBeforeReadinessCheck(t *testing.T) {
 		ExpiresAt:    now.Add(time.Minute),
 	})
 
-	token, err := service.IssueToken(context.Background(), "vs_1", "owner")
+	token, err := service.IssueToken(t.Context(), "vs_1", "owner")
 	if err != nil {
 		t.Fatalf("IssueToken() error = %v", err)
 	}
@@ -175,7 +175,7 @@ func TestViewerServiceRejectsCrossUserSessionAccess(t *testing.T) {
 		ExpiresAt:    fixedNow().Add(cfg.Sessions.ViewerSessionTimout),
 	})
 
-	if _, err := service.GetViewerSession(context.Background(), "vs_1", "other"); err == nil {
+	if _, err := service.GetViewerSession(t.Context(), "vs_1", "other"); err == nil {
 		t.Fatal("GetViewerSession() allowed another user")
 	}
 	if _, err := service.HeartbeatForUser("vs_1", "other"); err == nil {

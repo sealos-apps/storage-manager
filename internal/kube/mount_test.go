@@ -1,10 +1,9 @@
 package kube
 
 import (
-	"context"
 	"testing"
 
-	"github.com/nixieboluo/sealos-stroage-manager/internal/domain"
+	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -62,7 +61,7 @@ func TestDetectPVCMounts(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			client := New(fake.NewSimpleClientset(podObjects(tt.pods)...))
 			detector := NewPVCMountDetector(client)
-			info, err := detector.DetectPVCMounts(context.Background(), "default", "data")
+			info, err := detector.DetectPVCMounts(t.Context(), "default", "data")
 			if err != nil {
 				t.Fatalf("DetectPVCMounts() error = %v", err)
 			}
