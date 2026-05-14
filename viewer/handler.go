@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"encore.dev/beta/errs"
 	"github.com/nixieboluo/sealos-storage-manager/internal/apienv"
 	"github.com/nixieboluo/sealos-storage-manager/internal/authn"
 	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
@@ -53,18 +54,87 @@ type Handler struct {
 	authz    authorizer
 }
 
-type createViewerSessionRequest struct {
-	Namespace string `json:"namespace"`
-	PVCName   string `json:"pvc_name"`
+type AuthenticatedRequest struct {
+	Authorization string `header:"Authorization" encore:"sensitive"`
 }
 
-type hookVerifyRequest struct {
+type ListPVCsRequest struct {
+	Authorization string `header:"Authorization" encore:"sensitive"`
+	Namespace     string `query:"namespace"`
+}
+
+type CreateViewerSessionRequest struct {
+	Authorization string `header:"Authorization" encore:"sensitive"`
+	Namespace     string `json:"namespace"`
+	PVCName       string `json:"pvc_name"`
+}
+
+type VerifyFileBrowserHookRequest struct {
+	Authorization string `header:"Authorization" encore:"sensitive"`
 	PodSessionID  string `json:"pod_session_id"`
 	ViewerPodName string `json:"viewer_pod_name"`
 	Username      string `json:"username"`
 	AuthRequestID string `json:"auth_request_id"`
 	PasswordHash  string `json:"password_hash"`
 }
+
+type PVCList struct {
+	Items []domain.PVC `json:"items"`
+}
+
+type ListPVCsResponse struct {
+	PVCList PVCList `json:"pvc_list"`
+}
+
+type ViewerSessionResponse struct {
+	ViewerSession *domain.ViewerSession `json:"viewer_session"`
+}
+
+type ViewerTokenResponse struct {
+	CacheControl string              `header:"Cache-Control"`
+	Pragma       string              `header:"Pragma"`
+	ViewerToken  *domain.ViewerToken `json:"viewer_token"`
+}
+
+type HeartbeatResponse struct {
+	Heartbeat *domain.Heartbeat `json:"heartbeat"`
+}
+
+type PodSessionResponse struct {
+	PodSession *domain.PodSession `json:"pod_session"`
+}
+
+type FileBrowserHookVerificationResponse struct {
+	FileBrowserHookVerification domain.FileBrowserHookVerification `json:"filebrowser_hook_verification"`
+}
+
+type MetricsSnapshot struct {
+	HTTPRequests       int64 `json:"http_requests_total"`
+	HTTPErrors         int64 `json:"http_errors_total"`
+	ViewerCreated      int64 `json:"viewer_sessions_created_total"`
+	ViewerClosed       int64 `json:"viewer_sessions_closed_total"`
+	PodCreated         int64 `json:"pod_sessions_created_total"`
+	PodReused          int64 `json:"pod_sessions_reused_total"`
+	PodDeleted         int64 `json:"pod_sessions_deleted_total"`
+	AuthCreated        int64 `json:"auth_requests_created_total"`
+	AuthConsumed       int64 `json:"auth_requests_consumed_total"`
+	AuthDenied         int64 `json:"auth_requests_denied_total"`
+	FileBrowserLogins  int64 `json:"filebrowser_logins_total"`
+	FileBrowserErrors  int64 `json:"filebrowser_errors_total"`
+	KubernetesRequests int64 `json:"kubernetes_requests_total"`
+	KubernetesErrors   int64 `json:"kubernetes_errors_total"`
+	CleanupDeleted     int64 `json:"cleanup_deleted_total"`
+}
+
+type MetricsResponse struct {
+	Metrics MetricsSnapshot `json:"metrics"`
+}
+
+type ErrorDetails struct {
+	Code string `json:"code"`
+}
+
+func (ErrorDetails) ErrDetails() {}
 
 func NewHandler(
 	viewers viewerService,
@@ -86,220 +156,547 @@ func NewHandler(
 	}
 }
 
+func (h *Handler) ListPVCsData(ctx context.Context, req *ListPVCsRequest) (*ListPVCsResponse, error) {
+	response, apiErr := h.listPVCs(ctx, req)
+	return response, toEncoreError(apiErr)
+}
+
+func (h *Handler) CreateViewerSessionData(
+	ctx context.Context,
+	req *CreateViewerSessionRequest,
+) (*ViewerSessionResponse, error) {
+	response, apiErr := h.createViewerSession(ctx, req)
+	return response, toEncoreError(apiErr)
+}
+
+func (h *Handler) GetViewerSessionData(
+	ctx context.Context,
+	viewerSessionID string,
+	req *AuthenticatedRequest,
+) (*ViewerSessionResponse, error) {
+	response, apiErr := h.getViewerSession(ctx, viewerSessionID, req)
+	return response, toEncoreError(apiErr)
+}
+
+func (h *Handler) IssueTokenData(
+	ctx context.Context,
+	viewerSessionID string,
+	req *AuthenticatedRequest,
+) (*ViewerTokenResponse, error) {
+	response, apiErr := h.issueToken(ctx, viewerSessionID, req)
+	return response, toEncoreError(apiErr)
+}
+
+func (h *Handler) HeartbeatData(
+	ctx context.Context,
+	viewerSessionID string,
+	req *AuthenticatedRequest,
+) (*HeartbeatResponse, error) {
+	response, apiErr := h.heartbeat(ctx, viewerSessionID, req)
+	return response, toEncoreError(apiErr)
+}
+
+func (h *Handler) CloseViewerSessionData(
+	ctx context.Context,
+	viewerSessionID string,
+	req *AuthenticatedRequest,
+) (*ViewerSessionResponse, error) {
+	response, apiErr := h.closeViewerSession(ctx, viewerSessionID, req)
+	return response, toEncoreError(apiErr)
+}
+
+func (h *Handler) ClosePodSessionData(
+	ctx context.Context,
+	podSessionID string,
+	req *AuthenticatedRequest,
+) (*PodSessionResponse, error) {
+	response, apiErr := h.closePodSession(ctx, podSessionID, req)
+	return response, toEncoreError(apiErr)
+}
+
+func (h *Handler) GetPodSessionData(
+	ctx context.Context,
+	podSessionID string,
+	req *AuthenticatedRequest,
+) (*PodSessionResponse, error) {
+	response, apiErr := h.getPodSession(ctx, podSessionID, req)
+	return response, toEncoreError(apiErr)
+}
+
+func (h *Handler) VerifyFileBrowserHookData(
+	ctx context.Context,
+	req *VerifyFileBrowserHookRequest,
+) (*FileBrowserHookVerificationResponse, error) {
+	response, apiErr := h.verifyFileBrowserHook(ctx, req)
+	return response, toEncoreError(apiErr)
+}
+
+func (h *Handler) MetricsData(_ context.Context) (*MetricsResponse, error) {
+	return &MetricsResponse{Metrics: metricsSnapshot(h.recorder)}, nil
+}
+
 func (h *Handler) ListPVCs(w http.ResponseWriter, req *http.Request) {
-	h.withObserved(w, req, "/api/pvcs", func(w http.ResponseWriter, req *http.Request) (int, error) {
-		principal, err := h.authenticate(req)
-		if err != nil {
-			return 401, err
-		}
-		req = req.WithContext(authn.WithPrincipal(req.Context(), principal))
-		namespace := req.URL.Query().Get("namespace")
-		if namespace == "" {
-			namespace = principal.Namespace
-		}
-		if err := h.authz.CanListPVCs(req.Context(), principal, namespace); err != nil {
-			return 403, apienv.NewError(403, apienv.CodePVCAccessDenied, "PVC access denied", nil)
-		}
-		items, err := h.viewers.ListPVCs(req.Context(), namespace)
-		if err != nil {
-			return 500, err
-		}
-		apienv.WriteSuccess(w, http.StatusOK, "pvc_list", map[string]any{"items": items})
-		return http.StatusOK, nil
+	response, err := h.listPVCs(req.Context(), &ListPVCsRequest{
+		Authorization: req.Header.Get("Authorization"),
+		Namespace:     req.URL.Query().Get("namespace"),
 	})
+	writeHTTPResponse(w, response, err)
 }
 
 func (h *Handler) CreateViewerSession(w http.ResponseWriter, req *http.Request) {
-	h.withObserved(w, req, "/api/viewer-sessions", func(w http.ResponseWriter, req *http.Request) (int, error) {
-		principal, err := h.authenticate(req)
-		if err != nil {
-			return 401, err
-		}
-		req = req.WithContext(authn.WithPrincipal(req.Context(), principal))
-		var body createViewerSessionRequest
-		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-			return 400, apienv.NewError(400, apienv.CodeValidationError, "Invalid JSON request", nil)
-		}
-		if body.Namespace == "" {
-			body.Namespace = principal.Namespace
-		}
-		if body.PVCName == "" {
-			return 400, apienv.NewError(400, apienv.CodeValidationError, "pvc_name is required", nil)
-		}
-		if err := h.authz.CanGetPVC(req.Context(), principal, body.Namespace, body.PVCName); err != nil {
-			return 403, apienv.NewError(403, apienv.CodePVCAccessDenied, "PVC access denied", nil)
-		}
-		session, err := h.viewers.CreateViewerSession(req.Context(), session.CreateViewerSessionInput{
-			Namespace: body.Namespace,
-			PVCName:   body.PVCName,
-			UserID:    principal.ID,
-		})
-		if err != nil {
-			return apienv.FromError(err).Status, err
-		}
-		apienv.WriteSuccess(w, http.StatusCreated, "viewer_session", session)
-		return http.StatusCreated, nil
-	})
+	var body CreateViewerSessionRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeHTTPResponse(w, nil, apienv.NewError(400, apienv.CodeValidationError, "Invalid JSON request", nil))
+		return
+	}
+	body.Authorization = req.Header.Get("Authorization")
+	response, err := h.createViewerSession(req.Context(), &body)
+	writeHTTPResponse(w, response, err)
 }
 
 func (h *Handler) GetViewerSession(w http.ResponseWriter, req *http.Request) {
-	h.withObserved(w, req, "/api/viewer-sessions/:id", func(w http.ResponseWriter, req *http.Request) (int, error) {
-		principal, err := h.authenticate(req)
-		if err != nil {
-			return 401, err
-		}
-		req = req.WithContext(authn.WithPrincipal(req.Context(), principal))
-		session, err := h.viewers.GetViewerSession(
-			req.Context(),
-			pathID(req.URL.Path, "/api/viewer-sessions/"),
-			principal.ID,
-		)
-		if err != nil {
-			return apienv.FromError(err).Status, err
-		}
-		if err := h.authorizePodSessionPVC(req.Context(), principal, session.PodSessionID); err != nil {
-			return apienv.FromError(err).Status, err
-		}
-		apienv.WriteSuccess(w, http.StatusOK, "viewer_session", session)
-		return http.StatusOK, nil
-	})
+	response, err := h.getViewerSession(
+		req.Context(),
+		pathID(req.URL.Path, "/api/viewer-sessions/"),
+		authenticatedRequest(req),
+	)
+	writeHTTPResponse(w, response, err)
 }
 
 func (h *Handler) IssueToken(w http.ResponseWriter, req *http.Request) {
-	h.withObserved(w, req, "/api/viewer-sessions/:id/token", func(w http.ResponseWriter, req *http.Request) (int, error) {
-		principal, err := h.authenticate(req)
-		if err != nil {
-			return 401, err
-		}
-		req = req.WithContext(authn.WithPrincipal(req.Context(), principal))
-		id := strings.TrimSuffix(pathID(req.URL.Path, "/api/viewer-sessions/"), "/token")
-		if err := h.authorizeViewerSessionPVC(req.Context(), principal, id); err != nil {
-			return apienv.FromError(err).Status, err
-		}
-		token, err := h.viewers.IssueToken(req.Context(), id, principal.ID)
-		if err != nil {
-			return apienv.FromError(err).Status, err
-		}
-		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Pragma", "no-cache")
-		apienv.WriteSuccess(w, http.StatusOK, "viewer_token", token)
-		return http.StatusOK, nil
-	})
+	id := strings.TrimSuffix(pathID(req.URL.Path, "/api/viewer-sessions/"), "/token")
+	response, err := h.issueToken(req.Context(), id, authenticatedRequest(req))
+	writeHTTPResponse(w, response, err)
 }
 
 func (h *Handler) Heartbeat(w http.ResponseWriter, req *http.Request) {
-	h.withObserved(w, req, "/api/viewer-sessions/:id/heartbeat", func(w http.ResponseWriter, req *http.Request) (int, error) {
-		principal, err := h.authenticate(req)
-		if err != nil {
-			return 401, err
-		}
-		req = req.WithContext(authn.WithPrincipal(req.Context(), principal))
-		id := strings.TrimSuffix(pathID(req.URL.Path, "/api/viewer-sessions/"), "/heartbeat")
-		if err := h.authorizeViewerSessionPVC(req.Context(), principal, id); err != nil {
-			return apienv.FromError(err).Status, err
-		}
-		heartbeat, err := h.viewers.HeartbeatForUser(id, principal.ID)
-		if err != nil {
-			return apienv.FromError(err).Status, err
-		}
-		apienv.WriteSuccess(w, http.StatusOK, "heartbeat", heartbeat)
-		return http.StatusOK, nil
-	})
+	id := strings.TrimSuffix(pathID(req.URL.Path, "/api/viewer-sessions/"), "/heartbeat")
+	response, err := h.heartbeat(req.Context(), id, authenticatedRequest(req))
+	writeHTTPResponse(w, response, err)
 }
 
 func (h *Handler) CloseViewerSession(w http.ResponseWriter, req *http.Request) {
-	h.withObserved(w, req, "/api/viewer-sessions/:id", func(w http.ResponseWriter, req *http.Request) (int, error) {
-		principal, err := h.authenticate(req)
-		if err != nil {
-			return 401, err
-		}
-		req = req.WithContext(authn.WithPrincipal(req.Context(), principal))
-		id := pathID(req.URL.Path, "/api/viewer-sessions/")
-		if err := h.authorizeViewerSessionPVC(req.Context(), principal, id); err != nil {
-			return apienv.FromError(err).Status, err
-		}
-		session, err := h.viewers.CloseViewerSessionForUser(id, principal.ID)
-		if err != nil {
-			return apienv.FromError(err).Status, err
-		}
-		apienv.WriteSuccess(w, http.StatusOK, "viewer_session", session)
-		return http.StatusOK, nil
-	})
+	response, err := h.closeViewerSession(
+		req.Context(),
+		pathID(req.URL.Path, "/api/viewer-sessions/"),
+		authenticatedRequest(req),
+	)
+	writeHTTPResponse(w, response, err)
 }
 
 func (h *Handler) ClosePodSession(w http.ResponseWriter, req *http.Request) {
-	h.withObserved(w, req, "/api/pod-sessions/:id", func(w http.ResponseWriter, req *http.Request) (int, error) {
-		principal, err := h.authenticate(req)
-		if err != nil {
-			return 401, err
-		}
-		req = req.WithContext(authn.WithPrincipal(req.Context(), principal))
-		id := pathID(req.URL.Path, "/api/pod-sessions/")
-		if err := h.authorizePodSessionPVC(req.Context(), principal, id); err != nil {
-			return apienv.FromError(err).Status, err
-		}
-		podSession, err := h.pods.ClosePodSession(req.Context(), id)
-		if err != nil {
-			return apienv.FromError(err).Status, err
-		}
-		apienv.WriteSuccess(w, http.StatusOK, "pod_session", podSession)
-		return http.StatusOK, nil
-	})
+	response, err := h.closePodSession(
+		req.Context(),
+		pathID(req.URL.Path, "/api/pod-sessions/"),
+		authenticatedRequest(req),
+	)
+	writeHTTPResponse(w, response, err)
 }
 
 func (h *Handler) GetPodSession(w http.ResponseWriter, req *http.Request) {
-	h.withObserved(w, req, "/api/pod-sessions/:id", func(w http.ResponseWriter, req *http.Request) (int, error) {
-		principal, err := h.authenticate(req)
-		if err != nil {
-			return 401, err
-		}
-		req = req.WithContext(authn.WithPrincipal(req.Context(), principal))
-		id := pathID(req.URL.Path, "/api/pod-sessions/")
-		if err := h.authorizePodSessionPVC(req.Context(), principal, id); err != nil {
-			return apienv.FromError(err).Status, err
-		}
-		podSession, err := h.viewers.GetPodSession(id)
-		if err != nil {
-			return apienv.FromError(err).Status, err
-		}
-		apienv.WriteSuccess(w, http.StatusOK, "pod_session", podSession)
-		return http.StatusOK, nil
-	})
+	response, err := h.getPodSession(
+		req.Context(),
+		pathID(req.URL.Path, "/api/pod-sessions/"),
+		authenticatedRequest(req),
+	)
+	writeHTTPResponse(w, response, err)
 }
 
 func (h *Handler) VerifyFileBrowserHook(w http.ResponseWriter, req *http.Request) {
-	h.withObserved(w, req, "/internal/filebrowser-hook/verify", func(w http.ResponseWriter, req *http.Request) (int, error) {
-		var body hookVerifyRequest
-		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-			return 400, apienv.NewError(400, apienv.CodeValidationError, "Invalid JSON request", nil)
-		}
-		result := h.auth.VerifyHook(session.HookVerifyInput{
-			HookClientToken: strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer "),
-			PodSessionID:    body.PodSessionID,
-			ViewerPodName:   body.ViewerPodName,
-			Username:        body.Username,
-			AuthRequestID:   body.AuthRequestID,
-			PasswordHash:    body.PasswordHash,
-		})
-		apienv.WriteSuccess(w, http.StatusOK, "filebrowser_hook_verification", result)
-		return http.StatusOK, nil
-	})
+	var body VerifyFileBrowserHookRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeHTTPResponse(w, nil, apienv.NewError(400, apienv.CodeValidationError, "Invalid JSON request", nil))
+		return
+	}
+	body.Authorization = req.Header.Get("Authorization")
+	response, err := h.verifyFileBrowserHook(req.Context(), &body)
+	writeHTTPResponse(w, response, err)
 }
 
 func (h *Handler) Metrics(w http.ResponseWriter, req *http.Request) {
-	if h.recorder == nil {
-		http.Error(w, "metrics unavailable", http.StatusServiceUnavailable)
-		return
-	}
-	h.recorder.WritePrometheus(w)
+	response, err := h.MetricsData(req.Context())
+	writeHTTPResponse(w, response, apienv.FromError(err))
 }
 
-func (h *Handler) authenticate(req *http.Request) (*authn.Principal, error) {
-	principal, err := authn.PrincipalFromAuthorization(req.Header.Get("Authorization"))
+func (h *Handler) listPVCs(ctx context.Context, req *ListPVCsRequest) (*ListPVCsResponse, *apienv.Error) {
+	start := time.Now()
+	principal, err := authenticateRequest(req)
+	if err != nil {
+		h.observe(ctx, http.MethodGet, "/api/pvcs", err.Status, start)
+		return nil, err
+	}
+	ctx = authn.WithPrincipal(ctx, principal)
+	namespace := req.Namespace
+	if namespace == "" {
+		namespace = principal.Namespace
+	}
+	if err := h.authz.CanListPVCs(ctx, principal, namespace); err != nil {
+		apiErr := apienv.NewError(403, apienv.CodePVCAccessDenied, "PVC access denied", nil)
+		h.observe(ctx, http.MethodGet, "/api/pvcs", apiErr.Status, start)
+		return nil, apiErr
+	}
+	items, listErr := h.viewers.ListPVCs(ctx, namespace)
+	if listErr != nil {
+		apiErr := apienv.FromError(listErr)
+		h.observe(ctx, http.MethodGet, "/api/pvcs", apiErr.Status, start)
+		return nil, apiErr
+	}
+	if items == nil {
+		items = []domain.PVC{}
+	}
+	h.observe(ctx, http.MethodGet, "/api/pvcs", http.StatusOK, start)
+	return &ListPVCsResponse{PVCList: PVCList{Items: items}}, nil
+}
+
+func (h *Handler) createViewerSession(
+	ctx context.Context,
+	req *CreateViewerSessionRequest,
+) (*ViewerSessionResponse, *apienv.Error) {
+	start := time.Now()
+	principal, err := authenticateRequest(req)
+	if err != nil {
+		h.observe(ctx, http.MethodPost, "/api/viewer-sessions", err.Status, start)
+		return nil, err
+	}
+	ctx = authn.WithPrincipal(ctx, principal)
+	namespace := req.Namespace
+	if namespace == "" {
+		namespace = principal.Namespace
+	}
+	if req.PVCName == "" {
+		apiErr := apienv.NewError(400, apienv.CodeValidationError, "pvc_name is required", nil)
+		h.observe(ctx, http.MethodPost, "/api/viewer-sessions", apiErr.Status, start)
+		return nil, apiErr
+	}
+	if err := h.authz.CanGetPVC(ctx, principal, namespace, req.PVCName); err != nil {
+		apiErr := apienv.NewError(403, apienv.CodePVCAccessDenied, "PVC access denied", nil)
+		h.observe(ctx, http.MethodPost, "/api/viewer-sessions", apiErr.Status, start)
+		return nil, apiErr
+	}
+	viewerSession, createErr := h.viewers.CreateViewerSession(ctx, session.CreateViewerSessionInput{
+		Namespace: namespace,
+		PVCName:   req.PVCName,
+		UserID:    principal.ID,
+	})
+	if createErr != nil {
+		apiErr := apienv.FromError(createErr)
+		h.observe(ctx, http.MethodPost, "/api/viewer-sessions", apiErr.Status, start)
+		return nil, apiErr
+	}
+	h.observe(ctx, http.MethodPost, "/api/viewer-sessions", http.StatusCreated, start)
+	return &ViewerSessionResponse{
+		ViewerSession: viewerSession,
+	}, nil
+}
+
+func (h *Handler) getViewerSession(
+	ctx context.Context,
+	viewerSessionID string,
+	req *AuthenticatedRequest,
+) (*ViewerSessionResponse, *apienv.Error) {
+	start := time.Now()
+	principal, err := authenticateRequest(req)
+	if err != nil {
+		h.observe(ctx, http.MethodGet, "/api/viewer-sessions/:id", err.Status, start)
+		return nil, err
+	}
+	ctx = authn.WithPrincipal(ctx, principal)
+	viewerSession, getErr := h.viewers.GetViewerSession(ctx, viewerSessionID, principal.ID)
+	if getErr != nil {
+		apiErr := apienv.FromError(getErr)
+		h.observe(ctx, http.MethodGet, "/api/viewer-sessions/:id", apiErr.Status, start)
+		return nil, apiErr
+	}
+	if err := h.authorizePodSessionPVC(ctx, principal, viewerSession.PodSessionID); err != nil {
+		apiErr := apienv.FromError(err)
+		h.observe(ctx, http.MethodGet, "/api/viewer-sessions/:id", apiErr.Status, start)
+		return nil, apiErr
+	}
+	h.observe(ctx, http.MethodGet, "/api/viewer-sessions/:id", http.StatusOK, start)
+	return &ViewerSessionResponse{ViewerSession: viewerSession}, nil
+}
+
+func (h *Handler) issueToken(
+	ctx context.Context,
+	viewerSessionID string,
+	req *AuthenticatedRequest,
+) (*ViewerTokenResponse, *apienv.Error) {
+	start := time.Now()
+	principal, err := authenticateRequest(req)
+	if err != nil {
+		h.observe(ctx, http.MethodPost, "/api/viewer-sessions/:id/token", err.Status, start)
+		return nil, err
+	}
+	ctx = authn.WithPrincipal(ctx, principal)
+	if err := h.authorizeViewerSessionPVC(ctx, principal, viewerSessionID); err != nil {
+		apiErr := apienv.FromError(err)
+		h.observe(ctx, http.MethodPost, "/api/viewer-sessions/:id/token", apiErr.Status, start)
+		return nil, apiErr
+	}
+	token, issueErr := h.viewers.IssueToken(ctx, viewerSessionID, principal.ID)
+	if issueErr != nil {
+		apiErr := apienv.FromError(issueErr)
+		h.observe(ctx, http.MethodPost, "/api/viewer-sessions/:id/token", apiErr.Status, start)
+		return nil, apiErr
+	}
+	h.observe(ctx, http.MethodPost, "/api/viewer-sessions/:id/token", http.StatusOK, start)
+	return &ViewerTokenResponse{
+		CacheControl: "no-store",
+		Pragma:       "no-cache",
+		ViewerToken:  token,
+	}, nil
+}
+
+func (h *Handler) heartbeat(
+	ctx context.Context,
+	viewerSessionID string,
+	req *AuthenticatedRequest,
+) (*HeartbeatResponse, *apienv.Error) {
+	start := time.Now()
+	principal, err := authenticateRequest(req)
+	if err != nil {
+		h.observe(ctx, http.MethodPost, "/api/viewer-sessions/:id/heartbeat", err.Status, start)
+		return nil, err
+	}
+	ctx = authn.WithPrincipal(ctx, principal)
+	if err := h.authorizeViewerSessionPVC(ctx, principal, viewerSessionID); err != nil {
+		apiErr := apienv.FromError(err)
+		h.observe(ctx, http.MethodPost, "/api/viewer-sessions/:id/heartbeat", apiErr.Status, start)
+		return nil, apiErr
+	}
+	heartbeat, heartbeatErr := h.viewers.HeartbeatForUser(viewerSessionID, principal.ID)
+	if heartbeatErr != nil {
+		apiErr := apienv.FromError(heartbeatErr)
+		h.observe(ctx, http.MethodPost, "/api/viewer-sessions/:id/heartbeat", apiErr.Status, start)
+		return nil, apiErr
+	}
+	h.observe(ctx, http.MethodPost, "/api/viewer-sessions/:id/heartbeat", http.StatusOK, start)
+	return &HeartbeatResponse{Heartbeat: heartbeat}, nil
+}
+
+func (h *Handler) closeViewerSession(
+	ctx context.Context,
+	viewerSessionID string,
+	req *AuthenticatedRequest,
+) (*ViewerSessionResponse, *apienv.Error) {
+	start := time.Now()
+	principal, err := authenticateRequest(req)
+	if err != nil {
+		h.observe(ctx, http.MethodDelete, "/api/viewer-sessions/:id", err.Status, start)
+		return nil, err
+	}
+	ctx = authn.WithPrincipal(ctx, principal)
+	if err := h.authorizeViewerSessionPVC(ctx, principal, viewerSessionID); err != nil {
+		apiErr := apienv.FromError(err)
+		h.observe(ctx, http.MethodDelete, "/api/viewer-sessions/:id", apiErr.Status, start)
+		return nil, apiErr
+	}
+	viewerSession, closeErr := h.viewers.CloseViewerSessionForUser(viewerSessionID, principal.ID)
+	if closeErr != nil {
+		apiErr := apienv.FromError(closeErr)
+		h.observe(ctx, http.MethodDelete, "/api/viewer-sessions/:id", apiErr.Status, start)
+		return nil, apiErr
+	}
+	h.observe(ctx, http.MethodDelete, "/api/viewer-sessions/:id", http.StatusOK, start)
+	return &ViewerSessionResponse{ViewerSession: viewerSession}, nil
+}
+
+func (h *Handler) closePodSession(
+	ctx context.Context,
+	podSessionID string,
+	req *AuthenticatedRequest,
+) (*PodSessionResponse, *apienv.Error) {
+	start := time.Now()
+	principal, err := authenticateRequest(req)
+	if err != nil {
+		h.observe(ctx, http.MethodDelete, "/api/pod-sessions/:id", err.Status, start)
+		return nil, err
+	}
+	ctx = authn.WithPrincipal(ctx, principal)
+	if err := h.authorizePodSessionPVC(ctx, principal, podSessionID); err != nil {
+		apiErr := apienv.FromError(err)
+		h.observe(ctx, http.MethodDelete, "/api/pod-sessions/:id", apiErr.Status, start)
+		return nil, apiErr
+	}
+	podSession, closeErr := h.pods.ClosePodSession(ctx, podSessionID)
+	if closeErr != nil {
+		apiErr := apienv.FromError(closeErr)
+		h.observe(ctx, http.MethodDelete, "/api/pod-sessions/:id", apiErr.Status, start)
+		return nil, apiErr
+	}
+	h.observe(ctx, http.MethodDelete, "/api/pod-sessions/:id", http.StatusOK, start)
+	return &PodSessionResponse{PodSession: podSession}, nil
+}
+
+func (h *Handler) getPodSession(
+	ctx context.Context,
+	podSessionID string,
+	req *AuthenticatedRequest,
+) (*PodSessionResponse, *apienv.Error) {
+	start := time.Now()
+	principal, err := authenticateRequest(req)
+	if err != nil {
+		h.observe(ctx, http.MethodGet, "/api/pod-sessions/:id", err.Status, start)
+		return nil, err
+	}
+	ctx = authn.WithPrincipal(ctx, principal)
+	if err := h.authorizePodSessionPVC(ctx, principal, podSessionID); err != nil {
+		apiErr := apienv.FromError(err)
+		h.observe(ctx, http.MethodGet, "/api/pod-sessions/:id", apiErr.Status, start)
+		return nil, apiErr
+	}
+	podSession, getErr := h.viewers.GetPodSession(podSessionID)
+	if getErr != nil {
+		apiErr := apienv.FromError(getErr)
+		h.observe(ctx, http.MethodGet, "/api/pod-sessions/:id", apiErr.Status, start)
+		return nil, apiErr
+	}
+	h.observe(ctx, http.MethodGet, "/api/pod-sessions/:id", http.StatusOK, start)
+	return &PodSessionResponse{PodSession: podSession}, nil
+}
+
+func (h *Handler) verifyFileBrowserHook(
+	ctx context.Context,
+	req *VerifyFileBrowserHookRequest,
+) (*FileBrowserHookVerificationResponse, *apienv.Error) {
+	start := time.Now()
+	result := h.auth.VerifyHook(session.HookVerifyInput{
+		HookClientToken: strings.TrimPrefix(req.Authorization, "Bearer "),
+		PodSessionID:    req.PodSessionID,
+		ViewerPodName:   req.ViewerPodName,
+		Username:        req.Username,
+		AuthRequestID:   req.AuthRequestID,
+		PasswordHash:    req.PasswordHash,
+	})
+	h.observe(ctx, http.MethodPost, "/internal/filebrowser-hook/verify", http.StatusOK, start)
+	return &FileBrowserHookVerificationResponse{FileBrowserHookVerification: result}, nil
+}
+
+func (h *Handler) observe(ctx context.Context, method string, route string, status int, start time.Time) {
+	if h.recorder != nil {
+		h.recorder.ObserveHTTP(ctx, method, route, status, time.Since(start))
+	}
+}
+
+func authenticateRequest(req interface{ authorizationHeader() string }) (*authn.Principal, *apienv.Error) {
+	principal, err := authn.PrincipalFromAuthorization(req.authorizationHeader())
 	if err != nil {
 		return nil, apienv.NewError(401, apienv.CodeUnauthorized, "Unauthorized", nil)
 	}
 	return principal, nil
+}
+
+func (req *AuthenticatedRequest) authorizationHeader() string {
+	if req == nil {
+		return ""
+	}
+	return req.Authorization
+}
+
+func (req *ListPVCsRequest) authorizationHeader() string {
+	if req == nil {
+		return ""
+	}
+	return req.Authorization
+}
+
+func (req *CreateViewerSessionRequest) authorizationHeader() string {
+	if req == nil {
+		return ""
+	}
+	return req.Authorization
+}
+
+func authenticatedRequest(req *http.Request) *AuthenticatedRequest {
+	return &AuthenticatedRequest{Authorization: req.Header.Get("Authorization")}
+}
+
+func writeHTTPResponse(w http.ResponseWriter, response any, apiErr *apienv.Error) {
+	if apiErr != nil {
+		apienv.WriteError(w, apiErr)
+		return
+	}
+	if headered, ok := response.(*ViewerTokenResponse); ok {
+		w.Header().Set("Cache-Control", headered.CacheControl)
+		w.Header().Set("Pragma", headered.Pragma)
+	}
+	status := httpStatus(response)
+	if status == 0 {
+		status = http.StatusOK
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(httpBody(response))
+}
+
+func httpStatus(response any) int {
+	return 0
+}
+
+func httpBody(response any) any {
+	switch typed := response.(type) {
+	case *ViewerSessionResponse:
+		return struct {
+			ViewerSession *domain.ViewerSession `json:"viewer_session"`
+		}{ViewerSession: typed.ViewerSession}
+	case *ViewerTokenResponse:
+		return struct {
+			ViewerToken *domain.ViewerToken `json:"viewer_token"`
+		}{ViewerToken: typed.ViewerToken}
+	default:
+		return response
+	}
+}
+
+func toEncoreError(apiErr *apienv.Error) error {
+	if apiErr == nil {
+		return nil
+	}
+	return errs.B().
+		Code(toEncoreErrorCode(apiErr.Status)).
+		Msg(apiErr.Message).
+		Details(ErrorDetails{Code: apiErr.Code}).
+		Err()
+}
+
+func toEncoreErrorCode(status int) errs.ErrCode {
+	switch status {
+	case http.StatusBadRequest:
+		return errs.InvalidArgument
+	case http.StatusUnauthorized:
+		return errs.Unauthenticated
+	case http.StatusForbidden:
+		return errs.PermissionDenied
+	case http.StatusNotFound:
+		return errs.NotFound
+	case http.StatusConflict:
+		return errs.Aborted
+	case http.StatusServiceUnavailable:
+		return errs.Unavailable
+	default:
+		return errs.Internal
+	}
+}
+
+func metricsSnapshot(recorder *observability.Recorder) MetricsSnapshot {
+	metrics := recorder.Metrics()
+	return MetricsSnapshot{
+		HTTPRequests:       metrics.HTTPRequests.Load(),
+		HTTPErrors:         metrics.HTTPErrors.Load(),
+		ViewerCreated:      metrics.ViewerCreated.Load(),
+		ViewerClosed:       metrics.ViewerClosed.Load(),
+		PodCreated:         metrics.PodCreated.Load(),
+		PodReused:          metrics.PodReused.Load(),
+		PodDeleted:         metrics.PodDeleted.Load(),
+		AuthCreated:        metrics.AuthCreated.Load(),
+		AuthConsumed:       metrics.AuthConsumed.Load(),
+		AuthDenied:         metrics.AuthDenied.Load(),
+		FileBrowserLogins:  metrics.FileBrowserLogins.Load(),
+		FileBrowserErrors:  metrics.FileBrowserErrors.Load(),
+		KubernetesRequests: metrics.KubernetesRequests.Load(),
+		KubernetesErrors:   metrics.KubernetesErrors.Load(),
+		CleanupDeleted:     metrics.CleanupDeleted.Load(),
+	}
 }
 
 func (h *Handler) authorizeViewerSessionPVC(
@@ -327,26 +724,6 @@ func (h *Handler) authorizePodSessionPVC(
 		return apienv.NewError(403, apienv.CodePVCAccessDenied, "PVC access denied", nil)
 	}
 	return nil
-}
-
-func (h *Handler) withObserved(
-	w http.ResponseWriter,
-	req *http.Request,
-	route string,
-	handle func(http.ResponseWriter, *http.Request) (int, error),
-) {
-	start := time.Now()
-	status, err := handle(w, req)
-	if err != nil {
-		apiErr := apienv.FromError(err)
-		if status == 0 {
-			status = apiErr.Status
-		}
-		apienv.WriteError(w, apiErr)
-	}
-	if h.recorder != nil {
-		h.recorder.ObserveHTTP(req.Context(), req.Method, route, status, time.Since(start))
-	}
 }
 
 func pathID(path string, prefix string) string {

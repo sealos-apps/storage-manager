@@ -227,7 +227,7 @@ func TestHandlerVerifyHookReturnsAllowEnvelope(t *testing.T) {
 	}
 }
 
-func TestHandlerMetricsReturnsPrometheusText(t *testing.T) {
+func TestHandlerMetricsReturnsSchemaEnvelope(t *testing.T) {
 	t.Parallel()
 
 	recorder := observability.New(testObservability(), nil)
@@ -247,8 +247,39 @@ func TestHandlerMetricsReturnsPrometheusText(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", response.Code, response.Body.String())
 	}
-	if !strings.Contains(response.Body.String(), "viewer_sessions_created_total 1") {
+	var body MetricsResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if body.Metrics.ViewerCreated != 1 {
 		t.Fatalf("metrics = %s", response.Body.String())
+	}
+}
+
+func TestHandlerListPVCsDataReturnsDocumentedResponse(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(
+		&fakeViewerService{
+			pvcs: []domain.PVC{{Namespace: "ns", Name: "data", MountedPods: []domain.MountedPod{}}},
+		},
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.New(testObservability(), nil),
+		allowAuthorizer{},
+	)
+
+	response, err := handler.ListPVCsData(t.Context(), &ListPVCsRequest{
+		Authorization: url.QueryEscape(testKubeconfig),
+		Namespace:     "ns",
+	})
+
+	if err != nil {
+		t.Fatalf("ListPVCsData() error = %v", err)
+	}
+	if len(response.PVCList.Items) != 1 {
+		t.Fatalf("response = %+v", response)
 	}
 }
 

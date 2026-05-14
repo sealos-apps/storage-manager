@@ -2,7 +2,6 @@ package viewer
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/nixieboluo/sealos-storage-manager/internal/authn"
 	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
@@ -11,54 +10,84 @@ import (
 
 var defaultHandler *Handler
 
-//encore:api public raw method=GET path=/api/pvcs
-func ListPVCs(w http.ResponseWriter, req *http.Request) {
-	runtimeHandler().ListPVCs(w, req)
+//encore:api public method=GET path=/api/pvcs
+func ListPVCs(ctx context.Context, req *ListPVCsRequest) (*ListPVCsResponse, error) {
+	return runtimeHandler().ListPVCsData(ctx, req)
 }
 
-//encore:api public raw method=POST path=/api/viewer-sessions
-func CreateViewerSession(w http.ResponseWriter, req *http.Request) {
-	runtimeHandler().CreateViewerSession(w, req)
+//encore:api public method=POST path=/api/viewer-sessions
+func CreateViewerSession(
+	ctx context.Context,
+	req *CreateViewerSessionRequest,
+) (*ViewerSessionResponse, error) {
+	return runtimeHandler().CreateViewerSessionData(ctx, req)
 }
 
-//encore:api public raw method=GET path=/api/viewer-sessions/:viewerSessionID
-func GetViewerSession(w http.ResponseWriter, req *http.Request) {
-	runtimeHandler().GetViewerSession(w, req)
+//encore:api public method=GET path=/api/viewer-sessions/:viewerSessionID
+func GetViewerSession(
+	ctx context.Context,
+	viewerSessionID string,
+	req *AuthenticatedRequest,
+) (*ViewerSessionResponse, error) {
+	return runtimeHandler().GetViewerSessionData(ctx, viewerSessionID, req)
 }
 
-//encore:api public raw method=POST path=/api/viewer-sessions/:viewerSessionID/token
-func IssueViewerToken(w http.ResponseWriter, req *http.Request) {
-	runtimeHandler().IssueToken(w, req)
+//encore:api public method=POST path=/api/viewer-sessions/:viewerSessionID/token
+func IssueViewerToken(
+	ctx context.Context,
+	viewerSessionID string,
+	req *AuthenticatedRequest,
+) (*ViewerTokenResponse, error) {
+	return runtimeHandler().IssueTokenData(ctx, viewerSessionID, req)
 }
 
-//encore:api public raw method=POST path=/api/viewer-sessions/:viewerSessionID/heartbeat
-func HeartbeatViewerSession(w http.ResponseWriter, req *http.Request) {
-	runtimeHandler().Heartbeat(w, req)
+//encore:api public method=POST path=/api/viewer-sessions/:viewerSessionID/heartbeat
+func HeartbeatViewerSession(
+	ctx context.Context,
+	viewerSessionID string,
+	req *AuthenticatedRequest,
+) (*HeartbeatResponse, error) {
+	return runtimeHandler().HeartbeatData(ctx, viewerSessionID, req)
 }
 
-//encore:api public raw method=DELETE path=/api/viewer-sessions/:viewerSessionID
-func CloseViewerSession(w http.ResponseWriter, req *http.Request) {
-	runtimeHandler().CloseViewerSession(w, req)
+//encore:api public method=DELETE path=/api/viewer-sessions/:viewerSessionID
+func CloseViewerSession(
+	ctx context.Context,
+	viewerSessionID string,
+	req *AuthenticatedRequest,
+) (*ViewerSessionResponse, error) {
+	return runtimeHandler().CloseViewerSessionData(ctx, viewerSessionID, req)
 }
 
-//encore:api public raw method=DELETE path=/api/pod-sessions/:podSessionID
-func ClosePodSession(w http.ResponseWriter, req *http.Request) {
-	runtimeHandler().ClosePodSession(w, req)
+//encore:api public method=DELETE path=/api/pod-sessions/:podSessionID
+func ClosePodSession(
+	ctx context.Context,
+	podSessionID string,
+	req *AuthenticatedRequest,
+) (*PodSessionResponse, error) {
+	return runtimeHandler().ClosePodSessionData(ctx, podSessionID, req)
 }
 
-//encore:api public raw method=GET path=/api/pod-sessions/:podSessionID
-func GetPodSession(w http.ResponseWriter, req *http.Request) {
-	runtimeHandler().GetPodSession(w, req)
+//encore:api public method=GET path=/api/pod-sessions/:podSessionID
+func GetPodSession(
+	ctx context.Context,
+	podSessionID string,
+	req *AuthenticatedRequest,
+) (*PodSessionResponse, error) {
+	return runtimeHandler().GetPodSessionData(ctx, podSessionID, req)
 }
 
-//encore:api public raw method=POST path=/internal/filebrowser-hook/verify
-func VerifyFileBrowserHook(w http.ResponseWriter, req *http.Request) {
-	runtimeHandler().VerifyFileBrowserHook(w, req)
+//encore:api public method=POST path=/internal/filebrowser-hook/verify
+func VerifyFileBrowserHook(
+	ctx context.Context,
+	req *VerifyFileBrowserHookRequest,
+) (*FileBrowserHookVerificationResponse, error) {
+	return runtimeHandler().VerifyFileBrowserHookData(ctx, req)
 }
 
-//encore:api public raw method=GET path=/metrics
-func Metrics(w http.ResponseWriter, req *http.Request) {
-	runtimeHandler().Metrics(w, req)
+//encore:api public method=GET path=/metrics
+func Metrics(ctx context.Context) (*MetricsResponse, error) {
+	return runtimeHandler().MetricsData(ctx)
 }
 
 type unavailableViewerService struct{}

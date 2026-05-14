@@ -60,6 +60,16 @@ make test-integration CONFIG=config/viewer.yaml
 crashes in its race runtime on macOS arm64, so the default `make verify` gate
 uses `make test` instead.
 
+All public endpoints are typed Encore APIs so OpenAPI/client generation includes
+request and response schemas:
+
+```sh
+encore gen client --lang=openapi --output openapi.json
+```
+
+`GET /metrics` returns a JSON metrics snapshot rather than Prometheus text so it
+can stay documented as a typed endpoint.
+
 ## Encore MCP
 
 Encore MCP is intentionally not configured for offline development because it
