@@ -35,38 +35,41 @@ by git.
 
 ## Local Dev Server
 
-The Encore CLI may try to fetch development secrets from Encore Cloud during
-`encore run`. For self-hosted development without Encore Cloud, use the local
-dev server instead:
+This repository is configured for self-hosted Encore development without
+Encore Cloud. Keep `encore.app` unlinked (`"id": ""`) so Encore CLI commands
+use the local app identity and do not fetch development secrets from Encore
+Cloud.
 
 ```sh
 make dev
 ```
 
-It serves the same REST handlers on `0.0.0.0:4000`, reads all business
-configuration from `config/viewer.yaml`, and runs scheduled cleanup from the
-configured purge interval.
+`make dev` wraps `encore run`, serves on `0.0.0.0:4000`, and reads business
+configuration from `config/viewer.yaml`.
+
+Use the Makefile targets for local validation so tests run through Encore's
+code generation and runtime setup:
+
+```sh
+make test
+make test-race
+make test-integration CONFIG=config/viewer.yaml
+```
+
+`make test-race` also wraps `encore test -race`; Encore CLI v1.57.4 currently
+crashes in its race runtime on macOS arm64, so the default `make verify` gate
+uses `make test` instead.
 
 ## Encore MCP
 
-The Encore MCP server should point at the same app id as `encore.app`.
-
-```sh
-encore mcp run --app=sealos-storage-manager-viewer
-```
-
-For a long-running local MCP server:
-
-```sh
-encore mcp start --app=sealos-storage-manager-viewer
-```
-
-No kubeconfig, token, or cluster secret belongs in MCP configuration.
+Encore MCP is intentionally not configured for offline development because it
+requires a Cloud app id. Do not put kubeconfig, token, or cluster secrets in MCP
+configuration.
 
 ## Self-hosted Build
 
 ```sh
-encore build docker --config=infra-config.json sealos-storage-manager-viewer:dev
+make build-image IMAGE=sealos-storage-manager-viewer:dev
 ```
 
 Deploy the image with the manifests in `deploy/`, mounting a real `viewer.yaml` through a ConfigMap or Secret.

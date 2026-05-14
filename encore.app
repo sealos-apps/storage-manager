@@ -1,4 +1,4 @@
 {
-  "id": "sealos-storage-manager-viewer",
+  "id": "",
   "lang": "go"
 }

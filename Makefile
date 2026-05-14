@@ -8,7 +8,7 @@ IMAGE ?= sealos-storage-manager-viewer:dev
 .PHONY: dev fmt fmt-check lint vet test test-race test-integration security build-image verify tidy
 
 dev:
-	ENCORERUNTIME_NOPANIC=1 $(GO) run ./cmd/viewer-dev -config $(CONFIG) -listen 0.0.0.0:4000
+	$(ENCORE) run --listen 0.0.0.0:4000 --browser=never
 
 fmt:
 	$(GO) fmt ./...
@@ -23,13 +23,13 @@ vet:
 	$(GO) vet ./...
 
 test:
-	ENCORERUNTIME_NOPANIC=1 $(GO) test ./...
+	$(ENCORE) test ./...
 
 test-race:
-	ENCORERUNTIME_NOPANIC=1 $(GO) test -race ./...
+	$(ENCORE) test -race ./...
 
 test-integration:
-	$(GO) test -tags=integration ./test/integration -config $(CONFIG) -count=1
+	$(ENCORE) test -tags=integration ./test/integration -config $(CONFIG) -count=1
 
 security:
 	$(GOVULNCHECK) ./...
@@ -40,4 +40,4 @@ build-image:
 tidy:
 	$(GO) mod tidy
 
-verify: fmt-check vet test test-race
+verify: fmt-check vet test
