@@ -1,5 +1,5 @@
-import { DashboardShell } from '@/features/dashboard/components/dashboard-shell'
+import { StorageAppShell } from '@/features/viewer/components/storage-app-shell'
 
 export function DashboardPage() {
-	return <DashboardShell />
+	return <StorageAppShell />
 }

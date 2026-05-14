@@ -5,6 +5,7 @@ export default antfu({
 	react: true,
 	ignores: [
 		'dist/**',
+		'src/services/encore/client.ts',
 	],
 	stylistic: {
 		indent: 'tab',

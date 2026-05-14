@@ -19,6 +19,7 @@ export default defineConfig({
 		cssTarget: 'chrome86',
 	},
 	test: {
+		exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
 		environment: 'jsdom',
 		globals: true,
 		setupFiles: ['./src/test/setup.ts'],

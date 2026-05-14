@@ -5,6 +5,7 @@
 	"private": true,
 	"scripts": {
 		"dev": "vite",
+		"e2e": "playwright test",
 		"generate:api": "encore gen client --lang=typescript --output=src/services/encore/client.ts",
 		"build": "tsc -b && vite build",
 		"check:css": "node scripts/check-modern-css.mjs",
@@ -28,9 +29,12 @@
 		"container-query-polyfill": "^1.0.2",
 		"core-js": "^3.49.0",
 		"css-has-pseudo": "^8.0.0",
+		"i18next": "^26.1.0",
 		"lucide-react": "^1.14.0",
+		"radix-ui": "^1.4.3",
 		"react": "^19.2.6",
 		"react-dom": "^19.2.6",
+		"react-i18next": "^17.0.7",
 		"tailwind-merge": "^3.6.0"
 	},
 	"devDependencies": {
@@ -38,6 +42,7 @@
 		"@csstools/postcss-is-pseudo-class": "^6.0.0",
 		"@eslint-react/eslint-plugin": "^5.7.8",
 		"@eslint/js": "^10.0.1",
+		"@playwright/test": "^1.60.0",
 		"@tailwindcss/postcss": "^4.3.0",
 		"@testing-library/jest-dom": "^6.9.1",
 		"@testing-library/react": "^16.3.2",
