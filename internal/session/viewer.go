@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"log/slog"
 	"slices"
 	"time"
 
@@ -48,18 +49,26 @@ func NewViewerService(
 	}
 }
 
-func (s *ViewerService) ListPVCs(ctx context.Context, namespace string) ([]domain.PVC, error) {
+func (s *ViewerService) ListPVCs(ctx context.Context, namespace string) (items []domain.PVC, err error) {
+	ctx, finish := s.recorder.StartSpan(ctx,
+		"viewer.list_pvcs",
+		slog.String("namespace", namespace),
+	)
+	defer func() {
+		finish(err)
+	}()
+
 	pvcs, err := s.kube.ListPVCs(ctx, namespace)
 	if err != nil {
 		return nil, err
 	}
-	items := make([]domain.PVC, 0, len(pvcs))
+	items = make([]domain.PVC, 0, len(pvcs))
 	for _, pvc := range pvcs {
 		accessModes := make([]string, 0, len(pvc.Spec.AccessModes))
 		for _, mode := range pvc.Spec.AccessModes {
 			accessModes = append(accessModes, string(mode))
 		}
-		mountInfo, err := s.pods.MountDetector().DetectPVCMounts(ctx, pvc.Namespace, pvc.Name)
+		mountInfo, err := s.detectPVCMounts(ctx, pvc.Namespace, pvc.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -79,13 +88,26 @@ func (s *ViewerService) ListPVCs(ctx context.Context, namespace string) ([]domai
 			Reason:           reason,
 		})
 	}
+	s.recorder.Logger().LogAttrs(ctx, slog.LevelDebug, "viewer.list_pvcs.result",
+		slog.String("namespace", namespace),
+		slog.Int("pvc_count", len(items)),
+	)
 	return items, nil
 }
 
 func (s *ViewerService) CreateViewerSession(
 	ctx context.Context,
 	input CreateViewerSessionInput,
-) (*domain.ViewerSession, error) {
+) (viewer *domain.ViewerSession, err error) {
+	ctx, finish := s.recorder.StartSpan(ctx,
+		"viewer.create_session",
+		slog.String("namespace", input.Namespace),
+		slog.String("pvc_name", input.PVCName),
+	)
+	defer func() {
+		finish(err)
+	}()
+
 	if !s.namespaceAllowed(input.Namespace) {
 		return nil, apienv.NewError(403, apienv.CodePVCAccessDenied, "Namespace is not allowed", nil)
 	}
@@ -101,7 +123,7 @@ func (s *ViewerService) CreateViewerSession(
 	if !supported {
 		return nil, apienv.NewError(400, apienv.CodeUnsupportedAccessMode, reason, nil)
 	}
-	mountInfo, err := s.pods.MountDetector().DetectPVCMounts(ctx, input.Namespace, input.PVCName)
+	mountInfo, err := s.detectPVCMounts(ctx, input.Namespace, input.PVCName)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +151,7 @@ func (s *ViewerService) CreateViewerSession(
 	if err != nil {
 		return nil, err
 	}
-	viewer := &domain.ViewerSession{
+	viewer = &domain.ViewerSession{
 		ID:              id,
 		PodSessionID:    podSession.ID,
 		UserID:          input.UserID,
@@ -147,10 +169,30 @@ func (s *ViewerService) CreateViewerSession(
 	}
 	s.store.PutViewerSession(viewer)
 	s.recorder.Metrics().ViewerCreated.Add(1)
+	s.recorder.Logger().LogAttrs(ctx, slog.LevelInfo, "viewer.session_created",
+		slog.String("viewer_session_id", viewer.ID),
+		slog.String("pod_session_id", podSession.ID),
+		slog.String("namespace", input.Namespace),
+		slog.String("pvc_name", pvc.Name),
+		slog.String("mode", viewerMode),
+		slog.String("status", viewer.Status),
+	)
 	return viewer, nil
 }
 
-func (s *ViewerService) GetViewerSession(ctx context.Context, id string, userID string) (*domain.ViewerSession, error) {
+func (s *ViewerService) GetViewerSession(
+	ctx context.Context,
+	id string,
+	userID string,
+) (viewer *domain.ViewerSession, err error) {
+	ctx, finish := s.recorder.StartSpan(ctx,
+		"viewer.get_session",
+		slog.String("viewer_session_id", id),
+	)
+	defer func() {
+		finish(err)
+	}()
+
 	now := s.now()
 	viewer, ok := s.store.GetViewerSession(id, now)
 	if !ok {
@@ -178,7 +220,19 @@ func (s *ViewerService) GetViewerSession(ctx context.Context, id string, userID 
 	return viewer, nil
 }
 
-func (s *ViewerService) IssueToken(ctx context.Context, id string, userID string) (*domain.ViewerToken, error) {
+func (s *ViewerService) IssueToken(
+	ctx context.Context,
+	id string,
+	userID string,
+) (token *domain.ViewerToken, err error) {
+	ctx, finish := s.recorder.StartSpan(ctx,
+		"viewer.issue_token",
+		slog.String("viewer_session_id", id),
+	)
+	defer func() {
+		finish(err)
+	}()
+
 	now := s.now()
 	viewer, ok := s.store.GetViewerSession(id, now)
 	if !ok {
@@ -255,6 +309,36 @@ func (s *ViewerService) GetPodSession(id string) (*domain.PodSession, error) {
 		return nil, apienv.NewError(404, apienv.CodeViewerSessionNotFound, "Pod session no longer exists", nil)
 	}
 	return pod, nil
+}
+
+func (s *ViewerService) detectPVCMounts(
+	ctx context.Context,
+	namespace string,
+	pvcName string,
+) (mountInfo *domain.PVCMountInfo, err error) {
+	ctx, finish := s.recorder.StartSpan(ctx,
+		"pvc.detect_mounts",
+		slog.String("namespace", namespace),
+		slog.String("pvc_name", pvcName),
+	)
+	defer func() {
+		finish(err)
+	}()
+
+	mountInfo, err = s.pods.MountDetector().DetectPVCMounts(ctx, namespace, pvcName)
+	if err != nil {
+		return nil, err
+	}
+	s.recorder.Logger().LogAttrs(ctx, slog.LevelDebug, "pvc.mounts_detected",
+		slog.String("namespace", namespace),
+		slog.String("pvc_name", pvcName),
+		slog.Bool("mounted", mountInfo.Mounted),
+		slog.Bool("conflict", mountInfo.Conflict),
+		slog.Int("mounted_pod_count", len(mountInfo.MountedPods)),
+		slog.Int("node_count", len(mountInfo.Nodes)),
+		slog.String("reason", mountInfo.Reason),
+	)
+	return mountInfo, nil
 }
 
 func (s *ViewerService) namespaceAllowed(namespace string) bool {

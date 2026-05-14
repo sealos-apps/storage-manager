@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -145,7 +146,7 @@ func NewHandler(
 	authz authorizer,
 ) *Handler {
 	if authz == nil {
-		authz = newKubernetesAuthorizer(managementClient)
+		authz = newKubernetesAuthorizer(managementClient, recorder)
 	}
 	return &Handler{
 		viewers:  viewers,
@@ -560,6 +561,13 @@ func (h *Handler) verifyFileBrowserHook(
 	req *VerifyFileBrowserHookRequest,
 ) (*FileBrowserHookVerificationResponse, *apienv.Error) {
 	start := time.Now()
+	ctx, finish := h.recorder.StartSpan(ctx,
+		"filebrowser.verify_hook",
+		slog.String("pod_session_id", req.PodSessionID),
+		slog.String("viewer_pod_name", req.ViewerPodName),
+	)
+	defer finish(nil)
+
 	result := h.auth.VerifyHook(session.HookVerifyInput{
 		HookClientToken: strings.TrimPrefix(req.Authorization, "Bearer "),
 		PodSessionID:    req.PodSessionID,
@@ -568,14 +576,17 @@ func (h *Handler) verifyFileBrowserHook(
 		AuthRequestID:   req.AuthRequestID,
 		PasswordHash:    req.PasswordHash,
 	})
+	h.recorder.Logger().LogAttrs(ctx, slog.LevelInfo, "filebrowser.hook_verified",
+		slog.String("pod_session_id", req.PodSessionID),
+		slog.Bool("allowed", result.Allow),
+		slog.String("reason", result.Reason),
+	)
 	h.observe(ctx, http.MethodPost, "/internal/filebrowser-hook/verify", http.StatusOK, start)
 	return &FileBrowserHookVerificationResponse{FileBrowserHookVerification: result}, nil
 }
 
 func (h *Handler) observe(ctx context.Context, method string, route string, status int, start time.Time) {
-	if h.recorder != nil {
-		h.recorder.ObserveHTTP(ctx, method, route, status, time.Since(start))
-	}
+	h.recorder.ObserveHTTP(ctx, method, route, status, time.Since(start))
 }
 
 func authenticateRequest(req interface{ authorizationHeader() string }) (*authn.Principal, *apienv.Error) {
@@ -734,17 +745,33 @@ var errRuntimeUnavailable = errors.New("viewer runtime is not configured")
 
 type kubernetesAuthorizer struct {
 	management kubernetes.Interface
+	recorder   *observability.Recorder
 }
 
-func newKubernetesAuthorizer(management kubernetes.Interface) kubernetesAuthorizer {
-	return kubernetesAuthorizer{management: management}
+func newKubernetesAuthorizer(
+	management kubernetes.Interface,
+	recorder *observability.Recorder,
+) kubernetesAuthorizer {
+	return kubernetesAuthorizer{
+		management: management,
+		recorder:   recorder,
+	}
 }
 
 func (a kubernetesAuthorizer) CanListPVCs(
 	ctx context.Context,
 	principal *authn.Principal,
 	namespace string,
-) error {
+) (err error) {
+	ctx, finish := a.recorder.StartSpan(ctx,
+		"kubernetes.authorize.list_pvcs",
+		slog.String("namespace", namespace),
+		slog.Bool("management_client", a.management != nil),
+	)
+	defer func() {
+		finish(err)
+	}()
+
 	clientset, err := kubernetesClientsetForConfig(principal.ClientConfig)
 	if err != nil {
 		return err
@@ -754,8 +781,10 @@ func (a kubernetesAuthorizer) CanListPVCs(
 			return err
 		}
 	}
-	_, err = clientset.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{Limit: 1})
-	return err
+	return a.observeKubernetes(ctx, "list", "persistentvolumeclaims", namespace, "", func(ctx context.Context) error {
+		_, err := clientset.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{Limit: 1})
+		return err
+	})
 }
 
 func (a kubernetesAuthorizer) CanGetPVC(
@@ -763,23 +792,49 @@ func (a kubernetesAuthorizer) CanGetPVC(
 	principal *authn.Principal,
 	namespace string,
 	name string,
-) error {
+) (err error) {
+	ctx, finish := a.recorder.StartSpan(ctx,
+		"kubernetes.authorize.get_pvc",
+		slog.String("namespace", namespace),
+		slog.String("pvc_name", name),
+		slog.Bool("management_client", a.management != nil),
+	)
+	defer func() {
+		finish(err)
+	}()
+
 	clientset, err := kubernetesClientsetForConfig(principal.ClientConfig)
 	if err != nil {
 		return err
 	}
-	userPVC, err := clientset.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-	if a.management == nil {
+	var userPVCUID string
+	err = a.observeKubernetes(ctx, "get", "persistentvolumeclaim", namespace, name, func(ctx context.Context) error {
+		userPVC, err := clientset.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		userPVCUID = string(userPVC.UID)
 		return nil
+	})
+	if a.management == nil {
+		return err
 	}
-	managedPVC, err := a.management.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
-	if userPVC.UID != managedPVC.UID {
+	var managedPVCUID string
+	err = a.observeKubernetes(ctx, "get", "persistentvolumeclaim", namespace, name, func(ctx context.Context) error {
+		managedPVC, err := a.management.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		managedPVCUID = string(managedPVC.UID)
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if userPVCUID != managedPVCUID {
 		return errors.New("user kubeconfig and management kubeconfig resolved different PVCs")
 	}
 	return nil
@@ -790,16 +845,59 @@ func (a kubernetesAuthorizer) sameNamespace(
 	userClient kubernetes.Interface,
 	namespace string,
 ) error {
-	userNamespace, err := userClient.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
+	var userNamespaceUID string
+	err := a.observeKubernetes(ctx, "get", "namespace", namespace, "", func(ctx context.Context) error {
+		userNamespace, err := userClient.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		userNamespaceUID = string(userNamespace.UID)
+		return nil
+	})
 	if err != nil {
 		return err
 	}
-	managedNamespace, err := a.management.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
+	var managedNamespaceUID string
+	err = a.observeKubernetes(ctx, "get", "namespace", namespace, "", func(ctx context.Context) error {
+		managedNamespace, err := a.management.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		managedNamespaceUID = string(managedNamespace.UID)
+		return nil
+	})
 	if err != nil {
 		return err
 	}
-	if userNamespace.UID != managedNamespace.UID {
+	if userNamespaceUID != managedNamespaceUID {
 		return errors.New("user kubeconfig and management kubeconfig resolved different namespaces")
 	}
 	return nil
+}
+
+func (a kubernetesAuthorizer) observeKubernetes(
+	ctx context.Context,
+	operation string,
+	resource string,
+	namespace string,
+	name string,
+	call func(context.Context) error,
+) (err error) {
+	a.recorder.Metrics().KubernetesRequests.Add(1)
+	attrs := []slog.Attr{
+		slog.String("operation", operation),
+		slog.String("resource", resource),
+		slog.String("namespace", namespace),
+	}
+	if name != "" {
+		attrs = append(attrs, slog.String("name", name))
+	}
+	ctx, finish := a.recorder.StartSpan(ctx, "kubernetes."+operation, attrs...)
+	defer func() {
+		if err != nil {
+			a.recorder.Metrics().KubernetesErrors.Add(1)
+		}
+		finish(err)
+	}()
+	return call(ctx)
 }

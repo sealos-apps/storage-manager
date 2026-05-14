@@ -61,7 +61,14 @@ func runtimeHandler() *Handler {
 	if defaultHandler != nil {
 		return defaultHandler
 	}
-	return NewHandler(unavailableViewerService{}, unavailablePodService{}, unavailableAuthService{}, nil, nil, denyAuthorizer{})
+	return NewHandler(
+		unavailableViewerService{},
+		unavailablePodService{},
+		unavailableAuthService{},
+		nil,
+		observability.New(config.Default().Observability, nil),
+		denyAuthorizer{},
+	)
 }
 
 func newRuntimeFromConfig(cfg config.Config) (*Runtime, error) {
@@ -75,7 +82,7 @@ func newRuntimeFromConfig(cfg config.Config) (*Runtime, error) {
 	}
 	recorder := observability.New(cfg.Observability, os.Stdout)
 	store := state.New(cfg.Cache)
-	kubeClient := kube.New(clientset)
+	kubeClient := kube.WithObservability(kube.New(clientset), recorder)
 	pods := session.NewPodService(cfg, store, kubeClient, recorder)
 	auth := session.NewAuthService(
 		cfg,

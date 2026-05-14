@@ -292,7 +292,10 @@ func TestKubernetesAuthorizerRequiresSameNamespaceUID(t *testing.T) {
 		t.Fatalf("PrincipalFromAuthorization() error = %v", err)
 	}
 	userClient := fake.NewSimpleClientset(namespaceWithUID("ns", "user-uid"))
-	authorizer := newKubernetesAuthorizer(fake.NewSimpleClientset(namespaceWithUID("ns", "managed-uid")))
+	authorizer := newKubernetesAuthorizer(
+		fake.NewSimpleClientset(namespaceWithUID("ns", "managed-uid")),
+		observability.New(testObservability(), nil),
+	)
 	newClientset := kubernetesClientsetForConfig
 	kubernetesClientsetForConfig = func(_ *rest.Config) (kubernetes.Interface, error) {
 		return userClient, nil
@@ -315,7 +318,10 @@ func TestKubernetesAuthorizerRequiresSamePVCUID(t *testing.T) {
 		t.Fatalf("PrincipalFromAuthorization() error = %v", err)
 	}
 	userClient := fake.NewSimpleClientset(pvcWithUID("ns", "data", "user-uid"))
-	authorizer := newKubernetesAuthorizer(fake.NewSimpleClientset(pvcWithUID("ns", "data", "managed-uid")))
+	authorizer := newKubernetesAuthorizer(
+		fake.NewSimpleClientset(pvcWithUID("ns", "data", "managed-uid")),
+		observability.New(testObservability(), nil),
+	)
 	newClientset := kubernetesClientsetForConfig
 	kubernetesClientsetForConfig = func(_ *rest.Config) (kubernetes.Interface, error) {
 		return userClient, nil

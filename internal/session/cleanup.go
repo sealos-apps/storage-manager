@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/nixieboluo/sealos-storage-manager/internal/config"
@@ -32,21 +33,33 @@ func NewCleanupService(
 	}
 }
 
-func (s *CleanupService) RunOnce(ctx context.Context) error {
+func (s *CleanupService) RunOnce(ctx context.Context) (err error) {
+	ctx, finish := s.recorder.StartSpan(ctx, "cleanup.run_once")
+	var idlePodsDeleted, expiredViewerSessions int
+	defer func() {
+		s.recorder.Logger().LogAttrs(ctx, slog.LevelDebug, "cleanup.run_once.result",
+			slog.Int("idle_pods_deleted", idlePodsDeleted),
+			slog.Int("expired_viewer_sessions", expiredViewerSessions),
+		)
+		finish(err)
+	}()
+
 	now := s.now()
-	if err := s.cleanupIdlePods(ctx, now); err != nil {
+	idlePodsDeleted, err = s.cleanupIdlePods(ctx, now)
+	if err != nil {
 		return err
 	}
 	expired := s.store.PurgeExpired(now)
 	for _, item := range expired {
 		if item.Kind == "viewer_session" {
 			s.recorder.Metrics().ViewerClosed.Add(1)
+			expiredViewerSessions++
 		}
 	}
 	return nil
 }
 
-func (s *CleanupService) cleanupIdlePods(ctx context.Context, now time.Time) error {
+func (s *CleanupService) cleanupIdlePods(ctx context.Context, now time.Time) (deleted int, err error) {
 	for _, podSession := range s.store.ListExpiredPodSessions(now) {
 		if len(s.store.ListViewerSessionsByPod(podSession.ID, now)) > 0 {
 			podSession.ExpiresAt = now.Add(s.cfg.Sessions.PodKeepaliveGrace)
@@ -56,9 +69,10 @@ func (s *CleanupService) cleanupIdlePods(ctx context.Context, now time.Time) err
 			continue
 		}
 		if _, err := s.pods.ClosePodSession(ctx, podSession.ID); err != nil {
-			return err
+			return deleted, err
 		}
 		s.recorder.Metrics().CleanupDeleted.Add(1)
+		deleted++
 	}
-	return nil
+	return deleted, nil
 }

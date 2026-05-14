@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
 	"text/template"
@@ -73,11 +74,29 @@ func (s *PodService) MountDetector() *kube.PVCMountDetector {
 func (s *PodService) EnsurePodSession(
 	ctx context.Context,
 	input EnsurePodSessionInput,
-) (*domain.PodSession, error) {
+) (podSession *domain.PodSession, err error) {
+	ctx, finish := s.recorder.StartSpan(ctx,
+		"pod.ensure_session",
+		slog.String("namespace", input.Namespace),
+		slog.String("pvc_name", input.PVCName),
+		slog.String("access_mode", input.AccessMode),
+		slog.String("mode", input.Mode),
+	)
+	defer func() {
+		finish(err)
+	}()
+
 	now := s.now()
 	if session, ok := s.store.FindPodSessionByPVC(input.Namespace, input.PVCUID, now); ok {
 		if session.Status != domain.PodStatusTerminated && now.Before(session.ExpiresAt) {
 			s.recorder.Metrics().PodReused.Add(1)
+			s.recorder.Logger().LogAttrs(ctx, slog.LevelDebug, "pod.session_reused",
+				slog.String("pod_session_id", session.ID),
+				slog.String("namespace", session.Namespace),
+				slog.String("pvc_name", session.PVCName),
+				slog.String("status", session.Status),
+				slog.String("source", "state"),
+			)
 			return session, nil
 		}
 	}
@@ -90,6 +109,13 @@ func (s *PodService) EnsurePodSession(
 		session := s.rebuildPodSession(existing, input, now)
 		s.store.PutPodSession(session)
 		s.recorder.Metrics().PodReused.Add(1)
+		s.recorder.Logger().LogAttrs(ctx, slog.LevelInfo, "pod.session_rebuilt",
+			slog.String("pod_session_id", session.ID),
+			slog.String("namespace", session.Namespace),
+			slog.String("pod_name", session.PodName),
+			slog.String("pvc_name", session.PVCName),
+			slog.String("status", session.Status),
+		)
 		return session, nil
 	}
 
@@ -102,7 +128,7 @@ func (s *PodService) EnsurePodSession(
 	if err != nil {
 		return nil, err
 	}
-	podSession := &domain.PodSession{
+	podSession = &domain.PodSession{
 		ID:           id,
 		Namespace:    input.Namespace,
 		PVCName:      input.PVCName,
@@ -147,6 +173,13 @@ func (s *PodService) EnsurePodSession(
 
 	s.store.PutPodSession(podSession)
 	s.recorder.Metrics().PodCreated.Add(1)
+	s.recorder.Logger().LogAttrs(ctx, slog.LevelInfo, "pod.session_created",
+		slog.String("pod_session_id", podSession.ID),
+		slog.String("namespace", podSession.Namespace),
+		slog.String("pod_name", podSession.PodName),
+		slog.String("pvc_name", podSession.PVCName),
+		slog.String("mode", podSession.Mode),
+	)
 	return podSession, nil
 }
 
@@ -167,7 +200,20 @@ func (s *PodService) buildHookConfigMap(
 	}
 }
 
-func (s *PodService) SyncPodStatus(ctx context.Context, podSession *domain.PodSession) (*domain.PodSession, error) {
+func (s *PodService) SyncPodStatus(
+	ctx context.Context,
+	podSession *domain.PodSession,
+) (synced *domain.PodSession, err error) {
+	ctx, finish := s.recorder.StartSpan(ctx,
+		"pod.sync_status",
+		slog.String("pod_session_id", podSession.ID),
+		slog.String("namespace", podSession.Namespace),
+		slog.String("pod_name", podSession.PodName),
+	)
+	defer func() {
+		finish(err)
+	}()
+
 	pod, err := s.client.GetPod(ctx, podSession.Namespace, podSession.PodName)
 	if err != nil {
 		return nil, err
@@ -195,6 +241,14 @@ func (s *PodService) SyncPodStatus(ctx context.Context, podSession *domain.PodSe
 		updated.Status = domain.PodStatusCreating
 	}
 	s.store.PutPodSession(&updated)
+	s.recorder.Logger().LogAttrs(ctx, slog.LevelDebug, "pod.status_synced",
+		slog.String("pod_session_id", updated.ID),
+		slog.String("namespace", updated.Namespace),
+		slog.String("pod_name", updated.PodName),
+		slog.String("status", updated.Status),
+		slog.String("node_name", updated.NodeName),
+		slog.String("reason", updated.Reason),
+	)
 	return &updated, nil
 }
 
@@ -217,7 +271,18 @@ func containerFailureReason(pod *corev1.Pod) string {
 	return ""
 }
 
-func (s *PodService) ClosePodSession(ctx context.Context, podSessionID string) (*domain.PodSession, error) {
+func (s *PodService) ClosePodSession(
+	ctx context.Context,
+	podSessionID string,
+) (closed *domain.PodSession, err error) {
+	ctx, finish := s.recorder.StartSpan(ctx,
+		"pod.close_session",
+		slog.String("pod_session_id", podSessionID),
+	)
+	defer func() {
+		finish(err)
+	}()
+
 	now := s.now()
 	podSession, ok := s.store.GetPodSessionIncludingExpired(podSessionID)
 	if !ok {
@@ -235,16 +300,37 @@ func (s *PodService) ClosePodSession(ctx context.Context, podSessionID string) (
 	podSession.UpdatedAt = now
 	s.store.DeletePodSession(podSessionID)
 	s.recorder.Metrics().PodDeleted.Add(1)
+	s.recorder.Logger().LogAttrs(ctx, slog.LevelInfo, "pod.session_closed",
+		slog.String("pod_session_id", podSession.ID),
+		slog.String("namespace", podSession.Namespace),
+		slog.String("pod_name", podSession.PodName),
+	)
 	return podSession, nil
 }
 
-func (s *PodService) ReconcileViewerPods(ctx context.Context, namespace string) error {
+func (s *PodService) ReconcileViewerPods(ctx context.Context, namespace string) (err error) {
+	ctx, finish := s.recorder.StartSpan(ctx,
+		"pod.reconcile_viewer_pods",
+		slog.String("namespace", namespace),
+	)
+	var scanned, rebuilt, deleted int
+	defer func() {
+		s.recorder.Logger().LogAttrs(ctx, slog.LevelDebug, "pod.reconcile_viewer_pods.result",
+			slog.String("namespace", namespace),
+			slog.Int("scanned", scanned),
+			slog.Int("rebuilt", rebuilt),
+			slog.Int("deleted", deleted),
+		)
+		finish(err)
+	}()
+
 	pods, err := s.client.ListViewerPods(ctx, namespace, map[string]string{labelComponent: componentViewer})
 	if err != nil {
 		return err
 	}
 	now := s.now()
 	for i := range pods {
+		scanned++
 		pod := &pods[i]
 		podSessionID := pod.Labels[labelPodSessionID]
 		if podSessionID == "" {
@@ -265,6 +351,7 @@ func (s *PodService) ReconcileViewerPods(ctx context.Context, namespace string) 
 			}
 			session := s.rebuildPodSession(pod, input, now)
 			s.store.PutPodSession(session)
+			rebuilt++
 			continue
 		}
 		if age > s.cfg.Sessions.OrphanGrace {
@@ -272,6 +359,7 @@ func (s *PodService) ReconcileViewerPods(ctx context.Context, namespace string) 
 				return err
 			}
 			s.recorder.Metrics().CleanupDeleted.Add(1)
+			deleted++
 		}
 	}
 	return nil

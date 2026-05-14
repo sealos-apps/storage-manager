@@ -6,6 +6,8 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
+	"net/url"
 	"time"
 
 	"github.com/nixieboluo/sealos-storage-manager/internal/config"
@@ -55,7 +57,16 @@ func (s *AuthService) IssueToken(
 	ctx context.Context,
 	viewer *domain.ViewerSession,
 	pod *domain.PodSession,
-) (*domain.ViewerToken, error) {
+) (viewerToken *domain.ViewerToken, err error) {
+	ctx, finish := s.recorder.StartSpan(ctx,
+		"auth.issue_token",
+		slog.String("viewer_session_id", viewer.ID),
+		slog.String("pod_session_id", pod.ID),
+	)
+	defer func() {
+		finish(err)
+	}()
+
 	authID, err := newID("ar")
 	if err != nil {
 		return nil, err
@@ -78,7 +89,14 @@ func (s *AuthService) IssueToken(
 	s.recorder.Metrics().AuthCreated.Add(1)
 
 	password := authID + "." + secret
-	token, err := s.login.Login(ctx, pod.ViewerURL, viewer.ID, password)
+	loginCtx, finishLogin := s.recorder.StartSpan(ctx,
+		"filebrowser.login",
+		slog.String("viewer_session_id", viewer.ID),
+		slog.String("pod_session_id", pod.ID),
+		slog.String("viewer_host", viewerHost(pod.ViewerURL)),
+	)
+	token, err := s.login.Login(loginCtx, pod.ViewerURL, viewer.ID, password)
+	finishLogin(err)
 	if err != nil {
 		s.recorder.Metrics().FileBrowserErrors.Add(1)
 		return nil, fmt.Errorf("issuing filebrowser token: %w", err)
@@ -94,6 +112,11 @@ func (s *AuthService) IssueToken(
 		IssuedAt:        now,
 		ExpiresAt:       expiresAt,
 	})
+	s.recorder.Logger().LogAttrs(ctx, slog.LevelInfo, "viewer.token_issued",
+		slog.String("viewer_session_id", viewer.ID),
+		slog.String("pod_session_id", pod.ID),
+		slog.Time("expires_at", expiresAt),
+	)
 	return &domain.ViewerToken{
 		ViewerSessionID: viewer.ID,
 		PodSessionID:    pod.ID,
@@ -174,4 +197,12 @@ func randomSecret() (string, error) {
 		return "", fmt.Errorf("generating auth secret: %w", err)
 	}
 	return hex.EncodeToString(raw[:]), nil
+}
+
+func viewerHost(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Host == "" {
+		return ""
+	}
+	return parsed.Host
 }
