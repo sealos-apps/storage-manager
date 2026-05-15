@@ -12,6 +12,7 @@ const unsupportedPatterns = [
 	/:has\(/,
 	/:is\(/,
 	/:where\(/,
+	/:not\(#\\#\)/,
 	/var\([^)]*,\)/,
 ]
 

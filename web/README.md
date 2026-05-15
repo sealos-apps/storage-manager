@@ -80,9 +80,10 @@ new CSS that cannot be fully polyfilled, including `field-sizing`,
 `@starting-style`, `transition-behavior: allow-discrete`, `text-wrap: balance`,
 and `scrollbar-gutter`.
 
-The `:where()` fallback is intentionally conservative: it is expanded for
-Chrome 86 compatibility, but its zero-specificity semantics are not perfectly
-preserved. Keep shadcn/Tailwind overrides simple and verify visual regressions
+Tailwind cascade layers are flattened in generated order for Chrome 86
+compatibility. Do not re-enable the generic cascade-layers polyfill: it models
+layer precedence by adding large `:not(#\#)` specificity shims to nearly every
+selector. Keep shadcn/Tailwind overrides simple and verify visual regressions
 when adding complex selectors.
 
 ## Structure

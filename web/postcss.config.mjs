@@ -121,6 +121,26 @@ function fallbackGradientColorSpaces() {
 
 fallbackGradientColorSpaces.postcss = true
 
+function flattenCascadeLayers() {
+	return {
+		postcssPlugin: 'flatten-cascade-layers',
+		AtRule(atRule) {
+			if (atRule.name.toLowerCase() !== 'layer') {
+				return
+			}
+
+			if (atRule.nodes?.length) {
+				atRule.replaceWith(...atRule.nodes)
+				return
+			}
+
+			atRule.remove()
+		},
+	}
+}
+
+flattenCascadeLayers.postcss = true
+
 function normalizeWherePseudoClasses() {
 	return {
 		postcssPlugin: 'normalize-where-pseudo-classes',
@@ -144,13 +164,14 @@ export default {
 		fixEmptyCssVariableFallbacks(),
 		resolveRootVariablesInColorMix(),
 		fallbackGradientColorSpaces(),
+		flattenCascadeLayers(),
 		postcssPresetEnv({
 			stage: 2,
 			browsers: 'Chrome >= 86',
 			preserve: false,
 			enableClientSidePolyfills: true,
 			features: {
-				'cascade-layers': true,
+				'cascade-layers': false,
 				'color-mix': true,
 				'color-mix-variadic-function-arguments': true,
 				'has-pseudo-class': { preserve: false },
