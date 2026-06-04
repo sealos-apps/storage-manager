@@ -8,6 +8,7 @@ import (
 	"github.com/nixieboluo/sealos-storage-manager/internal/config"
 	"github.com/nixieboluo/sealos-storage-manager/internal/observability"
 	"github.com/nixieboluo/sealos-storage-manager/internal/state"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type CleanupService struct {
@@ -35,16 +36,23 @@ func NewCleanupService(
 
 func (s *CleanupService) RunOnce(ctx context.Context) (err error) {
 	ctx, finish := s.recorder.TraceOperation(ctx, "cleanup.run_once")
-	var idlePodsDeleted, expiredViewerSessions int
+	var idlePodsDeleted, expiredViewerSessions, reconciledNamespaces int
 	defer func() {
 		s.recorder.Logger().LogAttrs(ctx, slog.LevelDebug, "cleanup.run_once.result",
 			slog.Int("idle_pods_deleted", idlePodsDeleted),
 			slog.Int("expired_viewer_sessions", expiredViewerSessions),
+			slog.Int("reconciled_namespaces", reconciledNamespaces),
 		)
 		finish(err)
 	}()
 
 	now := s.now()
+	for _, namespace := range s.reconcileNamespaces() {
+		if err := s.pods.ReconcileViewerPods(ctx, namespace); err != nil {
+			return err
+		}
+		reconciledNamespaces++
+	}
 	idlePodsDeleted, err = s.cleanupIdlePods(ctx, now)
 	if err != nil {
 		return err
@@ -59,13 +67,16 @@ func (s *CleanupService) RunOnce(ctx context.Context) (err error) {
 	return nil
 }
 
+func (s *CleanupService) reconcileNamespaces() []string {
+	return []string{metav1.NamespaceAll}
+}
+
 func (s *CleanupService) cleanupIdlePods(ctx context.Context, now time.Time) (deleted int, err error) {
 	for _, podSession := range s.store.ListExpiredPodSessions(now) {
 		if len(s.store.ListViewerSessionsByPod(podSession.ID, now)) > 0 {
-			podSession.ExpiresAt = now.Add(s.cfg.Sessions.PodKeepaliveGrace)
-			podSession.LastActiveAt = now
-			podSession.UpdatedAt = now
-			s.store.PutPodSession(podSession)
+			if _, err := s.pods.RefreshPodSessionKeepalive(ctx, podSession); err != nil {
+				return deleted, err
+			}
 			continue
 		}
 		if _, err := s.pods.ClosePodSession(ctx, podSession.ID); err != nil {

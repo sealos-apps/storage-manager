@@ -167,7 +167,7 @@ func (unavailableViewerService) IssueToken(_ context.Context, _ string, _ string
 	return nil, errRuntimeUnavailable
 }
 
-func (unavailableViewerService) HeartbeatForUser(_ string, _ string) (*domain.Heartbeat, error) {
+func (unavailableViewerService) HeartbeatForUser(_ context.Context, _ string, _ string) (*domain.Heartbeat, error) {
 	return nil, errRuntimeUnavailable
 }
 

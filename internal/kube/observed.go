@@ -146,6 +146,21 @@ func (c observedClient) CreatePod(ctx context.Context, pod *corev1.Pod) (*corev1
 	return created, err
 }
 
+func (c observedClient) PatchPodAnnotations(
+	ctx context.Context,
+	namespace string,
+	name string,
+	annotations map[string]string,
+) (*corev1.Pod, error) {
+	var patched *corev1.Pod
+	err := c.observe(ctx, "patch", "pod_annotations", namespace, name, func(ctx context.Context) error {
+		var err error
+		patched, err = c.next.PatchPodAnnotations(ctx, namespace, name, annotations)
+		return err
+	})
+	return patched, err
+}
+
 func (c observedClient) DeletePod(ctx context.Context, namespace string, name string) error {
 	return c.observe(ctx, "delete", "pod", namespace, name, func(ctx context.Context) error {
 		return c.next.DeletePod(ctx, namespace, name)

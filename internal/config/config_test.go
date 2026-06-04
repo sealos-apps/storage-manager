@@ -1,11 +1,13 @@
 package config
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -40,6 +42,12 @@ viewer:
     class_name: nginx
     host_template: viewer-{{ .PodSessionID }}.example.test
 `
+
+type deployRule struct {
+	APIGroup  []string `yaml:"apiGroups"`
+	Resources []string `yaml:"resources"`
+	Verbs     []string `yaml:"verbs"`
+}
 
 func TestLoadAppliesDefaultsAndOverrides(t *testing.T) {
 	t.Parallel()
@@ -282,6 +290,66 @@ func TestDeployConfigMapEmbedsValidViewerConfig(t *testing.T) {
 	if _, err := Load([]byte(viewerYAML)); err != nil {
 		t.Fatalf("embedded viewer.yaml error = %v", err)
 	}
+}
+
+func TestDeployServiceAccountAllowsViewerPodCleanup(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	data, err := os.ReadFile(filepath.Join(root, "deploy", "service-account.yaml")) //nolint:gosec // Test reads a committed fixture.
+	if err != nil {
+		t.Fatalf("read deploy service account: %v", err)
+	}
+	decoder := yaml.NewDecoder(strings.NewReader(string(data)))
+	var clusterRole struct {
+		Kind  string       `yaml:"kind"`
+		Rules []deployRule `yaml:"rules"`
+	}
+	for {
+		var document struct {
+			Kind  string       `yaml:"kind"`
+			Rules []deployRule `yaml:"rules"`
+		}
+		if err := decoder.Decode(&document); err != nil {
+			if err != io.EOF {
+				t.Fatalf("parse deploy service account: %v", err)
+			}
+			break
+		}
+		if document.Kind == "ClusterRole" {
+			clusterRole.Kind = document.Kind
+			clusterRole.Rules = document.Rules
+			break
+		}
+	}
+	if clusterRole.Kind != "ClusterRole" {
+		t.Fatal("deploy service account missing ClusterRole")
+	}
+	requireRule(t, clusterRole.Rules, "", "pods", []string{"get", "list", "delete", "patch"})
+	requireRule(t, clusterRole.Rules, "", "services", []string{"get", "list", "delete"})
+	requireRule(t, clusterRole.Rules, "", "configmaps", []string{"get", "list", "delete"})
+	requireRule(t, clusterRole.Rules, "networking.k8s.io", "ingresses", []string{"get", "list", "delete"})
+}
+
+func requireRule(t *testing.T, rules []deployRule, apiGroup string, resource string, verbs []string) {
+	t.Helper()
+
+	for _, rule := range rules {
+		if !containsString(rule.APIGroup, apiGroup) || !containsString(rule.Resources, resource) {
+			continue
+		}
+		for _, verb := range verbs {
+			if !containsString(rule.Verbs, verb) {
+				t.Fatalf("rule for %s/%s missing verb %q: %v", apiGroup, resource, verb, rule.Verbs)
+			}
+		}
+		return
+	}
+	t.Fatalf("missing rule for %s/%s", apiGroup, resource)
+}
+
+func containsString(values []string, want string) bool {
+	return slices.Contains(values, want)
 }
 
 func responseServer(t *testing.T, body string) *httptest.Server {

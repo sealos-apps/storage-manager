@@ -455,11 +455,11 @@ func (s *ViewerService) IssueToken(
 	return s.auth.IssueToken(ctx, viewer, pod)
 }
 
-func (s *ViewerService) Heartbeat(id string) (*domain.Heartbeat, error) {
-	return s.HeartbeatForUser(id, "")
+func (s *ViewerService) Heartbeat(ctx context.Context, id string) (*domain.Heartbeat, error) {
+	return s.HeartbeatForUser(ctx, id, "")
 }
 
-func (s *ViewerService) HeartbeatForUser(id string, userID string) (*domain.Heartbeat, error) {
+func (s *ViewerService) HeartbeatForUser(ctx context.Context, id string, userID string) (*domain.Heartbeat, error) {
 	now := s.now()
 	viewer, ok := s.store.GetViewerSession(id, now)
 	if !ok {
@@ -474,7 +474,11 @@ func (s *ViewerService) HeartbeatForUser(id string, userID string) (*domain.Hear
 	if pod, ok := s.store.GetPodSession(viewer.PodSessionID, now); ok {
 		pod.LastActiveAt = now
 		pod.ExpiresAt = now.Add(s.cfg.Sessions.PodKeepaliveGrace)
-		s.store.PutPodSession(pod)
+		if s.pods == nil {
+			s.store.PutPodSession(pod)
+		} else if _, err := s.pods.RefreshPodSessionKeepalive(ctx, pod); err != nil {
+			return nil, err
+		}
 	}
 	return &domain.Heartbeat{
 		ViewerSessionID: viewer.ID,

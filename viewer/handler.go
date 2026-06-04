@@ -34,7 +34,7 @@ type viewerService interface {
 	CreateViewerSession(ctx context.Context, input session.CreateViewerSessionInput) (*domain.ViewerSession, error)
 	GetViewerSession(ctx context.Context, id string, userID string) (*domain.ViewerSession, error)
 	IssueToken(ctx context.Context, id string, userID string) (*domain.ViewerToken, error)
-	HeartbeatForUser(id string, userID string) (*domain.Heartbeat, error)
+	HeartbeatForUser(ctx context.Context, id string, userID string) (*domain.Heartbeat, error)
 	CloseViewerSessionForUser(id string, userID string) (*domain.ViewerSession, error)
 	GetPodSession(id string) (*domain.PodSession, error)
 }
@@ -730,7 +730,7 @@ func (h *Handler) heartbeat(
 		h.observe(ctx, http.MethodPost, "/api/viewer-sessions/:id/heartbeat", apiErr.Status, start)
 		return nil, apiErr
 	}
-	heartbeat, heartbeatErr := h.viewers.HeartbeatForUser(viewerSessionID, principal.ID)
+	heartbeat, heartbeatErr := h.viewers.HeartbeatForUser(ctx, viewerSessionID, principal.ID)
 	if heartbeatErr != nil {
 		apiErr := apienv.FromError(heartbeatErr)
 		h.observe(ctx, http.MethodPost, "/api/viewer-sessions/:id/heartbeat", apiErr.Status, start)

@@ -11,6 +11,7 @@ import (
 	"github.com/nixieboluo/sealos-storage-manager/internal/observability"
 	"github.com/nixieboluo/sealos-storage-manager/internal/state"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
@@ -54,6 +55,8 @@ func TestEnsurePodSessionCreatesResources(t *testing.T) {
 	if pod.Spec.Containers[0].Image != cfg.Viewer.FileBrowser.Image {
 		t.Fatalf("image = %q", pod.Spec.Containers[0].Image)
 	}
+	assertRuntimeVersionLabel(t, pod.Labels, service.runtimeVersion)
+	assertLifecycleAnnotations(t, pod.Annotations, podSession)
 	if !strings.Contains(pod.Spec.Containers[0].Args[0], "--auth.command=/hooks/filebrowser-auth-hook.sh") {
 		t.Fatalf("filebrowser command did not configure hook auth: %q", pod.Spec.Containers[0].Args[0])
 	}
@@ -74,6 +77,7 @@ func TestEnsurePodSessionCreatesResources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hook configmap was not created: %v", err)
 	}
+	assertRuntimeVersionLabel(t, hookConfigMap.Labels, service.runtimeVersion)
 	assertOwnedByPod(t, hookConfigMap.OwnerReferences, pod)
 	serviceResource, err := clientset.CoreV1().Services("default").Get(
 		t.Context(),
@@ -83,6 +87,7 @@ func TestEnsurePodSessionCreatesResources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("service was not created: %v", err)
 	}
+	assertRuntimeVersionLabel(t, serviceResource.Labels, service.runtimeVersion)
 	assertOwnedByPod(t, serviceResource.OwnerReferences, pod)
 	ingress, err := clientset.NetworkingV1().Ingresses("default").Get(
 		t.Context(),
@@ -92,7 +97,9 @@ func TestEnsurePodSessionCreatesResources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ingress was not created: %v", err)
 	}
+	assertRuntimeVersionLabel(t, ingress.Labels, service.runtimeVersion)
 	assertOwnedByPod(t, ingress.OwnerReferences, pod)
+	assertIngressPaths(t, ingress, []string{"/api/login", "/api/raw", "/api/resources", "/api/tus"})
 	if ingress.Annotations["nginx.ingress.kubernetes.io/enable-cors"] != "true" {
 		t.Fatalf("ingress CORS annotations missing: %#v", ingress.Annotations)
 	}
@@ -108,15 +115,17 @@ func TestEnsurePodSessionReusesExistingViewerPod(t *testing.T) {
 	t.Parallel()
 
 	cfg := testConfig()
+	version := runtimeVersion(cfg)
 	existing := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:         "default",
 			Name:              "viewer-ps_existing",
 			CreationTimestamp: metav1.NewTime(fixedNow()),
 			Labels: map[string]string{
-				labelComponent:    componentViewer,
-				labelPVCUID:       "uid",
-				labelPodSessionID: "ps_existing",
+				labelComponent:      componentViewer,
+				labelPVCUID:         "uid",
+				labelPodSessionID:   "ps_existing",
+				labelRuntimeVersion: version,
 			},
 		},
 		Spec: corev1.PodSpec{NodeName: "node-a"},
@@ -144,6 +153,89 @@ func TestEnsurePodSessionReusesExistingViewerPod(t *testing.T) {
 	}
 	if podSession.ID != "ps_existing" || podSession.Status != domain.PodStatusReady {
 		t.Fatalf("pod session = %#v", podSession)
+	}
+	if podSession.RuntimeVersion != version {
+		t.Fatalf("runtime version = %q, want %q", podSession.RuntimeVersion, version)
+	}
+}
+
+func TestEnsurePodSessionSkipsStoredSessionWithDifferentRuntimeVersion(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	store := state.New(cfg.Cache)
+	store.PutPodSession(&domain.PodSession{
+		ID:             "ps_old",
+		Namespace:      "default",
+		PVCName:        "data",
+		PVCUID:         "uid",
+		PodName:        "viewer-ps-old",
+		ServiceName:    "viewer-ps-old",
+		RuntimeVersion: "old-version",
+		Status:         domain.PodStatusReady,
+		ExpiresAt:      fixedNow().Add(time.Minute),
+	})
+	client := kube.New(fake.NewSimpleClientset())
+	service := NewPodService(cfg, store, client, observability.MustNew(cfg.Observability, nil))
+	service.now = fixedNow
+
+	podSession, err := service.EnsurePodSession(t.Context(), EnsurePodSessionInput{
+		Namespace:  "default",
+		PVCName:    "data",
+		PVCUID:     "uid",
+		AccessMode: domain.AccessModeReadWriteMany,
+		Mode:       domain.ModeReadWrite,
+	})
+	if err != nil {
+		t.Fatalf("EnsurePodSession() error = %v", err)
+	}
+	if podSession.ID == "ps_old" {
+		t.Fatal("stored pod session with different runtime version was reused")
+	}
+	if podSession.RuntimeVersion != service.runtimeVersion {
+		t.Fatalf("runtime version = %q, want %q", podSession.RuntimeVersion, service.runtimeVersion)
+	}
+}
+
+func TestEnsurePodSessionSkipsExistingViewerPodWithDifferentRuntimeVersion(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	existing := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:         "default",
+			Name:              "viewer-ps-old",
+			CreationTimestamp: metav1.NewTime(fixedNow()),
+			Labels: map[string]string{
+				labelComponent:      componentViewer,
+				labelPVCUID:         "uid",
+				labelPodSessionID:   "ps_old",
+				labelRuntimeVersion: "old-version",
+			},
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodRunning},
+	}
+	store := state.New(cfg.Cache)
+	clientset := fake.NewSimpleClientset(existing)
+	client := kube.New(clientset)
+	service := NewPodService(cfg, store, client, observability.MustNew(cfg.Observability, nil))
+	service.now = fixedNow
+
+	podSession, err := service.EnsurePodSession(t.Context(), EnsurePodSessionInput{
+		Namespace:  "default",
+		PVCName:    "data",
+		PVCUID:     "uid",
+		AccessMode: domain.AccessModeReadWriteMany,
+		Mode:       domain.ModeReadWrite,
+	})
+	if err != nil {
+		t.Fatalf("EnsurePodSession() error = %v", err)
+	}
+	if podSession.ID == "ps_old" {
+		t.Fatal("viewer pod with different runtime version was reused")
+	}
+	if _, err := clientset.CoreV1().Pods("default").Get(t.Context(), podSession.PodName, metav1.GetOptions{}); err != nil {
+		t.Fatalf("new viewer pod was not created: %v", err)
 	}
 }
 
@@ -196,11 +288,12 @@ func TestBuildReadOnlyPod(t *testing.T) {
 		observability.MustNew(cfg.Observability, nil),
 	)
 	pod := service.buildPod(&domain.PodSession{
-		ID:        "ps_1",
-		Namespace: "default",
-		PVCName:   "data",
-		PVCUID:    "uid",
-		Mode:      domain.ModeReadOnly,
+		ID:             "ps_1",
+		Namespace:      "default",
+		PVCName:        "data",
+		PVCUID:         "uid",
+		RuntimeVersion: service.runtimeVersion,
+		Mode:           domain.ModeReadOnly,
 	}, nil)
 	if !pod.Spec.Volumes[0].PersistentVolumeClaim.ReadOnly {
 		t.Fatal("read-only mode did not set volume readonly")
@@ -297,11 +390,12 @@ func TestHookConfigMapUsesConfiguredScript(t *testing.T) {
 		observability.MustNew(cfg.Observability, nil),
 	)
 	configMap := service.buildHookConfigMap(&domain.PodSession{
-		ID:        "ps_1",
-		Namespace: "default",
-		PodName:   "viewer-ps-1",
-		PVCName:   "data",
-		PVCUID:    "uid",
+		ID:             "ps_1",
+		Namespace:      "default",
+		PodName:        "viewer-ps-1",
+		PVCName:        "data",
+		PVCUID:         "uid",
+		RuntimeVersion: service.runtimeVersion,
 	}, metav1.OwnerReference{
 		APIVersion: "v1",
 		Kind:       "Pod",
@@ -351,6 +445,22 @@ func TestPodOwnerReferenceIncludesPodIdentity(t *testing.T) {
 	}
 }
 
+func TestRuntimeVersionChangesWhenViewerPodConfigChanges(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	same := testConfig()
+	changed := testConfig()
+	changed.Viewer.BackendVerifyURL = "http://backend-v2/internal/filebrowser-hook/verify"
+
+	if runtimeVersion(cfg) != runtimeVersion(same) {
+		t.Fatal("same config produced different runtime versions")
+	}
+	if runtimeVersion(cfg) == runtimeVersion(changed) {
+		t.Fatal("viewer pod config change did not change runtime version")
+	}
+}
+
 func assertOwnedByPod(t *testing.T, refs []metav1.OwnerReference, pod *corev1.Pod) {
 	t.Helper()
 
@@ -360,6 +470,54 @@ func assertOwnedByPod(t *testing.T, refs []metav1.OwnerReference, pod *corev1.Po
 	owner := refs[0]
 	if owner.APIVersion != "v1" || owner.Kind != "Pod" || owner.Name != pod.Name || owner.UID != pod.UID {
 		t.Fatalf("owner reference = %#v, pod = %#v", owner, pod.ObjectMeta)
+	}
+}
+
+func assertRuntimeVersionLabel(t *testing.T, labels map[string]string, want string) {
+	t.Helper()
+
+	if labels[labelRuntimeVersion] != want {
+		t.Fatalf("runtime version label = %q, want %q", labels[labelRuntimeVersion], want)
+	}
+}
+
+func assertLifecycleAnnotations(t *testing.T, annotations map[string]string, session *domain.PodSession) {
+	t.Helper()
+
+	want := lifecycleAnnotations(session)
+	for key, value := range want {
+		if annotations[key] != value {
+			t.Fatalf("annotation %s = %q, want %q", key, annotations[key], value)
+		}
+	}
+}
+
+func assertIngressPaths(t *testing.T, ingress *networkingv1.Ingress, want []string) {
+	t.Helper()
+
+	if len(ingress.Spec.Rules) != 1 || ingress.Spec.Rules[0].HTTP == nil {
+		t.Fatalf("ingress rules = %#v", ingress.Spec.Rules)
+	}
+	gotPaths := ingress.Spec.Rules[0].HTTP.Paths
+	if len(gotPaths) != len(want) {
+		t.Fatalf("ingress path count = %d, want %d: %#v", len(gotPaths), len(want), gotPaths)
+	}
+	for index, path := range want {
+		got := gotPaths[index]
+		if got.Path != path {
+			t.Fatalf("ingress path[%d] = %q, want %q", index, got.Path, path)
+		}
+		if got.Path == "/" {
+			t.Fatal("ingress must not expose File Browser frontend root")
+		}
+		if got.PathType == nil || *got.PathType != networkingv1.PathTypePrefix {
+			t.Fatalf("ingress path type[%d] = %#v", index, got.PathType)
+		}
+		if got.Backend.Service == nil ||
+			got.Backend.Service.Name == "" ||
+			got.Backend.Service.Port.Number == 0 {
+			t.Fatalf("ingress backend[%d] = %#v", index, got.Backend)
+		}
 	}
 }
 

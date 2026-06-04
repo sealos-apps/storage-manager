@@ -97,7 +97,7 @@ func (f *fakeViewerService) IssueToken(_ context.Context, _ string, _ string) (*
 	return f.token, nil
 }
 
-func (f *fakeViewerService) HeartbeatForUser(_ string, _ string) (*domain.Heartbeat, error) {
+func (f *fakeViewerService) HeartbeatForUser(_ context.Context, _ string, _ string) (*domain.Heartbeat, error) {
 	return f.heartbeat, nil
 }
 

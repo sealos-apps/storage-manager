@@ -2,6 +2,7 @@ package kube
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -9,6 +10,7 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -29,6 +31,12 @@ type Interface interface {
 	ListViewerPods(ctx context.Context, namespace string, labels map[string]string) ([]corev1.Pod, error)
 	GetPod(ctx context.Context, namespace string, name string) (*corev1.Pod, error)
 	CreatePod(ctx context.Context, pod *corev1.Pod) (*corev1.Pod, error)
+	PatchPodAnnotations(
+		ctx context.Context,
+		namespace string,
+		name string,
+		annotations map[string]string,
+	) (*corev1.Pod, error)
 	DeletePod(ctx context.Context, namespace string, name string) error
 	CreateService(ctx context.Context, service *corev1.Service) (*corev1.Service, error)
 	CreateIngress(ctx context.Context, ingress *networkingv1.Ingress) (*networkingv1.Ingress, error)
@@ -149,6 +157,34 @@ func (c *Client) CreatePod(ctx context.Context, pod *corev1.Pod) (*corev1.Pod, e
 		return nil, fmt.Errorf("creating pod %s/%s: %w", pod.Namespace, pod.Name, err)
 	}
 	return created, nil
+}
+
+func (c *Client) PatchPodAnnotations(
+	ctx context.Context,
+	namespace string,
+	name string,
+	annotations map[string]string,
+) (*corev1.Pod, error) {
+	patch := map[string]any{
+		"metadata": map[string]any{
+			"annotations": annotations,
+		},
+	}
+	body, err := json.Marshal(patch)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling pod annotation patch %s/%s: %w", namespace, name, err)
+	}
+	pod, err := c.clientset.CoreV1().Pods(namespace).Patch(
+		ctx,
+		name,
+		types.MergePatchType,
+		body,
+		metav1.PatchOptions{},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("patching pod annotations %s/%s: %w", namespace, name, err)
+	}
+	return pod, nil
 }
 
 func (c *Client) DeletePod(ctx context.Context, namespace string, name string) error {

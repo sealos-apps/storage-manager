@@ -183,11 +183,34 @@ func TestHeartbeatExtendsSession(t *testing.T) {
 
 	cfg := testConfig()
 	store := state.New(cfg.Cache)
+	podSession := &domain.PodSession{
+		ID:             "ps_1",
+		Namespace:      "default",
+		PodName:        "viewer-ps-1",
+		ServiceName:    "viewer-ps-1",
+		PVCUID:         "uid",
+		RuntimeVersion: runtimeVersion(cfg),
+		Status:         domain.PodStatusReady,
+		LastActiveAt:   fixedNow().Add(-time.Minute),
+		ExpiresAt:      fixedNow().Add(time.Minute),
+	}
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:   "default",
+			Name:        "viewer-ps-1",
+			Labels:      managedLabels(podSession),
+			Annotations: lifecycleAnnotations(podSession),
+		},
+	}
+	clientset := fake.NewSimpleClientset(pod)
+	client := kube.New(clientset)
+	pods := NewPodService(cfg, store, client, observability.MustNew(cfg.Observability, nil))
+	pods.now = fixedNow
 	service := NewViewerService(
 		cfg,
 		store,
-		kube.New(fake.NewSimpleClientset()),
-		nil,
+		client,
+		pods,
 		nil,
 		observability.MustNew(cfg.Observability, nil),
 	)
@@ -197,13 +220,24 @@ func TestHeartbeatExtendsSession(t *testing.T) {
 		PodSessionID: "ps_1",
 		ExpiresAt:    fixedNow().Add(cfg.Sessions.ViewerSessionTimout),
 	})
+	store.PutPodSession(podSession)
 
-	heartbeat, err := service.HeartbeatForUser("vs_1", "")
+	heartbeat, err := service.HeartbeatForUser(t.Context(), "vs_1", "")
 	if err != nil {
 		t.Fatalf("Heartbeat() error = %v", err)
 	}
 	if !heartbeat.ExpiresAt.After(fixedNow()) {
 		t.Fatalf("heartbeat = %#v", heartbeat)
+	}
+	updated, err := clientset.CoreV1().Pods("default").Get(t.Context(), "viewer-ps-1", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Get() heartbeat pod error = %v", err)
+	}
+	if updated.Annotations[annotationLastActiveAt] != fixedNow().Format(time.RFC3339Nano) {
+		t.Fatalf("last active annotation = %q", updated.Annotations[annotationLastActiveAt])
+	}
+	if updated.Annotations[annotationKeepaliveUntil] != fixedNow().Add(cfg.Sessions.PodKeepaliveGrace).Format(time.RFC3339Nano) {
+		t.Fatalf("keepalive annotation = %q", updated.Annotations[annotationKeepaliveUntil])
 	}
 }
 
@@ -277,7 +311,7 @@ func TestViewerServiceRejectsCrossUserSessionAccess(t *testing.T) {
 	if _, err := service.GetViewerSession(t.Context(), "vs_1", "other"); err == nil {
 		t.Fatal("GetViewerSession() allowed another user")
 	}
-	if _, err := service.HeartbeatForUser("vs_1", "other"); err == nil {
+	if _, err := service.HeartbeatForUser(t.Context(), "vs_1", "other"); err == nil {
 		t.Fatal("HeartbeatForUser() allowed another user")
 	}
 	if _, err := service.CloseViewerSessionForUser("vs_1", "other"); err == nil {

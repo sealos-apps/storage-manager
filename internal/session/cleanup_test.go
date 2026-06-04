@@ -54,13 +54,14 @@ func TestCleanupClosesExpiredIdlePodSession(t *testing.T) {
 	)
 	pods := NewPodService(cfg, store, kube.New(clientset), observability.MustNew(cfg.Observability, nil))
 	store.PutPodSession(&domain.PodSession{
-		ID:          "ps_idle",
-		Namespace:   "default",
-		PodName:     "viewer-ps_idle",
-		ServiceName: "viewer-ps_idle",
-		PVCUID:      "uid",
-		Status:      domain.PodStatusReady,
-		ExpiresAt:   fixedNow().Add(-time.Second),
+		ID:             "ps_idle",
+		Namespace:      "default",
+		PodName:        "viewer-ps_idle",
+		ServiceName:    "viewer-ps_idle",
+		PVCUID:         "uid",
+		RuntimeVersion: pods.runtimeVersion,
+		Status:         domain.PodStatusReady,
+		ExpiresAt:      fixedNow().Add(-time.Second),
 	})
 	cleanup := NewCleanupService(cfg, store, pods, observability.MustNew(cfg.Observability, nil))
 	cleanup.now = fixedNow
@@ -87,14 +88,16 @@ func TestCleanupKeepsExpiredPodWithActiveViewer(t *testing.T) {
 		kube.New(fake.NewSimpleClientset(viewerPodFixture("default", "viewer-ps_active", "ps_active"))),
 		observability.MustNew(cfg.Observability, nil),
 	)
+	pods.now = fixedNow
 	store.PutPodSession(&domain.PodSession{
-		ID:          "ps_active",
-		Namespace:   "default",
-		PodName:     "viewer-ps_active",
-		ServiceName: "viewer-ps_active",
-		PVCUID:      "uid",
-		Status:      domain.PodStatusReady,
-		ExpiresAt:   fixedNow().Add(-time.Second),
+		ID:             "ps_active",
+		Namespace:      "default",
+		PodName:        "viewer-ps_active",
+		ServiceName:    "viewer-ps_active",
+		PVCUID:         "uid",
+		RuntimeVersion: pods.runtimeVersion,
+		Status:         domain.PodStatusReady,
+		ExpiresAt:      fixedNow().Add(-time.Second),
 	})
 	store.PutViewerSession(&domain.ViewerSession{
 		ID:           "vs_active",
@@ -111,12 +114,132 @@ func TestCleanupKeepsExpiredPodWithActiveViewer(t *testing.T) {
 	if _, ok := store.GetPodSession("ps_active", fixedNow()); !ok {
 		t.Fatal("pod with active viewer was removed")
 	}
+	pod, err := pods.client.GetPod(t.Context(), "default", "viewer-ps_active")
+	if err != nil {
+		t.Fatalf("GetPod() active viewer pod error = %v", err)
+	}
+	if pod.Annotations[annotationKeepaliveUntil] != fixedNow().Add(cfg.Sessions.PodKeepaliveGrace).Format(time.RFC3339Nano) {
+		t.Fatalf("active viewer keepalive annotation = %q", pod.Annotations[annotationKeepaliveUntil])
+	}
+}
+
+func TestCleanupReconcilesViewerPodsAcrossAllNamespaces(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	store := state.New(cfg.Cache)
+	version := runtimeVersion(cfg)
+	validPod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:         "ns-a",
+			Name:              "viewer-ps-valid",
+			CreationTimestamp: metav1.NewTime(fixedNow().Add(-time.Minute)),
+			Labels: map[string]string{
+				labelComponent:      componentViewer,
+				labelPVCName:        "data-a",
+				labelPVCUID:         "uid-a",
+				labelPodSessionID:   "ps_valid",
+				labelRuntimeVersion: version,
+			},
+			Annotations: map[string]string{
+				annotationAccessMode:     domain.AccessModeReadWriteMany,
+				annotationCreatedAt:      fixedNow().Add(-time.Minute).Format(time.RFC3339Nano),
+				annotationKeepaliveUntil: fixedNow().Add(time.Minute).Format(time.RFC3339Nano),
+				annotationLastActiveAt:   fixedNow().Add(-time.Second).Format(time.RFC3339Nano),
+				annotationMode:           domain.ModeReadWrite,
+				annotationRuntimeVersion: version,
+			},
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodPending},
+	}
+	oldPod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:         "ns-b",
+			Name:              "viewer-ps-old",
+			CreationTimestamp: metav1.NewTime(fixedNow().Add(-cfg.Sessions.OrphanGrace - time.Second)),
+			Labels: map[string]string{
+				labelComponent:      componentViewer,
+				labelPVCName:        "data-b",
+				labelPVCUID:         "uid-b",
+				labelPodSessionID:   "ps_old",
+				labelRuntimeVersion: "old-version",
+			},
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodPending},
+	}
+	clientset := fake.NewSimpleClientset(validPod, oldPod)
+	recorder := observability.MustNew(cfg.Observability, nil)
+	pods := NewPodService(cfg, store, kube.New(clientset), recorder)
+	pods.now = fixedNow
+	cleanup := NewCleanupService(cfg, store, pods, recorder)
+	cleanup.now = fixedNow
+
+	if err := cleanup.RunOnce(t.Context()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+	if _, ok := store.GetPodSession("ps_valid", fixedNow()); !ok {
+		t.Fatal("cleanup did not recover valid viewer pod from another namespace")
+	}
+	if _, err := clientset.CoreV1().Pods("ns-a").Get(t.Context(), "viewer-ps-valid", metav1.GetOptions{}); err != nil {
+		t.Fatalf("valid viewer pod was not kept: %v", err)
+	}
+	if _, err := clientset.CoreV1().Pods("ns-b").Get(t.Context(), "viewer-ps-old", metav1.GetOptions{}); err == nil {
+		t.Fatal("cleanup did not delete old orphan viewer pod from another namespace")
+	}
+}
+
+func TestCleanupDeletesExpiredAnnotatedViewerPodAfterRestart(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	store := state.New(cfg.Cache)
+	version := runtimeVersion(cfg)
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:         "default",
+			Name:              "viewer-ps-expired",
+			CreationTimestamp: metav1.NewTime(fixedNow().Add(-time.Minute)),
+			Labels: map[string]string{
+				labelComponent:      componentViewer,
+				labelPVCName:        "data",
+				labelPVCUID:         "uid",
+				labelPodSessionID:   "ps_expired",
+				labelRuntimeVersion: version,
+			},
+			Annotations: map[string]string{
+				annotationAccessMode:     domain.AccessModeReadWriteMany,
+				annotationCreatedAt:      fixedNow().Add(-time.Minute).Format(time.RFC3339Nano),
+				annotationKeepaliveUntil: fixedNow().Add(-time.Second).Format(time.RFC3339Nano),
+				annotationLastActiveAt:   fixedNow().Add(-time.Minute).Format(time.RFC3339Nano),
+				annotationMode:           domain.ModeReadWrite,
+				annotationRuntimeVersion: version,
+			},
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodPending},
+	}
+	clientset := fake.NewSimpleClientset(pod)
+	recorder := observability.MustNew(cfg.Observability, nil)
+	pods := NewPodService(cfg, store, kube.New(clientset), recorder)
+	pods.now = fixedNow
+	cleanup := NewCleanupService(cfg, store, pods, recorder)
+	cleanup.now = fixedNow
+
+	if err := cleanup.RunOnce(t.Context()); err != nil {
+		t.Fatalf("RunOnce() error = %v", err)
+	}
+	if _, ok := store.GetPodSessionIncludingExpired("ps_expired"); ok {
+		t.Fatal("expired annotated pod was recovered into state")
+	}
+	if _, err := clientset.CoreV1().Pods("default").Get(t.Context(), "viewer-ps-expired", metav1.GetOptions{}); err == nil {
+		t.Fatal("expired annotated viewer pod was not deleted")
+	}
 }
 
 func TestReconcileViewerPodsRecoversRecentPod(t *testing.T) {
 	t.Parallel()
 
 	cfg := testConfig()
+	version := runtimeVersion(cfg)
 	store := state.New(cfg.Cache)
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -124,10 +247,11 @@ func TestReconcileViewerPodsRecoversRecentPod(t *testing.T) {
 			Name:              "viewer-ps_recent",
 			CreationTimestamp: metav1.NewTime(fixedNow().Add(-time.Minute)),
 			Labels: map[string]string{
-				labelComponent:    componentViewer,
-				labelPVCName:      "data",
-				labelPVCUID:       "uid",
-				labelPodSessionID: "ps_recent",
+				labelComponent:      componentViewer,
+				labelPVCName:        "data",
+				labelPVCUID:         "uid",
+				labelPodSessionID:   "ps_recent",
+				labelRuntimeVersion: version,
 			},
 		},
 		Status: corev1.PodStatus{Phase: corev1.PodPending},
@@ -148,16 +272,233 @@ func TestReconcileViewerPodsRecoversRecentPod(t *testing.T) {
 	}
 }
 
+func TestReconcileViewerPodsDeletesUnannotatedPodPastRecoveryGrace(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	store := state.New(cfg.Cache)
+	version := runtimeVersion(cfg)
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:         "default",
+			Name:              "viewer-ps-stale",
+			CreationTimestamp: metav1.NewTime(fixedNow().Add(-cfg.Sessions.RecoveryGrace - time.Second)),
+			Labels: map[string]string{
+				labelComponent:      componentViewer,
+				labelPVCName:        "data",
+				labelPVCUID:         "uid",
+				labelPodSessionID:   "ps_stale",
+				labelRuntimeVersion: version,
+			},
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodPending},
+	}
+	clientset := fake.NewSimpleClientset(pod)
+	service := NewPodService(
+		cfg,
+		store,
+		kube.New(clientset),
+		observability.MustNew(cfg.Observability, nil),
+	)
+	service.now = fixedNow
+
+	if err := service.ReconcileViewerPods(t.Context(), "default"); err != nil {
+		t.Fatalf("ReconcileViewerPods() error = %v", err)
+	}
+	if _, ok := store.GetPodSessionIncludingExpired("ps_stale"); ok {
+		t.Fatal("stale unannotated pod was recovered into state")
+	}
+	if _, err := clientset.CoreV1().Pods("default").Get(t.Context(), "viewer-ps-stale", metav1.GetOptions{}); err == nil {
+		t.Fatal("stale unannotated pod was not deleted")
+	}
+}
+
+func TestReconcileViewerPodsSyncsExpiredStoredSessionWithoutPurging(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	store := state.New(cfg.Cache)
+	version := runtimeVersion(cfg)
+	store.PutPodSession(&domain.PodSession{
+		ID:             "ps_expired",
+		Namespace:      "default",
+		PVCName:        "data",
+		PVCUID:         "uid",
+		PodName:        "viewer-ps-expired",
+		ServiceName:    "viewer-ps-expired",
+		RuntimeVersion: version,
+		Status:         domain.PodStatusReady,
+		ExpiresAt:      fixedNow().Add(-time.Second),
+	})
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:         "default",
+			Name:              "viewer-ps-expired",
+			CreationTimestamp: metav1.NewTime(fixedNow().Add(-time.Minute)),
+			Labels: map[string]string{
+				labelComponent:      componentViewer,
+				labelPVCName:        "data",
+				labelPVCUID:         "uid",
+				labelPodSessionID:   "ps_expired",
+				labelRuntimeVersion: version,
+			},
+		},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodRunning,
+			Conditions: []corev1.PodCondition{
+				{Type: corev1.PodReady, Status: corev1.ConditionTrue},
+			},
+		},
+	}
+	service := NewPodService(
+		cfg,
+		store,
+		kube.New(fake.NewSimpleClientset(pod)),
+		observability.MustNew(cfg.Observability, nil),
+	)
+	service.now = fixedNow
+
+	if err := service.ReconcileViewerPods(t.Context(), "default"); err != nil {
+		t.Fatalf("ReconcileViewerPods() error = %v", err)
+	}
+	if _, ok := store.GetPodSessionIncludingExpired("ps_expired"); !ok {
+		t.Fatal("expired stored pod session was purged during reconcile")
+	}
+}
+
+func TestReconcileViewerPodsSkipsRecentPodWithDifferentRuntimeVersion(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	store := state.New(cfg.Cache)
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:         "default",
+			Name:              "viewer-ps-old",
+			CreationTimestamp: metav1.NewTime(fixedNow().Add(-time.Minute)),
+			Labels: map[string]string{
+				labelComponent:      componentViewer,
+				labelPVCName:        "data",
+				labelPVCUID:         "uid",
+				labelPodSessionID:   "ps_old",
+				labelRuntimeVersion: "old-version",
+			},
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodPending},
+	}
+	service := NewPodService(
+		cfg,
+		store,
+		kube.New(fake.NewSimpleClientset(pod)),
+		observability.MustNew(cfg.Observability, nil),
+	)
+	service.now = fixedNow
+
+	if err := service.ReconcileViewerPods(t.Context(), "default"); err != nil {
+		t.Fatalf("ReconcileViewerPods() error = %v", err)
+	}
+	if _, ok := store.GetPodSession("ps_old", fixedNow()); ok {
+		t.Fatal("recent pod with different runtime version was recovered into state")
+	}
+}
+
+func TestReconcileViewerPodsDeletesOldPodWithDifferentRuntimeVersion(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	store := state.New(cfg.Cache)
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:         "default",
+			Name:              "viewer-ps-old",
+			CreationTimestamp: metav1.NewTime(fixedNow().Add(-cfg.Sessions.OrphanGrace - time.Second)),
+			Labels: map[string]string{
+				labelComponent:      componentViewer,
+				labelPVCName:        "data",
+				labelPVCUID:         "uid",
+				labelPodSessionID:   "ps_old",
+				labelRuntimeVersion: "old-version",
+			},
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodPending},
+	}
+	clientset := fake.NewSimpleClientset(pod)
+	service := NewPodService(
+		cfg,
+		store,
+		kube.New(clientset),
+		observability.MustNew(cfg.Observability, nil),
+	)
+	service.now = fixedNow
+
+	if err := service.ReconcileViewerPods(t.Context(), "default"); err != nil {
+		t.Fatalf("ReconcileViewerPods() error = %v", err)
+	}
+	if _, err := clientset.CoreV1().Pods("default").Get(t.Context(), "viewer-ps-old", metav1.GetOptions{}); err == nil {
+		t.Fatal("old pod with different runtime version was not deleted")
+	}
+}
+
+func TestReconcileViewerPodsDeletesOldPodWithDifferentStoredRuntimeVersion(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	store := state.New(cfg.Cache)
+	store.PutPodSession(&domain.PodSession{
+		ID:             "ps_old",
+		Namespace:      "default",
+		PVCName:        "data",
+		PVCUID:         "uid",
+		PodName:        "viewer-ps-old",
+		ServiceName:    "viewer-ps-old",
+		RuntimeVersion: "old-version",
+		Status:         domain.PodStatusReady,
+		ExpiresAt:      fixedNow().Add(time.Minute),
+	})
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:         "default",
+			Name:              "viewer-ps-old",
+			CreationTimestamp: metav1.NewTime(fixedNow().Add(-cfg.Sessions.OrphanGrace - time.Second)),
+			Labels: map[string]string{
+				labelComponent:      componentViewer,
+				labelPVCName:        "data",
+				labelPVCUID:         "uid",
+				labelPodSessionID:   "ps_old",
+				labelRuntimeVersion: "old-version",
+			},
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodPending},
+	}
+	clientset := fake.NewSimpleClientset(pod)
+	service := NewPodService(
+		cfg,
+		store,
+		kube.New(clientset),
+		observability.MustNew(cfg.Observability, nil),
+	)
+	service.now = fixedNow
+
+	if err := service.ReconcileViewerPods(t.Context(), "default"); err != nil {
+		t.Fatalf("ReconcileViewerPods() error = %v", err)
+	}
+	if _, err := clientset.CoreV1().Pods("default").Get(t.Context(), "viewer-ps-old", metav1.GetOptions{}); err == nil {
+		t.Fatal("old pod with different stored runtime version was not deleted")
+	}
+}
+
 func viewerPodFixture(namespace string, name string, podSessionID string) *corev1.Pod {
+	cfg := testConfig()
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
 			Name:      name,
 			Labels: map[string]string{
-				labelComponent:    componentViewer,
-				labelPVCName:      "data",
-				labelPVCUID:       "uid",
-				labelPodSessionID: podSessionID,
+				labelComponent:      componentViewer,
+				labelPVCName:        "data",
+				labelPVCUID:         "uid",
+				labelPodSessionID:   podSessionID,
+				labelRuntimeVersion: runtimeVersion(cfg),
 			},
 		},
 		Status: corev1.PodStatus{Phase: corev1.PodRunning},
