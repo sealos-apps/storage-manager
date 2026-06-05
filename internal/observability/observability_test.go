@@ -63,6 +63,23 @@ func TestWritePrometheusExposesMetrics(t *testing.T) {
 	}
 }
 
+func TestWritePrometheusExposesDeclaredMetricsWhenEmpty(t *testing.T) {
+	t.Setenv("ENCORERUNTIME_NOPANIC", "1")
+
+	recorder := MustNew(testConfig(), nil)
+
+	body := prometheusText(recorder)
+	if !strings.Contains(body, "# HELP viewer_http_route_requests_total ") {
+		t.Fatalf("metrics body missing HTTP help: %s", body)
+	}
+	if !strings.Contains(body, "# TYPE viewer_http_route_requests_total counter") {
+		t.Fatalf("metrics body missing HTTP type: %s", body)
+	}
+	if !strings.Contains(body, "viewer_cleanup_deleted_total 0") {
+		t.Fatalf("metrics body missing zero cleanup count: %s", body)
+	}
+}
+
 func TestTraceOperationRecordsOperationMetrics(t *testing.T) {
 	t.Setenv("ENCORERUNTIME_NOPANIC", "1")
 
