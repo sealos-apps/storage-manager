@@ -4,7 +4,7 @@ import type { FileBrowserSession } from '@/features/file-manager/types/file-mana
 
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { FileManagerView } from '@/features/file-manager/components/file-manager-view'
 import { uploadActions, uploadStore } from '@/features/file-manager/stores/upload-store'
@@ -131,6 +131,10 @@ describe('fileManagerView', () => {
 		uploadActions.reset()
 	})
 
+	afterEach(() => {
+		vi.useRealTimers()
+	})
+
 	it('hides the file table when the viewer session is not ready', () => {
 		renderFileManager(null)
 
@@ -248,6 +252,8 @@ describe('fileManagerView', () => {
 
 	it('keeps file table columns fixed and formats modified time for reading', async () => {
 		const modified = '2026-05-14T10:00:00Z'
+		vi.useFakeTimers({ shouldAdvanceTime: true })
+		vi.setSystemTime(new Date('2026-05-14T10:00:30Z'))
 		const session = sessionWithClient({
 			list: vi.fn(async () => resource('/', '', true, [
 				{ ...resource('/readme.md', 'readme.md', false), modified },
@@ -264,7 +270,7 @@ describe('fileManagerView', () => {
 		const modifiedTime = table.querySelector(`time[datetime="${modified}"]`)
 		expect(modifiedTime).not.toBeNull()
 		expect(modifiedTime).not.toHaveTextContent(modified)
-		expect(modifiedTime?.textContent).toContain('2026')
+		expect(modifiedTime).toHaveTextContent('30s ago')
 		expect(modifiedTime).toHaveAttribute('title', expect.stringContaining('2026'))
 	})
 

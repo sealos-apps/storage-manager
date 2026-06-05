@@ -122,6 +122,7 @@ const emptyBranches: Record<string, BranchState | undefined> = {}
 const emptyExpandedDepths: Record<string, number | undefined> = {}
 const maxEditableFileBytes = 32 * 1024 * 1024
 const MonacoEditor = lazy(() => import('@monaco-editor/react'))
+const largeEditorDialogClassName = 'h-[88vh] max-h-[88vh] w-[min(96vw,90rem)] sm:max-w-[min(96vw,90rem)]'
 
 function createBranchTreeState(scope: string): BranchTreeState {
 	return {
@@ -348,15 +349,6 @@ export function FileManagerView({
 					</p>
 				</div>
 				<div className="flex flex-wrap items-center gap-3">
-					<SessionStatusPopover
-						api={api}
-						onManualClose={onManualClose}
-						onRefreshSession={onRefreshSession}
-						podSessionID={podSessionID ?? null}
-						session={viewerSession ?? null}
-						sessionCapability={sessionCapability}
-						viewerSessionID={viewerSessionID ?? null}
-					/>
 					{canShowFileList ? <StorageUsageSummary query={usageQuery} /> : null}
 					<Button onClick={onBackToVolumes} size="sm" variant="outline">
 						<ArrowLeft data-icon="inline-start" />
@@ -393,6 +385,16 @@ export function FileManagerView({
 								</>
 							)
 						: null}
+
+					<SessionStatusPopover
+						api={api}
+						onManualClose={onManualClose}
+						onRefreshSession={onRefreshSession}
+						podSessionID={podSessionID ?? null}
+						session={viewerSession ?? null}
+						sessionCapability={sessionCapability}
+						viewerSessionID={viewerSessionID ?? null}
+					/>
 				</div>
 			</header>
 			<Separator />
@@ -579,7 +581,7 @@ function SessionStatusPopover({
 	return (
 		<Popover>
 			<PopoverTrigger asChild>
-				<Button aria-label={t('files.sessionStatus')} title={t('files.sessionStatus')} size="icon" variant="outline">
+				<Button aria-label={t('files.sessionStatus')} title={t('files.sessionStatus')} size="icon" variant="ghost">
 					<span className={cn('block size-2.5 rounded-full', statusClassName)} />
 				</Button>
 			</PopoverTrigger>
@@ -740,8 +742,8 @@ function StorageUsageSummary({ query }: StorageUsageSummaryProps) {
 	}
 
 	return (
-		<div className="grid min-w-56 gap-2 rounded-lg border bg-card px-3 py-2">
-			<div className="flex items-center justify-between gap-3 text-xs">
+		<div className="flex flex-row gap-2 items-center rounded-lg border bg-card px-3 py-2">
+			<div className="flex items-center justify-between gap-1 text-xs shrink-0">
 				<span className="font-medium text-foreground">{t('files.usedCapacity')}</span>
 				<span className="text-muted-foreground">
 					{formatBytes(usage.used)}
@@ -749,7 +751,7 @@ function StorageUsageSummary({ query }: StorageUsageSummaryProps) {
 					{formatBytes(usage.total)}
 				</span>
 			</div>
-			<Progress aria-label={t('files.usedCapacity')} value={percent} />
+			<Progress className="min-w-36" aria-label={t('files.usedCapacity')} value={percent} />
 		</div>
 	)
 }
@@ -1047,7 +1049,7 @@ function FileEditorDialog({ entry, onOpenChange, open, session }: FileEditorDial
 
 	return (
 		<Dialog onOpenChange={nextOpen => !isSaving && onOpenChange(nextOpen)} open={open}>
-			<DialogContent className="sm:max-w-4xl" showCloseButton={!isSaving}>
+			<DialogContent className={largeEditorDialogClassName} showCloseButton={!isSaving}>
 				<DialogHeader>
 					<DialogTitle>{t('files.editorTitle')}</DialogTitle>
 					<DialogDescription>{entry.name}</DialogDescription>
@@ -1060,12 +1062,12 @@ function FileEditorDialog({ entry, onOpenChange, open, session }: FileEditorDial
 							/>
 						)
 					: null}
-				<div className="overflow-hidden rounded-md border">
+				<div className="min-h-0 overflow-hidden rounded-md border">
 					{!textQuery.isError
 						? (
 								<Suspense fallback={<div className="p-4 text-sm text-muted-foreground">{t('common.loading')}</div>}>
 									<MonacoEditor
-										height="28rem"
+										height="calc(88vh - 12rem)"
 										language={editorLanguage(entry.path)}
 										loading={t('common.loading')}
 										onChange={(value) => {
@@ -1480,11 +1482,27 @@ function formatFileModifiedTime(value: string) {
 			dateStyle: 'full',
 			timeStyle: 'long',
 		}).format(date),
-		short: new Intl.DateTimeFormat(undefined, {
-			dateStyle: 'medium',
-			timeStyle: 'short',
-		}).format(date),
+		short: formatRelativeTime(date, new Date()),
 	}
+}
+
+function formatRelativeTime(date: Date, now: Date) {
+	const diffSeconds = Math.round((date.getTime() - now.getTime()) / 1000)
+	const absoluteSeconds = Math.abs(diffSeconds)
+	const units = [
+		{ suffix: 's', seconds: 1 },
+		{ suffix: 'm', seconds: 60 },
+		{ suffix: 'h', seconds: 60 * 60 },
+		{ suffix: 'd', seconds: 60 * 60 * 24 },
+		{ suffix: 'mo', seconds: 60 * 60 * 24 * 30 },
+		{ suffix: 'y', seconds: 60 * 60 * 24 * 365 },
+	]
+	const unit = [...units].reverse().find(item => absoluteSeconds >= item.seconds) ?? units[0]!
+	const value = Math.max(0, Math.round(absoluteSeconds / unit.seconds))
+	if (diffSeconds > 0) {
+		return `in ${value}${unit.suffix}`
+	}
+	return `${value}${unit.suffix} ago`
 }
 
 function downloadEntry(session: FileBrowserSession, entry: FileEntry) {
