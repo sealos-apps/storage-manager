@@ -66,4 +66,20 @@ describe('sessionActions', () => {
 		expect(closePodSession).not.toHaveBeenCalled()
 		expect(onManualClose).toHaveBeenCalledWith('pod')
 	})
+
+	it('can render only the viewer close action', () => {
+		const api = createFakeViewerAPI()
+
+		renderWithProviders(
+			<SessionActions
+				api={api}
+				podSessionID="ps_1"
+				showPodAction={false}
+				viewerSessionID="vs_1"
+			/>,
+		)
+
+		expect(screen.getByRole('button', { name: /close viewer/i })).toBeInTheDocument()
+		expect(screen.queryByRole('button', { name: /close pod session/i })).not.toBeInTheDocument()
+	})
 })

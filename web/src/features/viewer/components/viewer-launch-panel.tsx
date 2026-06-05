@@ -2,16 +2,8 @@ import type { ViewerSessionFlow } from '@/features/viewer/hooks/use-viewer-sessi
 import type { PVC, ViewerAPI, ViewerToken } from '@/features/viewer/types/viewer'
 
 import { useEffect, useRef } from 'react'
-import { useTranslation } from 'react-i18next'
-
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useHasActiveUploadsForSession } from '@/features/file-manager/stores/upload-store'
 import { viewerApi } from '@/features/viewer/api/viewer-api'
-import { translateViewerError } from '@/features/viewer/api/viewer-error'
-import { ErrorCallout } from '@/features/viewer/components/error-callout'
-import { SessionActions } from '@/features/viewer/components/session-actions'
-import { SessionLifecycleBanner } from '@/features/viewer/components/session-lifecycle-banner'
 import { useBeforeUnloadCloseSession } from '@/features/viewer/hooks/use-before-unload-close-session'
 import { useSessionHeartbeat } from '@/features/viewer/hooks/use-session-heartbeat'
 import { useViewerSessionFlow } from '@/features/viewer/hooks/use-viewer-session-flow'
@@ -23,6 +15,7 @@ export interface ViewerFlowSnapshot {
 	isReconnecting: ViewerSessionFlow['isReconnecting']
 	manualCloseKind: ViewerSessionFlow['manualCloseKind']
 	recover: ViewerSessionFlow['recover']
+	registerManualClose: ViewerSessionFlow['registerManualClose']
 	session: ViewerSessionFlow['session']
 	status: ViewerSessionFlow['status']
 }
@@ -44,10 +37,8 @@ export function ViewerLaunchPanel({
 	pvc,
 	setToken,
 }: ViewerLaunchPanelProps) {
-	const { t } = useTranslation()
 	const flow = useViewerSessionFlow({ api })
 	const active = flow.status === 'ready'
-	const starting = flow.status === 'creating' || flow.status === 'polling' || flow.status === 'issuing-token'
 	const startFlow = flow.start
 	const recoverFlow = flow.recover
 	const startFlowRef = useRef(startFlow)
@@ -94,6 +85,7 @@ export function ViewerLaunchPanel({
 			isReconnecting: flow.isReconnecting,
 			manualCloseKind: flow.manualCloseKind,
 			recover: flow.recover,
+			registerManualClose: flow.registerManualClose,
 			session: flow.session,
 			status: flow.status,
 		})
@@ -102,6 +94,7 @@ export function ViewerLaunchPanel({
 		flow.isReconnecting,
 		flow.manualCloseKind,
 		flow.recover,
+		flow.registerManualClose,
 		flow.session,
 		flow.status,
 		onFlowChange,
@@ -119,46 +112,5 @@ export function ViewerLaunchPanel({
 		void startFlowRef.current(pvcIdentity(pvc))
 	}, [autoStartKey, pvc])
 
-	return (
-		<Card className="rounded-lg">
-			<CardHeader>
-				<CardTitle>{t('viewer.sessionLifecycle')}</CardTitle>
-				<CardDescription>
-					{pvc ? `${pvc.namespace}/${pvc.name}` : t('viewer.noSelection')}
-				</CardDescription>
-			</CardHeader>
-			<CardContent className="flex flex-col gap-4">
-				<SessionLifecycleBanner session={flow.session} />
-				{flow.error
-					? (
-							<ErrorCallout title={t('common.error')}>
-								{translateViewerError(flow.error, t)}
-							</ErrorCallout>
-						)
-					: null}
-				<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-					<Button
-						disabled={!pvc || starting}
-						onClick={() => {
-							if (!pvc) {
-								return
-							}
-							void flow.start(pvcIdentity(pvc))
-						}}
-					>
-						{starting
-							? t('common.loading')
-							: t('actions.launchViewer')}
-					</Button>
-					<SessionActions
-						api={api}
-						canDiscardLocalState={flow.status === 'failed' || flow.isManualClosed}
-						onManualClose={flow.registerManualClose}
-						podSessionID={flow.session?.pod_session_id ?? null}
-						viewerSessionID={flow.session?.id ?? null}
-					/>
-				</div>
-			</CardContent>
-		</Card>
-	)
+	return null
 }
