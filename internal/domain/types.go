@@ -112,13 +112,16 @@ type PVC struct {
 }
 
 type StorageClass struct {
-	Name                     string `json:"name"`
-	Provisioner              string `json:"provisioner"`
-	AllowVolumeExpansion     bool   `json:"allow_volume_expansion"`
-	VolumeBindingMode        string `json:"volume_binding_mode"`
-	IsDefault                bool   `json:"is_default"`
-	ReclaimPolicy            string `json:"reclaim_policy"`
-	CreationTimestampRFC3339 string `json:"creation_timestamp"`
+	Name                     string   `json:"name"`
+	Provisioner              string   `json:"provisioner"`
+	AllowVolumeExpansion     bool     `json:"allow_volume_expansion"`
+	VolumeBindingMode        string   `json:"volume_binding_mode"`
+	IsDefault                bool     `json:"is_default"`
+	ReclaimPolicy            string   `json:"reclaim_policy"`
+	CreationTimestampRFC3339 string   `json:"creation_timestamp"`
+	VisibleInCreate          bool     `json:"visible_in_create"`
+	AllowedAccessModes       []string `json:"allowed_access_modes"`
+	AnnotationStatus         string   `json:"annotation_status"`
 }
 
 type PVCMountInfo struct {

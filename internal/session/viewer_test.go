@@ -9,6 +9,7 @@ import (
 
 	"github.com/nixieboluo/sealos-storage-manager/internal/apienv"
 	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
+	"github.com/nixieboluo/sealos-storage-manager/internal/filebrowser"
 	"github.com/nixieboluo/sealos-storage-manager/internal/kube"
 	"github.com/nixieboluo/sealos-storage-manager/internal/observability"
 	"github.com/nixieboluo/sealos-storage-manager/internal/state"
@@ -29,6 +30,29 @@ type staticLogin struct {
 
 func (s staticLogin) Login(_ context.Context, _ string, _ string, _ string) (string, error) {
 	return s.token, nil
+}
+
+type hookVerifyingLogin struct {
+	auth *AuthService
+}
+
+func (l hookVerifyingLogin) Login(_ context.Context, _ string, username string, password string) (string, error) {
+	parts := strings.SplitN(password, ".", 2)
+	if len(parts) != 2 {
+		return "", errors.New("password missing auth request secret")
+	}
+	result := l.auth.VerifyHook(HookVerifyInput{
+		HookClientToken: testConfig().Viewer.HookClientToken,
+		PodSessionID:    "ps_1",
+		ViewerPodName:   "viewer-ps-1",
+		Username:        username,
+		AuthRequestID:   parts[0],
+		PasswordHash:    filebrowser.HashSecret(parts[1]),
+	})
+	if !result.Allow {
+		return "", errors.New(result.Reason)
+	}
+	return "fb-token", nil
 }
 
 func TestViewerServiceListPVCs(t *testing.T) {
@@ -122,7 +146,13 @@ func TestViewerServiceCreatePVC(t *testing.T) {
 
 	cfg := testConfig()
 	clientset := fake.NewSimpleClientset(&storagev1.StorageClass{
-		ObjectMeta:  metav1.ObjectMeta{Name: "standard"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "standard",
+			Annotations: map[string]string{
+				StorageClassVisibleAnnotation:     "true",
+				StorageClassAccessModesAnnotation: "ReadWriteOnce",
+			},
+		},
 		Provisioner: "example.test/provisioner",
 	})
 	client := kube.New(clientset)
@@ -149,6 +179,70 @@ func TestViewerServiceCreatePVC(t *testing.T) {
 	}
 	if created.Spec.StorageClassName == nil || *created.Spec.StorageClassName != "standard" {
 		t.Fatalf("storage class = %#v", created.Spec.StorageClassName)
+	}
+}
+
+func TestViewerServiceCreatePVCRejectsHiddenStorageClass(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	client := kube.New(fake.NewSimpleClientset(&storagev1.StorageClass{
+		ObjectMeta:  metav1.ObjectMeta{Name: "hidden"},
+		Provisioner: "example.test/provisioner",
+	}))
+	store := state.New(cfg.Cache)
+	pods := NewPodService(cfg, store, client, observability.MustNew(cfg.Observability, nil))
+	service := NewViewerService(cfg, store, client, pods, nil, observability.MustNew(cfg.Observability, nil))
+
+	_, err := service.CreatePVC(t.Context(), CreatePVCInput{
+		Namespace:        "default",
+		Name:             "data",
+		Capacity:         "2Gi",
+		AccessModes:      []string{domain.AccessModeReadWriteOnce},
+		StorageClassName: "hidden",
+	})
+
+	var apiErr *apienv.Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("CreatePVC() error = %T %v, want apienv.Error", err, err)
+	}
+	if apiErr.Code != apienv.CodeStorageClassNotVisible {
+		t.Fatalf("code = %s, want %s", apiErr.Code, apienv.CodeStorageClassNotVisible)
+	}
+}
+
+func TestViewerServiceCreatePVCRejectsAccessModeOutsideStorageClassPolicy(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	client := kube.New(fake.NewSimpleClientset(&storagev1.StorageClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "standard",
+			Annotations: map[string]string{
+				StorageClassVisibleAnnotation:     "true",
+				StorageClassAccessModesAnnotation: "ReadWriteOnce",
+			},
+		},
+		Provisioner: "example.test/provisioner",
+	}))
+	store := state.New(cfg.Cache)
+	pods := NewPodService(cfg, store, client, observability.MustNew(cfg.Observability, nil))
+	service := NewViewerService(cfg, store, client, pods, nil, observability.MustNew(cfg.Observability, nil))
+
+	_, err := service.CreatePVC(t.Context(), CreatePVCInput{
+		Namespace:        "default",
+		Name:             "data",
+		Capacity:         "2Gi",
+		AccessModes:      []string{domain.AccessModeReadWriteMany},
+		StorageClassName: "standard",
+	})
+
+	var apiErr *apienv.Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("CreatePVC() error = %T %v, want apienv.Error", err, err)
+	}
+	if apiErr.Code != apienv.CodeUnsupportedAccessMode {
+		t.Fatalf("code = %s, want %s", apiErr.Code, apienv.CodeUnsupportedAccessMode)
 	}
 }
 
@@ -297,9 +391,11 @@ func TestIssueTokenSyncsPodStatusBeforeReadinessCheck(t *testing.T) {
 	}
 	client := kube.New(fake.NewSimpleClientset(pod))
 	pods := NewPodService(cfg, store, client, observability.MustNew(cfg.Observability, nil))
-	auth := NewAuthService(cfg, store, staticLogin{token: "fb-token"}, observability.MustNew(cfg.Observability, nil))
+	auth := NewAuthService(cfg, store, nil, observability.MustNew(cfg.Observability, nil))
+	auth.login = hookVerifyingLogin{auth: auth}
 	service := NewViewerService(cfg, store, client, pods, auth, observability.MustNew(cfg.Observability, nil))
 	now := fixedNow()
+	auth.now = func() time.Time { return now }
 	service.now = func() time.Time { return now }
 	store.PutPodSession(&domain.PodSession{
 		ID:        "ps_1",

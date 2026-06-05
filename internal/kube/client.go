@@ -27,6 +27,9 @@ type Interface interface {
 	) (*corev1.PersistentVolumeClaim, error)
 	GetStorageClass(ctx context.Context, name string) (*storagev1.StorageClass, error)
 	ListStorageClasses(ctx context.Context) ([]storagev1.StorageClass, error)
+	CreateStorageClass(ctx context.Context, storageClass *storagev1.StorageClass) (*storagev1.StorageClass, error)
+	UpdateStorageClass(ctx context.Context, storageClass *storagev1.StorageClass) (*storagev1.StorageClass, error)
+	DeleteStorageClass(ctx context.Context, name string) error
 	ListPods(ctx context.Context, namespace string) ([]corev1.Pod, error)
 	ListViewerPods(ctx context.Context, namespace string, labels map[string]string) ([]corev1.Pod, error)
 	GetPod(ctx context.Context, namespace string, name string) (*corev1.Pod, error)
@@ -120,6 +123,35 @@ func (c *Client) ListStorageClasses(ctx context.Context) ([]storagev1.StorageCla
 		return nil, fmt.Errorf("listing storageclasses: %w", err)
 	}
 	return list.Items, nil
+}
+
+func (c *Client) CreateStorageClass(
+	ctx context.Context,
+	storageClass *storagev1.StorageClass,
+) (*storagev1.StorageClass, error) {
+	created, err := c.clientset.StorageV1().StorageClasses().Create(ctx, storageClass, metav1.CreateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("creating storageclass %s: %w", storageClass.Name, err)
+	}
+	return created, nil
+}
+
+func (c *Client) UpdateStorageClass(
+	ctx context.Context,
+	storageClass *storagev1.StorageClass,
+) (*storagev1.StorageClass, error) {
+	updated, err := c.clientset.StorageV1().StorageClasses().Update(ctx, storageClass, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("updating storageclass %s: %w", storageClass.Name, err)
+	}
+	return updated, nil
+}
+
+func (c *Client) DeleteStorageClass(ctx context.Context, name string) error {
+	if err := c.clientset.StorageV1().StorageClasses().Delete(ctx, name, metav1.DeleteOptions{}); err != nil {
+		return fmt.Errorf("deleting storageclass %s: %w", name, err)
+	}
+	return nil
 }
 
 func (c *Client) ListPods(ctx context.Context, namespace string) ([]corev1.Pod, error) {

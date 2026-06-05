@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"encore.dev/cron"
@@ -81,6 +82,7 @@ func runtimeHandler() *Handler {
 		nil,
 		observability.MustNew(config.Default().Observability, nil),
 		denyAuthorizer{},
+		WithStorageClassService(unavailableStorageClassService{}),
 	)
 }
 
@@ -108,6 +110,11 @@ func newRuntimeFromConfig(cfg config.Config) (*Runtime, error) {
 	tracerProvider := recorder.OTelTracerProvider()
 	store := state.New(cfg.Cache)
 	kubeClient := kube.WithObservability(kube.New(clientset), recorder)
+	adminKubeClient, err := storageClassAdminKubeClient(cfg, restConfig, recorder)
+	if err != nil {
+		_ = recorder.Shutdown(context.Background())
+		return nil, err
+	}
 	pods := session.NewPodService(cfg, store, kubeClient, recorder)
 	auth := session.NewAuthService(
 		cfg,
@@ -116,6 +123,7 @@ func newRuntimeFromConfig(cfg config.Config) (*Runtime, error) {
 		recorder,
 	)
 	viewers := session.NewViewerService(cfg, store, kubeClient, pods, auth, recorder)
+	storageClasses := session.NewStorageClassService(adminKubeClient, recorder)
 	cleanup := session.NewCleanupService(cfg, store, pods, recorder)
 	handler := NewHandler(
 		viewers,
@@ -125,12 +133,64 @@ func newRuntimeFromConfig(cfg config.Config) (*Runtime, error) {
 		recorder,
 		nil,
 		WithDebugConfig(cfg.Debug),
+		WithStorageClassService(storageClasses),
+		WithAdminAuthorizer(newKubernetesAdminAuthorizer(cfg.Admin, recorder)),
 	)
 	return &Runtime{
 		Handler:  handler,
 		cleanup:  cleanup,
 		recorder: recorder,
 	}, nil
+}
+
+func storageClassAdminKubeClient(
+	cfg config.Config,
+	base *rest.Config,
+	recorder *observability.Recorder,
+) (kube.Interface, error) {
+	if cfg.Debug.Enabled && strings.TrimSpace(cfg.Debug.ManagementKubeconfigPath) != "" {
+		adminConfig := rest.CopyConfig(base)
+		wrapKubernetesTransport(adminConfig, recorder.OTelTracerProvider())
+		clientset, err := kubernetes.NewForConfig(adminConfig)
+		if err != nil {
+			return nil, fmt.Errorf("building debug storageclass admin kubernetes client: %w", err)
+		}
+		return kube.WithObservability(kube.New(clientset), recorder), nil
+	}
+	namespace, err := backendNamespace()
+	if err != nil {
+		if cfg.Debug.Enabled {
+			namespace = "sealos-storage-manager"
+		} else {
+			return nil, err
+		}
+	}
+	adminConfig := rest.CopyConfig(base)
+	adminConfig.Impersonate.UserName = storageClassAdminUsername(namespace, cfg.Admin.StorageClassServiceAccountName)
+	wrapKubernetesTransport(adminConfig, recorder.OTelTracerProvider())
+	clientset, err := kubernetes.NewForConfig(adminConfig)
+	if err != nil {
+		return nil, fmt.Errorf("building storageclass admin kubernetes client: %w", err)
+	}
+	return kube.WithObservability(kube.New(clientset), recorder), nil
+}
+
+func storageClassAdminUsername(namespace string, serviceAccountName string) string {
+	return "system:serviceaccount:" + namespace + ":" + serviceAccountName
+}
+
+var serviceAccountNamespacePath = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+
+func backendNamespace() (string, error) {
+	body, err := os.ReadFile(serviceAccountNamespacePath) //nolint:gosec // Kubernetes service account namespace file is fixed.
+	if err != nil {
+		return "", fmt.Errorf("reading backend service account namespace: %w", err)
+	}
+	namespace := strings.TrimSpace(string(body))
+	if namespace == "" {
+		return "", fmt.Errorf("backend service account namespace is empty")
+	}
+	return namespace, nil
 }
 
 func wrapKubernetesTransport(restConfig *rest.Config, provider trace.TracerProvider) {

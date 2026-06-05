@@ -43,6 +43,13 @@ func (s *Store) PutPodSession(session *domain.PodSession) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if existing, ok := s.podSessions.items[session.ID]; ok {
+		oldKey := pvcKey(existing.value.Namespace, existing.value.PVCUID)
+		newKey := pvcKey(session.Namespace, session.PVCUID)
+		if oldKey != newKey {
+			s.podSessionByPVC.delete(oldKey)
+		}
+	}
 	s.podSessions.put(session.ID, clonePodSession(session), session.ExpiresAt)
 	s.podSessionByPVC.put(pvcKey(session.Namespace, session.PVCUID), session.ID, session.ExpiresAt)
 }
@@ -124,6 +131,9 @@ func (s *Store) PutViewerSession(session *domain.ViewerSession) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if existing, ok := s.viewerSessions.items[session.ID]; ok && existing.value.PodSessionID != session.PodSessionID {
+		s.deleteViewerByPodLocked(existing.value.PodSessionID, session.ID)
+	}
 	s.viewerSessions.put(session.ID, cloneViewerSession(session), session.ExpiresAt)
 	if _, ok := s.viewerByPod[session.PodSessionID]; !ok {
 		s.viewerByPod[session.PodSessionID] = map[string]struct{}{}

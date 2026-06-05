@@ -51,6 +51,66 @@ func ListStorageClasses(ctx context.Context, req *AuthenticatedRequest) (*ListSt
 	return runtimeHandler().ListStorageClassesData(ctx, req)
 }
 
+//encore:api public method=GET path=/api/admin/capabilities
+func AdminCapabilities(ctx context.Context, req *AuthenticatedRequest) (*AdminCapabilitiesResponse, error) {
+	return runtimeHandler().AdminCapabilitiesData(ctx, req)
+}
+
+//encore:api public method=GET path=/api/admin/storage-classes
+func AdminListStorageClasses(ctx context.Context, req *AuthenticatedRequest) (*ListStorageClassesResponse, error) {
+	return runtimeHandler().AdminListStorageClassesData(ctx, req)
+}
+
+//encore:api public method=GET path=/api/admin/storage-classes/:name/yaml
+func AdminGetStorageClassYAML(
+	ctx context.Context,
+	name string,
+	req *AuthenticatedRequest,
+) (*StorageClassYAMLResponse, error) {
+	return runtimeHandler().AdminGetStorageClassYAMLData(ctx, name, req)
+}
+
+//encore:api public method=POST path=/api/admin/storage-classes
+func AdminCreateStorageClass(ctx context.Context, req *StorageClassYAMLRequest) (*StorageClassResponse, error) {
+	return runtimeHandler().AdminCreateStorageClassData(ctx, req)
+}
+
+//encore:api public method=PUT path=/api/admin/storage-classes/:name
+func AdminUpdateStorageClass(
+	ctx context.Context,
+	name string,
+	req *StorageClassYAMLRequest,
+) (*StorageClassResponse, error) {
+	return runtimeHandler().AdminUpdateStorageClassData(ctx, name, req)
+}
+
+//encore:api public method=PUT path=/api/admin/storage-classes/:name/policy
+func AdminUpdateStorageClassPolicy(
+	ctx context.Context,
+	name string,
+	req *StorageClassPolicyRequest,
+) (*StorageClassResponse, error) {
+	return runtimeHandler().AdminUpdateStorageClassPolicyData(ctx, name, req)
+}
+
+//encore:api public method=DELETE path=/api/admin/storage-classes/:name
+func AdminDeleteStorageClass(
+	ctx context.Context,
+	name string,
+	req *AuthenticatedRequest,
+) (*StorageClassResponse, error) {
+	return runtimeHandler().AdminDeleteStorageClassData(ctx, name, req)
+}
+
+//encore:api public method=GET path=/api/admin/storage-classes/:name/describe
+func AdminDescribeStorageClass(
+	ctx context.Context,
+	name string,
+	req *AuthenticatedRequest,
+) (*StorageClassDescribeResponse, error) {
+	return runtimeHandler().AdminDescribeStorageClassData(ctx, name, req)
+}
+
 //encore:api public method=POST path=/api/viewer-sessions
 func CreateViewerSession(
 	ctx context.Context,
@@ -176,6 +236,50 @@ func (unavailableViewerService) CloseViewerSessionForUser(_ string, _ string) (*
 }
 
 func (unavailableViewerService) GetPodSession(_ string) (*domain.PodSession, error) {
+	return nil, errRuntimeUnavailable
+}
+
+type unavailableStorageClassService struct{}
+
+func (unavailableStorageClassService) ListStorageClasses(_ context.Context, _ bool) ([]domain.StorageClass, error) {
+	return nil, errRuntimeUnavailable
+}
+
+func (unavailableStorageClassService) GetStorageClassYAML(
+	_ context.Context,
+	_ string,
+) (*session.StorageClassYAML, error) {
+	return nil, errRuntimeUnavailable
+}
+
+func (unavailableStorageClassService) CreateStorageClass(_ context.Context, _ string) (*domain.StorageClass, error) {
+	return nil, errRuntimeUnavailable
+}
+
+func (unavailableStorageClassService) UpdateStorageClass(
+	_ context.Context,
+	_ string,
+	_ string,
+) (*domain.StorageClass, error) {
+	return nil, errRuntimeUnavailable
+}
+
+func (unavailableStorageClassService) UpdateStorageClassPolicy(
+	_ context.Context,
+	_ string,
+	_ session.StorageClassPolicyInput,
+) (*domain.StorageClass, error) {
+	return nil, errRuntimeUnavailable
+}
+
+func (unavailableStorageClassService) DeleteStorageClass(_ context.Context, _ string) (*domain.StorageClass, error) {
+	return nil, errRuntimeUnavailable
+}
+
+func (unavailableStorageClassService) DescribeStorageClass(
+	_ context.Context,
+	_ string,
+) (*session.StorageClassDescribe, error) {
 	return nil, errRuntimeUnavailable
 }
 

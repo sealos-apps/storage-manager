@@ -160,16 +160,31 @@ func (s *ViewerService) CreatePVC(ctx context.Context, input CreatePVCInput) (pv
 			},
 		},
 	}
-	if strings.TrimSpace(input.StorageClassName) != "" {
-		storageClassName := strings.TrimSpace(input.StorageClassName)
-		if _, err := s.kube.GetStorageClass(ctx, storageClassName); err != nil {
-			if apierrors.IsNotFound(err) {
-				return nil, apienv.NewError(404, apienv.CodeStorageClassNotFound, "StorageClass not found", nil)
-			}
-			return nil, err
-		}
-		pvcSpec.Spec.StorageClassName = &storageClassName
+	storageClassName := strings.TrimSpace(input.StorageClassName)
+	if storageClassName == "" {
+		return nil, apienv.NewError(400, apienv.CodeValidationError, "storage_class_name is required", nil)
 	}
+	storageClass, err := s.kube.GetStorageClass(ctx, storageClassName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, apienv.NewError(404, apienv.CodeStorageClassNotFound, "StorageClass not found", nil)
+		}
+		return nil, err
+	}
+	allowedModes, annotationStatus := StorageClassAccessPolicy(storageClass.Annotations)
+	if annotationStatus != storageClassAnnotationReady {
+		return nil, apienv.NewError(403, apienv.CodeStorageClassNotVisible, "StorageClass is not available for PVC creation", map[string]any{
+			"annotation_status": annotationStatus,
+		})
+	}
+	for _, mode := range input.AccessModes {
+		if !slices.Contains(allowedModes, strings.TrimSpace(mode)) {
+			return nil, apienv.NewError(400, apienv.CodeUnsupportedAccessMode, "Access mode is not allowed by the selected StorageClass", map[string]any{
+				"allowed_access_modes": allowedModes,
+			})
+		}
+	}
+	pvcSpec.Spec.StorageClassName = &storageClassName
 	created, err := s.kube.CreatePVC(ctx, pvcSpec)
 	if err != nil {
 		if apierrors.IsAlreadyExists(err) {
@@ -255,36 +270,7 @@ func (s *ViewerService) ExpandPVC(ctx context.Context, input ExpandPVCInput) (pv
 }
 
 func (s *ViewerService) ListStorageClasses(ctx context.Context) (items []domain.StorageClass, err error) {
-	ctx, finish := s.recorder.TraceOperation(ctx, "storageclass.list")
-	defer func() {
-		finish(err)
-	}()
-
-	storageClasses, err := s.kube.ListStorageClasses(ctx)
-	if err != nil {
-		return nil, err
-	}
-	items = make([]domain.StorageClass, 0, len(storageClasses))
-	for _, storageClass := range storageClasses {
-		volumeBindingMode := ""
-		if storageClass.VolumeBindingMode != nil {
-			volumeBindingMode = string(*storageClass.VolumeBindingMode)
-		}
-		reclaimPolicy := ""
-		if storageClass.ReclaimPolicy != nil {
-			reclaimPolicy = string(*storageClass.ReclaimPolicy)
-		}
-		items = append(items, domain.StorageClass{
-			Name:                     storageClass.Name,
-			Provisioner:              storageClass.Provisioner,
-			AllowVolumeExpansion:     storageClass.AllowVolumeExpansion != nil && *storageClass.AllowVolumeExpansion,
-			VolumeBindingMode:        volumeBindingMode,
-			IsDefault:                storageClass.Annotations["storageclass.kubernetes.io/is-default-class"] == "true",
-			ReclaimPolicy:            reclaimPolicy,
-			CreationTimestampRFC3339: storageClass.CreationTimestamp.Format(time.RFC3339),
-		})
-	}
-	return items, nil
+	return NewStorageClassService(s.kube, s.recorder).ListStorageClasses(ctx, false)
 }
 
 func (s *ViewerService) CreateViewerSession(
@@ -401,6 +387,7 @@ func (s *ViewerService) GetViewerSession(
 			synced, err := s.pods.SyncPodStatus(ctx, pod)
 			if err == nil {
 				pod = synced
+				s.store.PutPodSession(pod)
 			}
 		}
 		viewer.PodStatus = pod.Status
@@ -456,6 +443,7 @@ func (s *ViewerService) IssueToken(
 		synced, err := s.pods.SyncPodStatus(ctx, pod)
 		if err == nil {
 			pod = synced
+			s.store.PutPodSession(pod)
 		}
 	}
 	if !ok || pod.Status != domain.PodStatusReady {

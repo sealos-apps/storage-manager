@@ -89,9 +89,12 @@ observability:
     export_timeout: 2s
 debug:
   enabled: true
-  user_kubeconfig_path: kubeconfig.test.yaml
   management_kubeconfig_path: kubeconfig.management.yaml
   forced_namespace: ns-debug
+admin:
+  allowed_user_ids:
+    - admin
+  storage_class_service_account_name: storageclass-admin
 `))
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -108,14 +111,17 @@ debug:
 	if !cfg.Debug.Enabled {
 		t.Fatal("debug.enabled = false")
 	}
-	if cfg.Debug.UserKubeconfigPath != "kubeconfig.test.yaml" {
-		t.Fatalf("debug user kubeconfig path = %q", cfg.Debug.UserKubeconfigPath)
-	}
 	if cfg.Debug.ManagementKubeconfigPath != "kubeconfig.management.yaml" {
 		t.Fatalf("debug management kubeconfig path = %q", cfg.Debug.ManagementKubeconfigPath)
 	}
 	if cfg.Debug.ForcedNamespace != "ns-debug" {
 		t.Fatalf("debug forced namespace = %q", cfg.Debug.ForcedNamespace)
+	}
+	if !slices.Contains(cfg.Admin.AllowedUserIDs, "admin") {
+		t.Fatalf("admin allowed user ids = %#v", cfg.Admin.AllowedUserIDs)
+	}
+	if cfg.Admin.StorageClassServiceAccountName != "storageclass-admin" {
+		t.Fatalf("admin storageclass service account name = %q", cfg.Admin.StorageClassServiceAccountName)
 	}
 	if cfg.Observability.Logs.Level != "debug" {
 		t.Fatalf("log level = %q", cfg.Observability.Logs.Level)
@@ -195,6 +201,16 @@ func TestLoadRejectsInvalidConfig(t *testing.T) {
 			name: "bad trace sample ratio",
 			body: validConfigYAML + "\nobservability:\n  traces:\n    exporter: none\n    sample_ratio: 1.1\n",
 			want: "traces.sample_ratio",
+		},
+		{
+			name: "empty admin user id",
+			body: validConfigYAML + "\nadmin:\n  allowed_user_ids:\n    - \"\"\n",
+			want: "admin.allowed_user_ids",
+		},
+		{
+			name: "bad storageclass service account name",
+			body: validConfigYAML + "\nadmin:\n  storage_class_service_account_name: BAD_NAME\n",
+			want: "admin.storage_class_service_account_name",
 		},
 	}
 	for _, tt := range tests {
@@ -301,8 +317,8 @@ func TestCommittedDebugExampleConfigLoads(t *testing.T) {
 	if !cfg.Debug.Enabled {
 		t.Fatal("debug example must enable debug")
 	}
-	if strings.TrimSpace(cfg.Debug.UserKubeconfigPath) == "" {
-		t.Fatal("debug example missing user kubeconfig path")
+	if strings.TrimSpace(cfg.Debug.ManagementKubeconfigPath) == "" {
+		t.Fatal("debug example missing management kubeconfig path")
 	}
 }
 
@@ -317,8 +333,8 @@ func TestCommittedIntegrationExampleConfigLoads(t *testing.T) {
 	if !cfg.Debug.Enabled {
 		t.Fatal("integration example must enable debug")
 	}
-	if strings.TrimSpace(cfg.Debug.UserKubeconfigPath) == "" {
-		t.Fatal("integration example missing user kubeconfig path")
+	if strings.TrimSpace(cfg.Debug.ManagementKubeconfigPath) == "" {
+		t.Fatal("integration example missing management kubeconfig path")
 	}
 }
 
@@ -388,7 +404,6 @@ func TestDeployConfigMapEmbedsValidViewerConfig(t *testing.T) {
 	}
 	for _, forbidden := range []string{
 		"namespace_allowlist",
-		"user_kubeconfig_path",
 		"management_kubeconfig_path",
 		"storage_class_name",
 	} {
@@ -435,6 +450,52 @@ func TestDeployServiceAccountAllowsViewerPodCleanup(t *testing.T) {
 	requireRule(t, clusterRole.Rules, "", "services", []string{"get", "list", "delete"})
 	requireRule(t, clusterRole.Rules, "", "configmaps", []string{"get", "list", "delete"})
 	requireRule(t, clusterRole.Rules, "networking.k8s.io", "ingresses", []string{"get", "list", "delete"})
+}
+
+func TestDeployStorageClassAdminManifest(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	data, err := os.ReadFile(filepath.Join(root, "deploy", "storageclass-admin.yaml")) //nolint:gosec // Test reads a committed fixture.
+	if err != nil {
+		t.Fatalf("read deploy storageclass admin manifest: %v", err)
+	}
+	decoder := yaml.NewDecoder(strings.NewReader(string(data)))
+	foundSA := false
+	foundStorageRole := false
+	foundImpersonateRole := false
+	for {
+		var document struct {
+			Kind     string `yaml:"kind"`
+			Metadata struct {
+				Name      string `yaml:"name"`
+				Namespace string `yaml:"namespace"`
+			} `yaml:"metadata"`
+			Rules []deployRule `yaml:"rules"`
+		}
+		if err := decoder.Decode(&document); err != nil {
+			if err != io.EOF {
+				t.Fatalf("parse deploy storageclass admin manifest: %v", err)
+			}
+			break
+		}
+		if document.Kind == "ServiceAccount" &&
+			document.Metadata.Name == "storageclass-admin" &&
+			document.Metadata.Namespace == "sealos-storage-manager" {
+			foundSA = true
+		}
+		if document.Kind == "ClusterRole" && document.Metadata.Name == "storageclass-admin" {
+			requireRule(t, document.Rules, "storage.k8s.io", "storageclasses", []string{"get", "list", "create", "update", "delete"})
+			foundStorageRole = true
+		}
+		if document.Kind == "Role" && document.Metadata.Name == "viewer-backend-impersonate-storageclass-admin" {
+			requireRule(t, document.Rules, "", "serviceaccounts", []string{"impersonate"})
+			foundImpersonateRole = true
+		}
+	}
+	if !foundSA || !foundStorageRole || !foundImpersonateRole {
+		t.Fatalf("manifest found serviceAccount=%v storageRole=%v impersonateRole=%v", foundSA, foundStorageRole, foundImpersonateRole)
+	}
 }
 
 func requireRule(t *testing.T, rules []deployRule, apiGroup string, resource string, verbs []string) {

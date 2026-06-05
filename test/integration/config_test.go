@@ -6,14 +6,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/nixieboluo/sealos-storage-manager/internal/authn"
 	"github.com/nixieboluo/sealos-storage-manager/internal/config"
 	"github.com/nixieboluo/sealos-storage-manager/internal/kube"
 	corev1 "k8s.io/api/core/v1"
@@ -32,17 +30,17 @@ func TestIntegrationConfigLoadsFromCONFIG(t *testing.T) {
 	if !cfg.Debug.Enabled {
 		t.Fatal("debug.enabled = false")
 	}
-	if strings.TrimSpace(cfg.Debug.UserKubeconfigPath) == "" {
-		t.Fatal("debug.user_kubeconfig_path is empty")
+	if strings.TrimSpace(cfg.Debug.ManagementKubeconfigPath) == "" {
+		t.Fatal("debug.management_kubeconfig_path is empty")
 	}
 }
 
 func TestIntegrationKubeconfigCanListPVCs(t *testing.T) {
 	root := repoRoot(t)
 	cfg := loadIntegrationConfig(t, root)
-	userClient := integrationClient(t, root, cfg.Debug.UserKubeconfigPath)
+	managementClient := integrationClient(t, root, cfg.Debug.ManagementKubeconfigPath)
 	namespace := integrationNamespace(t, root, cfg)
-	client := kube.New(userClient)
+	client := kube.New(managementClient)
 	if _, err := client.ListPVCs(t.Context(), namespace); err != nil {
 		t.Fatalf("list pvcs in %q: %v", namespace, err)
 	}
@@ -58,23 +56,18 @@ func TestIntegrationListStorageClasses(t *testing.T) {
 	}
 }
 
-func TestIntegrationUserAndManagementKubeconfigsResolveSameNamespace(t *testing.T) {
+func TestIntegrationManagementKubeconfigResolvesNamespace(t *testing.T) {
 	root := repoRoot(t)
 	cfg := loadIntegrationConfig(t, root)
-	userClient := integrationClient(t, root, cfg.Debug.UserKubeconfigPath)
 	managementClient := integrationClient(t, root, cfg.Debug.ManagementKubeconfigPath)
 	namespace := integrationNamespace(t, root, cfg)
 
-	userNamespace, err := userClient.CoreV1().Namespaces().Get(t.Context(), namespace, metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("user kubeconfig get namespace %q: %v", namespace, err)
-	}
 	managementNamespace, err := managementClient.CoreV1().Namespaces().Get(t.Context(), namespace, metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("management kubeconfig get namespace %q: %v", namespace, err)
 	}
-	if userNamespace.UID != managementNamespace.UID {
-		t.Fatalf("namespace UID mismatch: user=%q management=%q", userNamespace.UID, managementNamespace.UID)
+	if string(managementNamespace.UID) == "" {
+		t.Fatalf("namespace %q has empty UID", namespace)
 	}
 }
 
@@ -265,9 +258,6 @@ func loadIntegrationConfig(t *testing.T, root string) config.Config {
 	if !cfg.Debug.Enabled {
 		t.Skip("debug.enabled is false")
 	}
-	if cfg.Debug.UserKubeconfigPath == "" {
-		t.Skip("debug.user_kubeconfig_path is empty")
-	}
 	if cfg.Debug.ManagementKubeconfigPath == "" {
 		t.Skip("debug.management_kubeconfig_path is empty")
 	}
@@ -302,16 +292,22 @@ func integrationNamespace(t *testing.T, root string, cfg config.Config) string {
 	if namespace := strings.TrimSpace(cfg.Debug.ForcedNamespace); namespace != "" {
 		return namespace
 	}
-	path := resolvePath(root, cfg.Debug.UserKubeconfigPath)
-	data, err := os.ReadFile(path) //nolint:gosec // Integration tests read explicit local kubeconfig fixtures.
+	path := resolvePath(root, cfg.Debug.ManagementKubeconfigPath)
+	configAccess := clientcmd.NewDefaultPathOptions()
+	configAccess.LoadingRules.ExplicitPath = path
+	rawConfig, err := configAccess.GetStartingConfig()
 	if err != nil {
-		t.Skipf("read user kubeconfig %q: %v", path, err)
+		t.Skipf("read management kubeconfig %q: %v", path, err)
 	}
-	principal, err := authn.PrincipalFromAuthorization(url.QueryEscape(string(data)))
-	if err != nil {
-		t.Fatalf("principal from debug user kubeconfig: %v", err)
+	contextName := rawConfig.CurrentContext
+	if contextName == "" {
+		return "default"
 	}
-	return principal.Namespace
+	context := rawConfig.Contexts[contextName]
+	if context == nil || strings.TrimSpace(context.Namespace) == "" {
+		return "default"
+	}
+	return strings.TrimSpace(context.Namespace)
 }
 
 func resolvePath(root string, path string) string {

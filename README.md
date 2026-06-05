@@ -36,9 +36,9 @@ make build-image IMAGE=registry.example.com/viewer-backend:dev
 ```
 
 `make test-integration` uses a real Kubernetes cluster and reads
-`debug.user_kubeconfig_path`, `debug.management_kubeconfig_path`, and optional
-`debug.forced_namespace` from `config/viewer.integration.yaml`. Local
-kubeconfigs and integration config files are ignored by git.
+`debug.management_kubeconfig_path` plus optional `debug.forced_namespace` from
+`config/viewer.integration.yaml`. Local kubeconfigs and integration config
+files are ignored by git.
 
 ## Local Dev Server
 

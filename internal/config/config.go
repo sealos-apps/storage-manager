@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 const DefaultPath = "config/viewer.yaml"
@@ -15,6 +16,7 @@ const EnvPath = "CONFIG"
 
 type Config struct {
 	Server        ServerConfig        `yaml:"server"`
+	Admin         AdminConfig         `yaml:"admin"`
 	Viewer        ViewerConfig        `yaml:"viewer"`
 	Sessions      SessionsConfig      `yaml:"sessions"`
 	Cache         CacheConfig         `yaml:"cache"`
@@ -24,6 +26,11 @@ type Config struct {
 
 type ServerConfig struct {
 	ConfigPath string `yaml:"config_path"`
+}
+
+type AdminConfig struct {
+	AllowedUserIDs                 []string `yaml:"allowed_user_ids"`
+	StorageClassServiceAccountName string   `yaml:"storage_class_service_account_name"`
 }
 
 type ViewerConfig struct {
@@ -105,7 +112,6 @@ type TracesConfig struct {
 
 type DebugConfig struct {
 	Enabled                  bool   `yaml:"enabled"`
-	UserKubeconfigPath       string `yaml:"user_kubeconfig_path"`
 	ManagementKubeconfigPath string `yaml:"management_kubeconfig_path"`
 	ForcedNamespace          string `yaml:"forced_namespace"`
 }
@@ -148,6 +154,9 @@ func Default() Config {
 		Server: ServerConfig{
 			ConfigPath: DefaultPath,
 		},
+		Admin: AdminConfig{
+			StorageClassServiceAccountName: "storageclass-admin",
+		},
 		Viewer: ViewerConfig{},
 		Sessions: SessionsConfig{
 			HeartbeatInterval:   30 * time.Second,
@@ -185,6 +194,16 @@ func Default() Config {
 
 func (cfg Config) Validate() error {
 	var problems []string
+	for _, userID := range cfg.Admin.AllowedUserIDs {
+		if strings.TrimSpace(userID) == "" {
+			problems = append(problems, "admin.allowed_user_ids must not contain empty values")
+		}
+	}
+	if strings.TrimSpace(cfg.Admin.StorageClassServiceAccountName) == "" {
+		problems = append(problems, "admin.storage_class_service_account_name is required")
+	} else if errs := validation.IsDNS1123Label(strings.TrimSpace(cfg.Admin.StorageClassServiceAccountName)); len(errs) > 0 {
+		problems = append(problems, "admin.storage_class_service_account_name must be a DNS-1123 label")
+	}
 	if strings.TrimSpace(cfg.Viewer.BackendVerifyURL) == "" {
 		problems = append(problems, "viewer.backend_verify_url is required")
 	}
@@ -305,6 +324,7 @@ func normalizedTraceExporter(value string) string {
 func (cfg Config) Redacted() map[string]any {
 	return map[string]any{
 		"server": cfg.Server,
+		"admin":  cfg.Admin,
 		"viewer": map[string]any{
 			"backend_verify_url": cfg.Viewer.BackendVerifyURL,
 			"hook_client_token":  "redacted",

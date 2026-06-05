@@ -88,6 +88,11 @@ viewer:
     host_template: viewer-{{ .PodSessionID }}.example.com
     tls_secret_name: ""
 
+admin:
+  allowed_user_ids:
+    - admin
+  storage_class_service_account_name: storageclass-admin
+
 sessions:
   heartbeat_interval: 30s
   viewer_session_timeout: 90s

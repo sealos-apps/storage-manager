@@ -102,6 +102,38 @@ func (c observedClient) ListStorageClasses(ctx context.Context) ([]storagev1.Sto
 	return storageClasses, err
 }
 
+func (c observedClient) CreateStorageClass(
+	ctx context.Context,
+	storageClass *storagev1.StorageClass,
+) (*storagev1.StorageClass, error) {
+	var created *storagev1.StorageClass
+	err := c.observe(ctx, "create", "storageclass", "", storageClass.Name, func(ctx context.Context) error {
+		var err error
+		created, err = c.next.CreateStorageClass(ctx, storageClass)
+		return err
+	})
+	return created, err
+}
+
+func (c observedClient) UpdateStorageClass(
+	ctx context.Context,
+	storageClass *storagev1.StorageClass,
+) (*storagev1.StorageClass, error) {
+	var updated *storagev1.StorageClass
+	err := c.observe(ctx, "update", "storageclass", "", storageClass.Name, func(ctx context.Context) error {
+		var err error
+		updated, err = c.next.UpdateStorageClass(ctx, storageClass)
+		return err
+	})
+	return updated, err
+}
+
+func (c observedClient) DeleteStorageClass(ctx context.Context, name string) error {
+	return c.observe(ctx, "delete", "storageclass", "", name, func(ctx context.Context) error {
+		return c.next.DeleteStorageClass(ctx, name)
+	})
+}
+
 func (c observedClient) ListPods(ctx context.Context, namespace string) ([]corev1.Pod, error) {
 	var pods []corev1.Pod
 	err := c.observe(ctx, "list", "pods", namespace, "", func(ctx context.Context) error {

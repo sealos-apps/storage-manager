@@ -36,6 +36,33 @@ func TestStorePodSessionByPVC(t *testing.T) {
 	}
 }
 
+func TestStorePodSessionByPVCReplacesStaleIndex(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 13, 10, 0, 0, 0, time.UTC)
+	store := New(config.Default().Cache)
+	store.PutPodSession(&domain.PodSession{
+		ID:        "ps_1",
+		Namespace: "default",
+		PVCUID:    "old",
+		ExpiresAt: now.Add(time.Minute),
+	})
+	store.PutPodSession(&domain.PodSession{
+		ID:        "ps_1",
+		Namespace: "default",
+		PVCUID:    "new",
+		ExpiresAt: now.Add(time.Minute),
+	})
+
+	if _, ok := store.FindPodSessionByPVC("default", "old", now); ok {
+		t.Fatal("FindPodSessionByPVC returned stale PVC index")
+	}
+	got, ok := store.FindPodSessionByPVC("default", "new", now)
+	if !ok || got.ID != "ps_1" {
+		t.Fatalf("FindPodSessionByPVC(new) = %#v ok=%v", got, ok)
+	}
+}
+
 func TestStoreExpiresViewerSessionsAndMapping(t *testing.T) {
 	t.Parallel()
 
@@ -56,6 +83,31 @@ func TestStoreExpiresViewerSessionsAndMapping(t *testing.T) {
 	}
 	if got := store.ListViewerSessionsByPod("ps_1", now.Add(2*time.Second)); len(got) != 0 {
 		t.Fatalf("sessions after expiry = %d", len(got))
+	}
+}
+
+func TestStoreViewerSessionByPodReplacesStaleIndex(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 13, 10, 0, 0, 0, time.UTC)
+	store := New(config.Default().Cache)
+	store.PutViewerSession(&domain.ViewerSession{
+		ID:           "vs_1",
+		PodSessionID: "ps_old",
+		ExpiresAt:    now.Add(time.Minute),
+	})
+	store.PutViewerSession(&domain.ViewerSession{
+		ID:           "vs_1",
+		PodSessionID: "ps_new",
+		ExpiresAt:    now.Add(time.Minute),
+	})
+
+	if got := store.ListViewerSessionsByPod("ps_old", now); len(got) != 0 {
+		t.Fatalf("old pod sessions = %d", len(got))
+	}
+	got := store.ListViewerSessionsByPod("ps_new", now)
+	if len(got) != 1 || got[0].ID != "vs_1" {
+		t.Fatalf("new pod sessions = %#v", got)
 	}
 }
 

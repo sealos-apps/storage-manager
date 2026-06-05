@@ -5,6 +5,16 @@ metadata:
   namespace: sealos-storage-manager
 data:
   viewer.yaml: |
+    admin:
+      # Sealos user IDs allowed to manage cluster StorageClasses. A value like
+      # "admin" matches the Kubernetes username
+      # "system:serviceaccount:user-system:admin" returned by `kubectl auth whoami`.
+      allowed_user_ids:
+        - admin
+      # ServiceAccount name in the same namespace as the backend deployment. The
+      # backend impersonates this account for StorageClass write operations.
+      storage_class_service_account_name: storageclass-admin
+
     # Replace every example value before deploying.
     viewer:
       backend_verify_url: https://storage-manager.example.com/internal/filebrowser-hook/verify

@@ -39,6 +39,15 @@ type fakeViewerService struct {
 	podSessionErr  error
 }
 
+type fakeStorageClassService struct {
+	items       []domain.StorageClass
+	yaml        *session.StorageClassYAML
+	describe    *session.StorageClassDescribe
+	item        *domain.StorageClass
+	policyInput *session.StorageClassPolicyInput
+	policyName  *string
+}
+
 const testKubeconfig = `apiVersion: v1
 kind: Config
 current-context: dev
@@ -113,6 +122,47 @@ func (f *fakeViewerService) GetPodSession(_ string) (*domain.PodSession, error) 
 	return f.podSession, nil
 }
 
+func (f fakeStorageClassService) ListStorageClasses(_ context.Context, includeHidden bool) ([]domain.StorageClass, error) {
+	if !includeHidden {
+		return nil, errors.New("admin list must include hidden storageclasses")
+	}
+	return f.items, nil
+}
+
+func (f fakeStorageClassService) GetStorageClassYAML(_ context.Context, _ string) (*session.StorageClassYAML, error) {
+	return f.yaml, nil
+}
+
+func (f fakeStorageClassService) CreateStorageClass(_ context.Context, _ string) (*domain.StorageClass, error) {
+	return f.item, nil
+}
+
+func (f fakeStorageClassService) UpdateStorageClass(_ context.Context, _ string, _ string) (*domain.StorageClass, error) {
+	return f.item, nil
+}
+
+func (f fakeStorageClassService) UpdateStorageClassPolicy(
+	_ context.Context,
+	name string,
+	input session.StorageClassPolicyInput,
+) (*domain.StorageClass, error) {
+	if f.policyName != nil {
+		*f.policyName = name
+	}
+	if f.policyInput != nil {
+		*f.policyInput = input
+	}
+	return f.item, nil
+}
+
+func (f fakeStorageClassService) DeleteStorageClass(_ context.Context, _ string) (*domain.StorageClass, error) {
+	return f.item, nil
+}
+
+func (f fakeStorageClassService) DescribeStorageClass(_ context.Context, _ string) (*session.StorageClassDescribe, error) {
+	return f.describe, nil
+}
+
 type fakePodService struct {
 	closed *domain.PodSession
 }
@@ -170,6 +220,18 @@ func (allowAuthorizer) CanUpdatePVC(
 
 func (allowAuthorizer) CanListStorageClasses(_ context.Context, _ *authn.Principal) error {
 	return nil
+}
+
+type allowAdminAuthorizer struct{}
+
+func (allowAdminAuthorizer) CanManageStorageClasses(_ context.Context, _ *authn.Principal) error {
+	return nil
+}
+
+type denyTestAdminAuthorizer struct{}
+
+func (denyTestAdminAuthorizer) CanManageStorageClasses(_ context.Context, _ *authn.Principal) error {
+	return errors.New("denied")
 }
 
 func TestHandlerListPVCsUsesEnvelope(t *testing.T) {
@@ -453,6 +515,198 @@ func TestHandlerListStorageClassesUsesEnvelope(t *testing.T) {
 	}
 	if !strings.Contains(recorder.Body.String(), `"storage_class_list"`) {
 		t.Fatalf("body = %s", recorder.Body.String())
+	}
+}
+
+func TestHandlerAdminCapabilitiesReturnsFalseForNonAdmin(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(
+		&fakeViewerService{},
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+		WithAdminAuthorizer(denyTestAdminAuthorizer{}),
+	)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/capabilities", nil)
+	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
+	recorder := httptest.NewRecorder()
+
+	handler.AdminCapabilities(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `"can_manage_storage_classes":false`) {
+		t.Fatalf("body = %s", recorder.Body.String())
+	}
+}
+
+func TestHandlerAdminListStorageClassesRequiresAdmin(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(
+		&fakeViewerService{},
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+		WithAdminAuthorizer(denyTestAdminAuthorizer{}),
+		WithStorageClassService(fakeStorageClassService{}),
+	)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/storage-classes", nil)
+	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
+	recorder := httptest.NewRecorder()
+
+	handler.AdminListStorageClasses(recorder, req)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), string(apienv.CodeAdminAccessDenied)) {
+		t.Fatalf("body = %s", recorder.Body.String())
+	}
+}
+
+func TestHandlerAdminStorageClassEndpointsUseEnvelope(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(
+		&fakeViewerService{},
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+		WithAdminAuthorizer(allowAdminAuthorizer{}),
+		WithStorageClassService(fakeStorageClassService{
+			items:    []domain.StorageClass{{Name: "standard", Provisioner: "test"}},
+			item:     &domain.StorageClass{Name: "standard", Provisioner: "test"},
+			yaml:     &session.StorageClassYAML{Name: "standard", YAML: "kind: StorageClass\n"},
+			describe: &session.StorageClassDescribe{Name: "standard", Describe: "Name: standard"},
+		}),
+	)
+	tests := []struct {
+		name   string
+		req    *http.Request
+		handle func(*Handler, http.ResponseWriter, *http.Request)
+		want   string
+	}{
+		{
+			name:   "list",
+			req:    httptest.NewRequest(http.MethodGet, "/api/admin/storage-classes", nil),
+			handle: (*Handler).AdminListStorageClasses,
+			want:   "storage_class_list",
+		},
+		{
+			name:   "yaml",
+			req:    httptest.NewRequest(http.MethodGet, "/api/admin/storage-classes/standard/yaml", nil),
+			handle: (*Handler).AdminGetStorageClassYAML,
+			want:   "storage_class_yaml",
+		},
+		{
+			name:   "create",
+			req:    httptest.NewRequest(http.MethodPost, "/api/admin/storage-classes", strings.NewReader(`{"yaml":"kind: StorageClass\n"}`)),
+			handle: (*Handler).AdminCreateStorageClass,
+			want:   "storage_class",
+		},
+		{
+			name:   "update",
+			req:    httptest.NewRequest(http.MethodPut, "/api/admin/storage-classes/standard", strings.NewReader(`{"yaml":"kind: StorageClass\n"}`)),
+			handle: (*Handler).AdminUpdateStorageClass,
+			want:   "storage_class",
+		},
+		{
+			name:   "update policy",
+			req:    httptest.NewRequest(http.MethodPut, "/api/admin/storage-classes/standard/policy", strings.NewReader(`{"visible_in_create":true,"allowed_access_modes":["ReadWriteOnce","ReadWriteMany"]}`)),
+			handle: (*Handler).AdminUpdateStorageClassPolicy,
+			want:   "storage_class",
+		},
+		{
+			name:   "delete",
+			req:    httptest.NewRequest(http.MethodDelete, "/api/admin/storage-classes/standard", nil),
+			handle: (*Handler).AdminDeleteStorageClass,
+			want:   "storage_class",
+		},
+		{
+			name:   "describe",
+			req:    httptest.NewRequest(http.MethodGet, "/api/admin/storage-classes/standard/describe", nil),
+			handle: (*Handler).AdminDescribeStorageClass,
+			want:   "storage_class_describe",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tt.req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
+			recorder := httptest.NewRecorder()
+
+			tt.handle(handler, recorder, tt.req)
+
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+			}
+			if !strings.Contains(recorder.Body.String(), tt.want) {
+				t.Fatalf("body = %s", recorder.Body.String())
+			}
+		})
+	}
+}
+
+func TestHandlerAdminUpdateStorageClassPolicyMapsRequest(t *testing.T) {
+	t.Parallel()
+
+	var policyInput session.StorageClassPolicyInput
+	var policyName string
+	handler := NewHandler(
+		&fakeViewerService{},
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+		WithAdminAuthorizer(allowAdminAuthorizer{}),
+		WithStorageClassService(fakeStorageClassService{
+			item:        &domain.StorageClass{Name: "standard", Provisioner: "test"},
+			policyInput: &policyInput,
+			policyName:  &policyName,
+		}),
+	)
+	req := httptest.NewRequest(
+		http.MethodPut,
+		"/api/admin/storage-classes/standard/policy",
+		strings.NewReader(`{"visible_in_create":true,"allowed_access_modes":["ReadWriteOnce","ReadWriteMany"]}`),
+	)
+	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
+	recorder := httptest.NewRecorder()
+
+	handler.AdminUpdateStorageClassPolicy(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if policyName != "standard" {
+		t.Fatalf("policyName = %q", policyName)
+	}
+	if !policyInput.VisibleInCreate || strings.Join(policyInput.AllowedAccessModes, ",") != "ReadWriteOnce,ReadWriteMany" {
+		t.Fatalf("policyInput = %#v", policyInput)
+	}
+}
+
+func TestAllowedAdminUsernamesUseSealosServiceAccountShape(t *testing.T) {
+	t.Parallel()
+
+	got := allowedAdminUsernames([]string{"admin", " ", "admin", "b4hw543c"})
+	want := []string{
+		"system:serviceaccount:user-system:admin",
+		"system:serviceaccount:user-system:b4hw543c",
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("usernames = %#v, want %#v", got, want)
 	}
 }
 

@@ -88,6 +88,11 @@ viewer:
     host_template: viewer-{{ .PodSessionID }}.example.test
     tls_secret_name: ""
 
+admin:
+  allowed_user_ids:
+    - admin
+  storage_class_service_account_name: storageclass-admin
+
 sessions:
   heartbeat_interval: 30s
   viewer_session_timeout: 90s
@@ -119,6 +124,5 @@ observability:
 
 debug:
   enabled: true
-  user_kubeconfig_path: kubeconfig.test.yaml
   management_kubeconfig_path: kubeconfig.management.yaml
   forced_namespace: default

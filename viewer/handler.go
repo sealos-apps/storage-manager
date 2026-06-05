@@ -40,6 +40,20 @@ type viewerService interface {
 	GetPodSession(id string) (*domain.PodSession, error)
 }
 
+type storageClassService interface {
+	ListStorageClasses(ctx context.Context, includeHidden bool) ([]domain.StorageClass, error)
+	GetStorageClassYAML(ctx context.Context, name string) (*session.StorageClassYAML, error)
+	CreateStorageClass(ctx context.Context, body string) (*domain.StorageClass, error)
+	UpdateStorageClass(ctx context.Context, name string, body string) (*domain.StorageClass, error)
+	UpdateStorageClassPolicy(
+		ctx context.Context,
+		name string,
+		input session.StorageClassPolicyInput,
+	) (*domain.StorageClass, error)
+	DeleteStorageClass(ctx context.Context, name string) (*domain.StorageClass, error)
+	DescribeStorageClass(ctx context.Context, name string) (*session.StorageClassDescribe, error)
+}
+
 type podService interface {
 	ClosePodSession(ctx context.Context, podSessionID string) (*domain.PodSession, error)
 }
@@ -57,13 +71,19 @@ type authorizer interface {
 	CanListStorageClasses(ctx context.Context, principal *authn.Principal) error
 }
 
+type adminAuthorizer interface {
+	CanManageStorageClasses(ctx context.Context, principal *authn.Principal) error
+}
+
 type Handler struct {
-	viewers  viewerService
-	pods     podService
-	auth     authService
-	recorder *observability.Recorder
-	authz    authorizer
-	debug    config.DebugConfig
+	viewers        viewerService
+	storageClasses storageClassService
+	pods           podService
+	auth           authService
+	recorder       *observability.Recorder
+	authz          authorizer
+	adminAuthz     adminAuthorizer
+	debug          config.DebugConfig
 }
 
 type HandlerOption func(*Handler)
@@ -71,6 +91,18 @@ type HandlerOption func(*Handler)
 func WithDebugConfig(debug config.DebugConfig) HandlerOption {
 	return func(h *Handler) {
 		h.debug = debug
+	}
+}
+
+func WithStorageClassService(storageClasses storageClassService) HandlerOption {
+	return func(h *Handler) {
+		h.storageClasses = storageClasses
+	}
+}
+
+func WithAdminAuthorizer(authz adminAuthorizer) HandlerOption {
+	return func(h *Handler) {
+		h.adminAuthz = authz
 	}
 }
 
@@ -143,6 +175,37 @@ type ListStorageClassesResponse struct {
 	StorageClassList StorageClassList `json:"storage_class_list"`
 }
 
+type AdminCapabilitySet struct {
+	CanManageStorageClasses bool `json:"can_manage_storage_classes"`
+}
+
+type AdminCapabilitiesResponse struct {
+	AdminCapabilities AdminCapabilitySet `json:"admin_capabilities"`
+}
+
+type StorageClassResponse struct {
+	StorageClass *domain.StorageClass `json:"storage_class"`
+}
+
+type StorageClassYAMLResponse struct {
+	StorageClassYAML *session.StorageClassYAML `json:"storage_class_yaml"`
+}
+
+type StorageClassYAMLRequest struct {
+	Authorization string `header:"Authorization" encore:"sensitive"`
+	YAML          string `json:"yaml"`
+}
+
+type StorageClassPolicyRequest struct {
+	Authorization      string   `header:"Authorization" encore:"sensitive"`
+	VisibleInCreate    bool     `json:"visible_in_create"`
+	AllowedAccessModes []string `json:"allowed_access_modes"`
+}
+
+type StorageClassDescribeResponse struct {
+	StorageClassDescribe *session.StorageClassDescribe `json:"storage_class_describe"`
+}
+
 type ViewerSessionResponse struct {
 	ViewerSession *domain.ViewerSession `json:"viewer_session"`
 }
@@ -186,11 +249,13 @@ func NewHandler(
 		authz = newKubernetesAuthorizer(managementClient, recorder)
 	}
 	handler := &Handler{
-		viewers:  viewers,
-		pods:     pods,
-		auth:     auth,
-		recorder: recorder,
-		authz:    authz,
+		viewers:        viewers,
+		storageClasses: unavailableStorageClassService{},
+		pods:           pods,
+		auth:           auth,
+		recorder:       recorder,
+		authz:          authz,
+		adminAuthz:     denyAdminAuthorizer{},
 	}
 	for _, option := range options {
 		option(handler)
@@ -238,6 +303,75 @@ func (h *Handler) ListStorageClassesData(
 	req *AuthenticatedRequest,
 ) (*ListStorageClassesResponse, error) {
 	response, apiErr := h.listStorageClasses(ctx, req)
+	return response, toEncoreError(apiErr)
+}
+
+func (h *Handler) AdminCapabilitiesData(
+	ctx context.Context,
+	req *AuthenticatedRequest,
+) (*AdminCapabilitiesResponse, error) {
+	response, apiErr := h.adminCapabilities(ctx, req)
+	return response, toEncoreError(apiErr)
+}
+
+func (h *Handler) AdminListStorageClassesData(
+	ctx context.Context,
+	req *AuthenticatedRequest,
+) (*ListStorageClassesResponse, error) {
+	response, apiErr := h.adminListStorageClasses(ctx, req)
+	return response, toEncoreError(apiErr)
+}
+
+func (h *Handler) AdminGetStorageClassYAMLData(
+	ctx context.Context,
+	name string,
+	req *AuthenticatedRequest,
+) (*StorageClassYAMLResponse, error) {
+	response, apiErr := h.adminGetStorageClassYAML(ctx, name, req)
+	return response, toEncoreError(apiErr)
+}
+
+func (h *Handler) AdminCreateStorageClassData(
+	ctx context.Context,
+	req *StorageClassYAMLRequest,
+) (*StorageClassResponse, error) {
+	response, apiErr := h.adminCreateStorageClass(ctx, req)
+	return response, toEncoreError(apiErr)
+}
+
+func (h *Handler) AdminUpdateStorageClassData(
+	ctx context.Context,
+	name string,
+	req *StorageClassYAMLRequest,
+) (*StorageClassResponse, error) {
+	response, apiErr := h.adminUpdateStorageClass(ctx, name, req)
+	return response, toEncoreError(apiErr)
+}
+
+func (h *Handler) AdminUpdateStorageClassPolicyData(
+	ctx context.Context,
+	name string,
+	req *StorageClassPolicyRequest,
+) (*StorageClassResponse, error) {
+	response, apiErr := h.adminUpdateStorageClassPolicy(ctx, name, req)
+	return response, toEncoreError(apiErr)
+}
+
+func (h *Handler) AdminDeleteStorageClassData(
+	ctx context.Context,
+	name string,
+	req *AuthenticatedRequest,
+) (*StorageClassResponse, error) {
+	response, apiErr := h.adminDeleteStorageClass(ctx, name, req)
+	return response, toEncoreError(apiErr)
+}
+
+func (h *Handler) AdminDescribeStorageClassData(
+	ctx context.Context,
+	name string,
+	req *AuthenticatedRequest,
+) (*StorageClassDescribeResponse, error) {
+	response, apiErr := h.adminDescribeStorageClass(ctx, name, req)
 	return response, toEncoreError(apiErr)
 }
 
@@ -366,6 +500,69 @@ func (h *Handler) ExpandPVC(w http.ResponseWriter, req *http.Request) {
 
 func (h *Handler) ListStorageClasses(w http.ResponseWriter, req *http.Request) {
 	response, err := h.listStorageClasses(req.Context(), authenticatedRequest(req))
+	writeHTTPResponse(w, response, err)
+}
+
+func (h *Handler) AdminCapabilities(w http.ResponseWriter, req *http.Request) {
+	response, err := h.adminCapabilities(req.Context(), authenticatedRequest(req))
+	writeHTTPResponse(w, response, err)
+}
+
+func (h *Handler) AdminListStorageClasses(w http.ResponseWriter, req *http.Request) {
+	response, err := h.adminListStorageClasses(req.Context(), authenticatedRequest(req))
+	writeHTTPResponse(w, response, err)
+}
+
+func (h *Handler) AdminGetStorageClassYAML(w http.ResponseWriter, req *http.Request) {
+	name := strings.TrimSuffix(pathID(req.URL.Path, "/api/admin/storage-classes/"), "/yaml")
+	response, err := h.adminGetStorageClassYAML(req.Context(), name, authenticatedRequest(req))
+	writeHTTPResponse(w, response, err)
+}
+
+func (h *Handler) AdminCreateStorageClass(w http.ResponseWriter, req *http.Request) {
+	var body StorageClassYAMLRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeHTTPResponse(w, nil, apienv.NewError(400, apienv.CodeValidationError, "Invalid JSON request", nil))
+		return
+	}
+	body.Authorization = req.Header.Get("Authorization")
+	response, err := h.adminCreateStorageClass(req.Context(), &body)
+	writeHTTPResponse(w, response, err)
+}
+
+func (h *Handler) AdminUpdateStorageClass(w http.ResponseWriter, req *http.Request) {
+	var body StorageClassYAMLRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeHTTPResponse(w, nil, apienv.NewError(400, apienv.CodeValidationError, "Invalid JSON request", nil))
+		return
+	}
+	body.Authorization = req.Header.Get("Authorization")
+	name := pathID(req.URL.Path, "/api/admin/storage-classes/")
+	response, err := h.adminUpdateStorageClass(req.Context(), name, &body)
+	writeHTTPResponse(w, response, err)
+}
+
+func (h *Handler) AdminUpdateStorageClassPolicy(w http.ResponseWriter, req *http.Request) {
+	var body StorageClassPolicyRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeHTTPResponse(w, nil, apienv.NewError(400, apienv.CodeValidationError, "Invalid JSON request", nil))
+		return
+	}
+	body.Authorization = req.Header.Get("Authorization")
+	name := strings.TrimSuffix(pathID(req.URL.Path, "/api/admin/storage-classes/"), "/policy")
+	response, err := h.adminUpdateStorageClassPolicy(req.Context(), name, &body)
+	writeHTTPResponse(w, response, err)
+}
+
+func (h *Handler) AdminDeleteStorageClass(w http.ResponseWriter, req *http.Request) {
+	name := pathID(req.URL.Path, "/api/admin/storage-classes/")
+	response, err := h.adminDeleteStorageClass(req.Context(), name, authenticatedRequest(req))
+	writeHTTPResponse(w, response, err)
+}
+
+func (h *Handler) AdminDescribeStorageClass(w http.ResponseWriter, req *http.Request) {
+	name := strings.TrimSuffix(pathID(req.URL.Path, "/api/admin/storage-classes/"), "/describe")
+	response, err := h.adminDescribeStorageClass(req.Context(), name, authenticatedRequest(req))
 	writeHTTPResponse(w, response, err)
 }
 
@@ -621,6 +818,190 @@ func (h *Handler) listStorageClasses(
 	}
 	h.observe(ctx, http.MethodGet, "/api/storage-classes", http.StatusOK, start)
 	return &ListStorageClassesResponse{StorageClassList: StorageClassList{Items: items}}, nil
+}
+
+func (h *Handler) adminCapabilities(
+	ctx context.Context,
+	req *AuthenticatedRequest,
+) (*AdminCapabilitiesResponse, *apienv.Error) {
+	start := time.Now()
+	principal, err := h.authenticateRequest(req)
+	if err != nil {
+		h.observe(ctx, http.MethodGet, "/api/admin/capabilities", err.Status, start)
+		return nil, err
+	}
+	ctx = authn.WithPrincipal(ctx, principal)
+	canManage := h.adminAuthz != nil && h.adminAuthz.CanManageStorageClasses(ctx, principal) == nil
+	h.observe(ctx, http.MethodGet, "/api/admin/capabilities", http.StatusOK, start)
+	return &AdminCapabilitiesResponse{
+		AdminCapabilities: AdminCapabilitySet{CanManageStorageClasses: canManage},
+	}, nil
+}
+
+func (h *Handler) adminListStorageClasses(
+	ctx context.Context,
+	req *AuthenticatedRequest,
+) (*ListStorageClassesResponse, *apienv.Error) {
+	start := time.Now()
+	if apiErr := h.authorizeStorageClassAdmin(ctx, req); apiErr != nil {
+		h.observe(ctx, http.MethodGet, "/api/admin/storage-classes", apiErr.Status, start)
+		return nil, apiErr
+	}
+	items, listErr := h.storageClasses.ListStorageClasses(ctx, true)
+	if listErr != nil {
+		apiErr := apienv.FromError(listErr)
+		h.observe(ctx, http.MethodGet, "/api/admin/storage-classes", apiErr.Status, start)
+		return nil, apiErr
+	}
+	if items == nil {
+		items = []domain.StorageClass{}
+	}
+	h.observe(ctx, http.MethodGet, "/api/admin/storage-classes", http.StatusOK, start)
+	return &ListStorageClassesResponse{StorageClassList: StorageClassList{Items: items}}, nil
+}
+
+func (h *Handler) adminGetStorageClassYAML(
+	ctx context.Context,
+	name string,
+	req *AuthenticatedRequest,
+) (*StorageClassYAMLResponse, *apienv.Error) {
+	start := time.Now()
+	if apiErr := h.authorizeStorageClassAdmin(ctx, req); apiErr != nil {
+		h.observe(ctx, http.MethodGet, "/api/admin/storage-classes/:name/yaml", apiErr.Status, start)
+		return nil, apiErr
+	}
+	result, getErr := h.storageClasses.GetStorageClassYAML(ctx, name)
+	if getErr != nil {
+		apiErr := apienv.FromError(getErr)
+		h.observe(ctx, http.MethodGet, "/api/admin/storage-classes/:name/yaml", apiErr.Status, start)
+		return nil, apiErr
+	}
+	h.observe(ctx, http.MethodGet, "/api/admin/storage-classes/:name/yaml", http.StatusOK, start)
+	return &StorageClassYAMLResponse{StorageClassYAML: result}, nil
+}
+
+func (h *Handler) adminCreateStorageClass(
+	ctx context.Context,
+	req *StorageClassYAMLRequest,
+) (*StorageClassResponse, *apienv.Error) {
+	start := time.Now()
+	if apiErr := h.authorizeStorageClassAdmin(ctx, req); apiErr != nil {
+		h.observe(ctx, http.MethodPost, "/api/admin/storage-classes", apiErr.Status, start)
+		return nil, apiErr
+	}
+	item, createErr := h.storageClasses.CreateStorageClass(ctx, req.YAML)
+	if createErr != nil {
+		apiErr := apienv.FromError(createErr)
+		h.observe(ctx, http.MethodPost, "/api/admin/storage-classes", apiErr.Status, start)
+		return nil, apiErr
+	}
+	h.observe(ctx, http.MethodPost, "/api/admin/storage-classes", http.StatusCreated, start)
+	return &StorageClassResponse{StorageClass: item}, nil
+}
+
+func (h *Handler) adminUpdateStorageClass(
+	ctx context.Context,
+	name string,
+	req *StorageClassYAMLRequest,
+) (*StorageClassResponse, *apienv.Error) {
+	start := time.Now()
+	if apiErr := h.authorizeStorageClassAdmin(ctx, req); apiErr != nil {
+		h.observe(ctx, http.MethodPut, "/api/admin/storage-classes/:name", apiErr.Status, start)
+		return nil, apiErr
+	}
+	item, updateErr := h.storageClasses.UpdateStorageClass(ctx, name, req.YAML)
+	if updateErr != nil {
+		apiErr := apienv.FromError(updateErr)
+		h.observe(ctx, http.MethodPut, "/api/admin/storage-classes/:name", apiErr.Status, start)
+		return nil, apiErr
+	}
+	h.observe(ctx, http.MethodPut, "/api/admin/storage-classes/:name", http.StatusOK, start)
+	return &StorageClassResponse{StorageClass: item}, nil
+}
+
+func (h *Handler) adminUpdateStorageClassPolicy(
+	ctx context.Context,
+	name string,
+	req *StorageClassPolicyRequest,
+) (*StorageClassResponse, *apienv.Error) {
+	start := time.Now()
+	if apiErr := h.authorizeStorageClassAdmin(ctx, req); apiErr != nil {
+		h.observe(ctx, http.MethodPut, "/api/admin/storage-classes/:name/policy", apiErr.Status, start)
+		return nil, apiErr
+	}
+	item, updateErr := h.storageClasses.UpdateStorageClassPolicy(
+		ctx,
+		name,
+		session.StorageClassPolicyInput{
+			AllowedAccessModes: req.AllowedAccessModes,
+			VisibleInCreate:    req.VisibleInCreate,
+		},
+	)
+	if updateErr != nil {
+		apiErr := apienv.FromError(updateErr)
+		h.observe(ctx, http.MethodPut, "/api/admin/storage-classes/:name/policy", apiErr.Status, start)
+		return nil, apiErr
+	}
+	h.observe(ctx, http.MethodPut, "/api/admin/storage-classes/:name/policy", http.StatusOK, start)
+	return &StorageClassResponse{StorageClass: item}, nil
+}
+
+func (h *Handler) adminDeleteStorageClass(
+	ctx context.Context,
+	name string,
+	req *AuthenticatedRequest,
+) (*StorageClassResponse, *apienv.Error) {
+	start := time.Now()
+	if apiErr := h.authorizeStorageClassAdmin(ctx, req); apiErr != nil {
+		h.observe(ctx, http.MethodDelete, "/api/admin/storage-classes/:name", apiErr.Status, start)
+		return nil, apiErr
+	}
+	item, deleteErr := h.storageClasses.DeleteStorageClass(ctx, name)
+	if deleteErr != nil {
+		apiErr := apienv.FromError(deleteErr)
+		h.observe(ctx, http.MethodDelete, "/api/admin/storage-classes/:name", apiErr.Status, start)
+		return nil, apiErr
+	}
+	h.observe(ctx, http.MethodDelete, "/api/admin/storage-classes/:name", http.StatusOK, start)
+	return &StorageClassResponse{StorageClass: item}, nil
+}
+
+func (h *Handler) adminDescribeStorageClass(
+	ctx context.Context,
+	name string,
+	req *AuthenticatedRequest,
+) (*StorageClassDescribeResponse, *apienv.Error) {
+	start := time.Now()
+	if apiErr := h.authorizeStorageClassAdmin(ctx, req); apiErr != nil {
+		h.observe(ctx, http.MethodGet, "/api/admin/storage-classes/:name/describe", apiErr.Status, start)
+		return nil, apiErr
+	}
+	result, describeErr := h.storageClasses.DescribeStorageClass(ctx, name)
+	if describeErr != nil {
+		apiErr := apienv.FromError(describeErr)
+		h.observe(ctx, http.MethodGet, "/api/admin/storage-classes/:name/describe", apiErr.Status, start)
+		return nil, apiErr
+	}
+	h.observe(ctx, http.MethodGet, "/api/admin/storage-classes/:name/describe", http.StatusOK, start)
+	return &StorageClassDescribeResponse{StorageClassDescribe: result}, nil
+}
+
+func (h *Handler) authorizeStorageClassAdmin(
+	ctx context.Context,
+	req interface{ authorizationHeader() string },
+) *apienv.Error {
+	principal, err := h.authenticateRequest(req)
+	if err != nil {
+		return err
+	}
+	ctx = authn.WithPrincipal(ctx, principal)
+	if h.adminAuthz == nil {
+		return apienv.NewError(403, apienv.CodeAdminAccessDenied, "Admin access denied", nil)
+	}
+	if err := h.adminAuthz.CanManageStorageClasses(ctx, principal); err != nil {
+		return apienv.NewError(403, apienv.CodeAdminAccessDenied, "Admin access denied", nil)
+	}
+	return nil
 }
 
 func (h *Handler) createViewerSession(
@@ -910,6 +1291,20 @@ func (req *ExpandPVCRequest) authorizationHeader() string {
 	return req.Authorization
 }
 
+func (req *StorageClassYAMLRequest) authorizationHeader() string {
+	if req == nil {
+		return ""
+	}
+	return req.Authorization
+}
+
+func (req *StorageClassPolicyRequest) authorizationHeader() string {
+	if req == nil {
+		return ""
+	}
+	return req.Authorization
+}
+
 func (req *CreateViewerSessionRequest) authorizationHeader() string {
 	if req == nil {
 		return ""
@@ -1007,7 +1402,7 @@ func (h *Handler) authorizeViewerSessionPVC(
 		return err
 	}
 	if session.Namespace == "" || session.PVCName == "" {
-		return apienv.NewError(500, apienv.CodeInternalError, "Viewer session is missing PVC identity", nil)
+		return apienv.NewError(500, apienv.CodeInternal, "Viewer session is missing PVC identity", nil)
 	}
 	if err := h.authz.CanGetPVC(ctx, principal, session.Namespace, session.PVCName); err != nil {
 		return apienv.NewError(403, apienv.CodePVCAccessDenied, "PVC access denied", nil)

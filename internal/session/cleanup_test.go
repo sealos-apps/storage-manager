@@ -331,7 +331,7 @@ func TestReconcileViewerPodsSyncsExpiredStoredSessionWithoutPurging(t *testing.T
 		PodName:        "viewer-ps-expired",
 		ServiceName:    "viewer-ps-expired",
 		RuntimeVersion: version,
-		Status:         domain.PodStatusReady,
+		Status:         domain.PodStatusCreating,
 		ExpiresAt:      fixedNow().Add(-time.Second),
 	})
 	pod := &corev1.Pod{
@@ -365,8 +365,12 @@ func TestReconcileViewerPodsSyncsExpiredStoredSessionWithoutPurging(t *testing.T
 	if err := service.ReconcileViewerPods(t.Context(), "default"); err != nil {
 		t.Fatalf("ReconcileViewerPods() error = %v", err)
 	}
-	if _, ok := store.GetPodSessionIncludingExpired("ps_expired"); !ok {
+	synced, ok := store.GetPodSessionIncludingExpired("ps_expired")
+	if !ok {
 		t.Fatal("expired stored pod session was purged during reconcile")
+	}
+	if synced.Status != domain.PodStatusReady {
+		t.Fatalf("reconciled pod session status = %q, want %q", synced.Status, domain.PodStatusReady)
 	}
 }
 
