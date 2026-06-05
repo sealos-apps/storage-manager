@@ -27,7 +27,7 @@ func TestHandlerAdminCapabilitiesReturnsFalseForNonAdmin(t *testing.T) {
 		allowAuthorizer{},
 		WithAdminAuthorizer(denyTestAdminAuthorizer{}),
 	)
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/capabilities", nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/capabilities", nil)
 	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
 	recorder := httptest.NewRecorder()
 
@@ -54,7 +54,7 @@ func TestHandlerAdminListStorageClassesRequiresAdmin(t *testing.T) {
 		WithAdminAuthorizer(denyTestAdminAuthorizer{}),
 		WithStorageClassService(fakeStorageClassService{}),
 	)
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/storage-classes", nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/storage-classes", nil)
 	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
 	recorder := httptest.NewRecorder()
 
@@ -94,43 +94,43 @@ func TestHandlerAdminStorageClassEndpointsUseEnvelope(t *testing.T) {
 	}{
 		{
 			name:   "list",
-			req:    httptest.NewRequest(http.MethodGet, "/api/admin/storage-classes", nil),
+			req:    httptest.NewRequest(http.MethodGet, "/admin/storage-classes", nil),
 			handle: (*Handler).AdminListStorageClasses,
 			want:   "storage_class_list",
 		},
 		{
 			name:   "yaml",
-			req:    httptest.NewRequest(http.MethodGet, "/api/admin/storage-classes/standard/yaml", nil),
+			req:    httptest.NewRequest(http.MethodGet, "/admin/storage-classes/standard/yaml", nil),
 			handle: (*Handler).AdminGetStorageClassYAML,
 			want:   "storage_class_yaml",
 		},
 		{
 			name:   "create",
-			req:    httptest.NewRequest(http.MethodPost, "/api/admin/storage-classes", strings.NewReader(`{"yaml":"kind: StorageClass\n"}`)),
+			req:    httptest.NewRequest(http.MethodPost, "/admin/storage-classes", strings.NewReader(`{"yaml":"kind: StorageClass\n"}`)),
 			handle: (*Handler).AdminCreateStorageClass,
 			want:   "storage_class",
 		},
 		{
 			name:   "update",
-			req:    httptest.NewRequest(http.MethodPut, "/api/admin/storage-classes/standard", strings.NewReader(`{"yaml":"kind: StorageClass\n"}`)),
+			req:    httptest.NewRequest(http.MethodPut, "/admin/storage-classes/standard", strings.NewReader(`{"yaml":"kind: StorageClass\n"}`)),
 			handle: (*Handler).AdminUpdateStorageClass,
 			want:   "storage_class",
 		},
 		{
 			name:   "update policy",
-			req:    httptest.NewRequest(http.MethodPut, "/api/admin/storage-classes/standard/policy", strings.NewReader(`{"visible_in_create":true,"allowed_access_modes":["ReadWriteOnce","ReadWriteMany"]}`)),
+			req:    httptest.NewRequest(http.MethodPut, "/admin/storage-classes/standard/policy", strings.NewReader(`{"visible_in_create":true,"allowed_access_modes":["ReadWriteOnce","ReadWriteMany"]}`)),
 			handle: (*Handler).AdminUpdateStorageClassPolicy,
 			want:   "storage_class",
 		},
 		{
 			name:   "delete",
-			req:    httptest.NewRequest(http.MethodDelete, "/api/admin/storage-classes/standard", nil),
+			req:    httptest.NewRequest(http.MethodDelete, "/admin/storage-classes/standard", nil),
 			handle: (*Handler).AdminDeleteStorageClass,
 			want:   "storage_class",
 		},
 		{
 			name:   "describe",
-			req:    httptest.NewRequest(http.MethodGet, "/api/admin/storage-classes/standard/describe", nil),
+			req:    httptest.NewRequest(http.MethodGet, "/admin/storage-classes/standard/describe", nil),
 			handle: (*Handler).AdminDescribeStorageClass,
 			want:   "storage_class_describe",
 		},
@@ -172,7 +172,7 @@ func TestHandlerAdminListNamespacesFiltersUserNamespaces(t *testing.T) {
 		allowAuthorizer{},
 		WithAdminAuthorizer(allowAdminAuthorizer{}),
 	)
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/namespaces", nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/namespaces", nil)
 	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
 	recorder := httptest.NewRecorder()
 
@@ -204,7 +204,7 @@ func TestHandlerAdminListNamespacesRequiresAdmin(t *testing.T) {
 		allowAuthorizer{},
 		WithAdminAuthorizer(denyTestAdminAuthorizer{}),
 	)
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/namespaces", nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/namespaces", nil)
 	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
 	recorder := httptest.NewRecorder()
 
@@ -250,14 +250,14 @@ func TestHandlerAdminImplicitPVCOperationsUseRequestedSystemNamespace(t *testing
 	}{
 		{
 			name:   "list",
-			req:    httptest.NewRequest(http.MethodGet, "/api/pvcs?namespace=kube-system", nil),
+			req:    httptest.NewRequest(http.MethodGet, "/pvcs?namespace=kube-system", nil),
 			handle: (*Handler).ListPVCs,
 		},
 		{
 			name: "create",
 			req: httptest.NewRequest(
 				http.MethodPost,
-				"/api/pvcs",
+				"/pvcs",
 				strings.NewReader(`{"namespace":"kube-system","name":"data","capacity":"10Gi","access_modes":["ReadWriteOnce"],"storage_class_name":"standard"}`),
 			),
 			handle: (*Handler).CreatePVC,
@@ -266,14 +266,14 @@ func TestHandlerAdminImplicitPVCOperationsUseRequestedSystemNamespace(t *testing
 			name: "expand",
 			req: httptest.NewRequest(
 				http.MethodPost,
-				"/api/pvcs/kube-system/data/expand",
+				"/pvcs/kube-system/data/expand",
 				strings.NewReader(`{"capacity":"20Gi"}`),
 			),
 			handle: (*Handler).ExpandPVC,
 		},
 		{
 			name:   "delete",
-			req:    httptest.NewRequest(http.MethodDelete, "/api/pvcs/kube-system/data", nil),
+			req:    httptest.NewRequest(http.MethodDelete, "/pvcs/kube-system/data", nil),
 			handle: (*Handler).DeletePVC,
 		},
 	}
@@ -316,7 +316,7 @@ func TestHandlerAdminImplicitPVCRejectsUserNamespace(t *testing.T) {
 		allowAuthorizer{},
 		WithAdminAuthorizer(allowAdminAuthorizer{}),
 	)
-	req := httptest.NewRequest(http.MethodGet, "/api/pvcs?namespace=ns-other-user", nil)
+	req := httptest.NewRequest(http.MethodGet, "/pvcs?namespace=ns-other-user", nil)
 	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
 	recorder := httptest.NewRecorder()
 
@@ -357,7 +357,7 @@ func TestHandlerAdminViewerSessionMarksAdminContext(t *testing.T) {
 	)
 	req := httptest.NewRequest(
 		http.MethodPost,
-		"/api/viewer-sessions",
+		"/viewer-sessions",
 		strings.NewReader(`{"namespace":"kube-system","pvc_name":"data"}`),
 	)
 	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
@@ -397,7 +397,7 @@ func TestHandlerAdminUpdateStorageClassPolicyMapsRequest(t *testing.T) {
 	)
 	req := httptest.NewRequest(
 		http.MethodPut,
-		"/api/admin/storage-classes/standard/policy",
+		"/admin/storage-classes/standard/policy",
 		strings.NewReader(`{"visible_in_create":true,"allowed_access_modes":["ReadWriteOnce","ReadWriteMany"]}`),
 	)
 	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))

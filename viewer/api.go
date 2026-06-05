@@ -7,22 +7,22 @@ import (
 
 var defaultHandler *Handler
 
-//encore:api public method=GET path=/api/pvcs
+//encore:api public method=GET path=/pvcs
 func ListPVCs(ctx context.Context, req *ListPVCsRequest) (*ListPVCsResponse, error) {
 	return runtimeHandler().ListPVCsData(ctx, req)
 }
 
-//encore:api public method=GET path=/api/context
+//encore:api public method=GET path=/context
 func GetContext(ctx context.Context, req *AuthenticatedRequest) (*ContextResponse, error) {
 	return runtimeHandler().GetContextData(ctx, req)
 }
 
-//encore:api public method=POST path=/api/pvcs
+//encore:api public method=POST path=/pvcs
 func CreatePVC(ctx context.Context, req *CreatePVCRequest) (*PVCResponse, error) {
 	return runtimeHandler().CreatePVCData(ctx, req)
 }
 
-//encore:api public method=DELETE path=/api/pvcs/:namespace/:name
+//encore:api public method=DELETE path=/pvcs/:namespace/:name
 func DeletePVC(
 	ctx context.Context,
 	namespace string,
@@ -32,7 +32,7 @@ func DeletePVC(
 	return runtimeHandler().DeletePVCData(ctx, namespace, name, req)
 }
 
-//encore:api public method=POST path=/api/pvcs/:namespace/:name/expand
+//encore:api public method=POST path=/pvcs/:namespace/:name/expand
 func ExpandPVC(
 	ctx context.Context,
 	namespace string,
@@ -42,27 +42,27 @@ func ExpandPVC(
 	return runtimeHandler().ExpandPVCData(ctx, namespace, name, req)
 }
 
-//encore:api public method=GET path=/api/storage-classes
+//encore:api public method=GET path=/storage-classes
 func ListStorageClasses(ctx context.Context, req *AuthenticatedRequest) (*ListStorageClassesResponse, error) {
 	return runtimeHandler().ListStorageClassesData(ctx, req)
 }
 
-//encore:api public method=GET path=/api/admin/capabilities
+//encore:api public method=GET path=/admin/capabilities
 func AdminCapabilities(ctx context.Context, req *AuthenticatedRequest) (*AdminCapabilitiesResponse, error) {
 	return runtimeHandler().AdminCapabilitiesData(ctx, req)
 }
 
-//encore:api public method=GET path=/api/admin/namespaces
+//encore:api public method=GET path=/admin/namespaces
 func AdminListNamespaces(ctx context.Context, req *AuthenticatedRequest) (*ListNamespacesResponse, error) {
 	return runtimeHandler().AdminListNamespacesData(ctx, req)
 }
 
-//encore:api public method=GET path=/api/admin/storage-classes
+//encore:api public method=GET path=/admin/storage-classes
 func AdminListStorageClasses(ctx context.Context, req *AuthenticatedRequest) (*ListStorageClassesResponse, error) {
 	return runtimeHandler().AdminListStorageClassesData(ctx, req)
 }
 
-//encore:api public method=GET path=/api/admin/storage-classes/:name/yaml
+//encore:api public method=GET path=/admin/storage-classes/:name/yaml
 func AdminGetStorageClassYAML(
 	ctx context.Context,
 	name string,
@@ -71,12 +71,12 @@ func AdminGetStorageClassYAML(
 	return runtimeHandler().AdminGetStorageClassYAMLData(ctx, name, req)
 }
 
-//encore:api public method=POST path=/api/admin/storage-classes
+//encore:api public method=POST path=/admin/storage-classes
 func AdminCreateStorageClass(ctx context.Context, req *StorageClassYAMLRequest) (*StorageClassResponse, error) {
 	return runtimeHandler().AdminCreateStorageClassData(ctx, req)
 }
 
-//encore:api public method=PUT path=/api/admin/storage-classes/:name
+//encore:api public method=PUT path=/admin/storage-classes/:name
 func AdminUpdateStorageClass(
 	ctx context.Context,
 	name string,
@@ -85,7 +85,7 @@ func AdminUpdateStorageClass(
 	return runtimeHandler().AdminUpdateStorageClassData(ctx, name, req)
 }
 
-//encore:api public method=PUT path=/api/admin/storage-classes/:name/policy
+//encore:api public method=PUT path=/admin/storage-classes/:name/policy
 func AdminUpdateStorageClassPolicy(
 	ctx context.Context,
 	name string,
@@ -94,7 +94,7 @@ func AdminUpdateStorageClassPolicy(
 	return runtimeHandler().AdminUpdateStorageClassPolicyData(ctx, name, req)
 }
 
-//encore:api public method=DELETE path=/api/admin/storage-classes/:name
+//encore:api public method=DELETE path=/admin/storage-classes/:name
 func AdminDeleteStorageClass(
 	ctx context.Context,
 	name string,
@@ -103,7 +103,7 @@ func AdminDeleteStorageClass(
 	return runtimeHandler().AdminDeleteStorageClassData(ctx, name, req)
 }
 
-//encore:api public method=GET path=/api/admin/storage-classes/:name/describe
+//encore:api public method=GET path=/admin/storage-classes/:name/describe
 func AdminDescribeStorageClass(
 	ctx context.Context,
 	name string,
@@ -112,7 +112,7 @@ func AdminDescribeStorageClass(
 	return runtimeHandler().AdminDescribeStorageClassData(ctx, name, req)
 }
 
-//encore:api public method=POST path=/api/viewer-sessions
+//encore:api public method=POST path=/viewer-sessions
 func CreateViewerSession(
 	ctx context.Context,
 	req *CreateViewerSessionRequest,
@@ -120,7 +120,7 @@ func CreateViewerSession(
 	return runtimeHandler().CreateViewerSessionData(ctx, req)
 }
 
-//encore:api public method=GET path=/api/viewer-sessions/:viewerSessionID
+//encore:api public method=GET path=/viewer-sessions/:viewerSessionID
 func GetViewerSession(
 	ctx context.Context,
 	viewerSessionID string,
@@ -129,7 +129,7 @@ func GetViewerSession(
 	return runtimeHandler().GetViewerSessionData(ctx, viewerSessionID, req)
 }
 
-//encore:api public method=POST path=/api/viewer-sessions/:viewerSessionID/token
+//encore:api public method=POST path=/viewer-sessions/:viewerSessionID/token
 func IssueViewerToken(
 	ctx context.Context,
 	viewerSessionID string,
@@ -138,7 +138,7 @@ func IssueViewerToken(
 	return runtimeHandler().IssueTokenData(ctx, viewerSessionID, req)
 }
 
-//encore:api public method=POST path=/api/viewer-sessions/:viewerSessionID/heartbeat
+//encore:api public method=POST path=/viewer-sessions/:viewerSessionID/heartbeat
 func HeartbeatViewerSession(
 	ctx context.Context,
 	viewerSessionID string,
@@ -147,7 +147,7 @@ func HeartbeatViewerSession(
 	return runtimeHandler().HeartbeatData(ctx, viewerSessionID, req)
 }
 
-//encore:api public method=DELETE path=/api/viewer-sessions/:viewerSessionID
+//encore:api public method=DELETE path=/viewer-sessions/:viewerSessionID
 func CloseViewerSession(
 	ctx context.Context,
 	viewerSessionID string,
@@ -156,7 +156,7 @@ func CloseViewerSession(
 	return runtimeHandler().CloseViewerSessionData(ctx, viewerSessionID, req)
 }
 
-//encore:api public method=DELETE path=/api/pod-sessions/:podSessionID
+//encore:api public method=DELETE path=/pod-sessions/:podSessionID
 func ClosePodSession(
 	ctx context.Context,
 	podSessionID string,
@@ -165,7 +165,7 @@ func ClosePodSession(
 	return runtimeHandler().ClosePodSessionData(ctx, podSessionID, req)
 }
 
-//encore:api public method=GET path=/api/pod-sessions/:podSessionID
+//encore:api public method=GET path=/pod-sessions/:podSessionID
 func GetPodSession(
 	ctx context.Context,
 	podSessionID string,

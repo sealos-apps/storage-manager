@@ -84,7 +84,7 @@ func (h *Handler) AdminListStorageClasses(w http.ResponseWriter, req *http.Reque
 }
 
 func (h *Handler) AdminGetStorageClassYAML(w http.ResponseWriter, req *http.Request) {
-	name := strings.TrimSuffix(pathID(req.URL.Path, "/api/admin/storage-classes/"), "/yaml")
+	name := strings.TrimSuffix(pathID(req.URL.Path, "/admin/storage-classes/"), "/yaml")
 	response, err := h.adminGetStorageClassYAML(req.Context(), name, authenticatedRequest(req))
 	writeHTTPResponse(w, response, err)
 }
@@ -107,7 +107,7 @@ func (h *Handler) AdminUpdateStorageClass(w http.ResponseWriter, req *http.Reque
 		return
 	}
 	body.Authorization = req.Header.Get("Authorization")
-	name := pathID(req.URL.Path, "/api/admin/storage-classes/")
+	name := pathID(req.URL.Path, "/admin/storage-classes/")
 	response, err := h.adminUpdateStorageClass(req.Context(), name, &body)
 	writeHTTPResponse(w, response, err)
 }
@@ -119,19 +119,19 @@ func (h *Handler) AdminUpdateStorageClassPolicy(w http.ResponseWriter, req *http
 		return
 	}
 	body.Authorization = req.Header.Get("Authorization")
-	name := strings.TrimSuffix(pathID(req.URL.Path, "/api/admin/storage-classes/"), "/policy")
+	name := strings.TrimSuffix(pathID(req.URL.Path, "/admin/storage-classes/"), "/policy")
 	response, err := h.adminUpdateStorageClassPolicy(req.Context(), name, &body)
 	writeHTTPResponse(w, response, err)
 }
 
 func (h *Handler) AdminDeleteStorageClass(w http.ResponseWriter, req *http.Request) {
-	name := pathID(req.URL.Path, "/api/admin/storage-classes/")
+	name := pathID(req.URL.Path, "/admin/storage-classes/")
 	response, err := h.adminDeleteStorageClass(req.Context(), name, authenticatedRequest(req))
 	writeHTTPResponse(w, response, err)
 }
 
 func (h *Handler) AdminDescribeStorageClass(w http.ResponseWriter, req *http.Request) {
-	name := strings.TrimSuffix(pathID(req.URL.Path, "/api/admin/storage-classes/"), "/describe")
+	name := strings.TrimSuffix(pathID(req.URL.Path, "/admin/storage-classes/"), "/describe")
 	response, err := h.adminDescribeStorageClass(req.Context(), name, authenticatedRequest(req))
 	writeHTTPResponse(w, response, err)
 }
@@ -139,20 +139,20 @@ func (h *Handler) AdminDescribeStorageClass(w http.ResponseWriter, req *http.Req
 func (h *Handler) GetViewerSession(w http.ResponseWriter, req *http.Request) {
 	response, err := h.getViewerSession(
 		req.Context(),
-		pathID(req.URL.Path, "/api/viewer-sessions/"),
+		pathID(req.URL.Path, "/viewer-sessions/"),
 		authenticatedRequest(req),
 	)
 	writeHTTPResponse(w, response, err)
 }
 
 func (h *Handler) IssueToken(w http.ResponseWriter, req *http.Request) {
-	id := strings.TrimSuffix(pathID(req.URL.Path, "/api/viewer-sessions/"), "/token")
+	id := strings.TrimSuffix(pathID(req.URL.Path, "/viewer-sessions/"), "/token")
 	response, err := h.issueToken(req.Context(), id, authenticatedRequest(req))
 	writeHTTPResponse(w, response, err)
 }
 
 func (h *Handler) Heartbeat(w http.ResponseWriter, req *http.Request) {
-	id := strings.TrimSuffix(pathID(req.URL.Path, "/api/viewer-sessions/"), "/heartbeat")
+	id := strings.TrimSuffix(pathID(req.URL.Path, "/viewer-sessions/"), "/heartbeat")
 	response, err := h.heartbeat(req.Context(), id, authenticatedRequest(req))
 	writeHTTPResponse(w, response, err)
 }
@@ -160,7 +160,7 @@ func (h *Handler) Heartbeat(w http.ResponseWriter, req *http.Request) {
 func (h *Handler) CloseViewerSession(w http.ResponseWriter, req *http.Request) {
 	response, err := h.closeViewerSession(
 		req.Context(),
-		pathID(req.URL.Path, "/api/viewer-sessions/"),
+		pathID(req.URL.Path, "/viewer-sessions/"),
 		authenticatedRequest(req),
 	)
 	writeHTTPResponse(w, response, err)
@@ -169,7 +169,7 @@ func (h *Handler) CloseViewerSession(w http.ResponseWriter, req *http.Request) {
 func (h *Handler) ClosePodSession(w http.ResponseWriter, req *http.Request) {
 	response, err := h.closePodSession(
 		req.Context(),
-		pathID(req.URL.Path, "/api/pod-sessions/"),
+		pathID(req.URL.Path, "/pod-sessions/"),
 		authenticatedRequest(req),
 	)
 	writeHTTPResponse(w, response, err)
@@ -178,7 +178,7 @@ func (h *Handler) ClosePodSession(w http.ResponseWriter, req *http.Request) {
 func (h *Handler) GetPodSession(w http.ResponseWriter, req *http.Request) {
 	response, err := h.getPodSession(
 		req.Context(),
-		pathID(req.URL.Path, "/api/pod-sessions/"),
+		pathID(req.URL.Path, "/pod-sessions/"),
 		authenticatedRequest(req),
 	)
 	writeHTTPResponse(w, response, err)

@@ -6,13 +6,17 @@ import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 
 import { encoreToolbar } from './vite/encore-toolbar'
-import { assertNoDevKubeconfigInBuild } from './vite/env-guard'
+import { assertNoDevOnlyEnvInBuild } from './vite/env-guard'
 
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
 	const viteEnv = loadEnv(mode, process.cwd(), 'VITE_')
+	const apiBaseUrl = process.env.VITE_API_BASE_URL ?? viteEnv.VITE_API_BASE_URL
 	const devKubeconfig = process.env.VITE_DEV_KUBECONFIG ?? viteEnv.VITE_DEV_KUBECONFIG
-	assertNoDevKubeconfigInBuild(command, devKubeconfig)
+	assertNoDevOnlyEnvInBuild(command, {
+		apiBaseUrl,
+		devKubeconfig,
+	})
 
 	return {
 		plugins: [react(), encoreToolbar()],

@@ -30,14 +30,14 @@ func TestObserveHTTPRecordsMetricsAndStructuredLog(t *testing.T) {
 	cfg.Logs.Exporter = "stdout"
 	cfg.Logs.Level = "info"
 	recorder := MustNew(cfg, &out)
-	recorder.ObserveHTTP(t.Context(), "GET", "/api/pvcs", 500, time.Millisecond)
+	recorder.ObserveHTTP(t.Context(), "GET", "/pvcs", 500, time.Millisecond)
 
 	body := prometheusText(recorder)
-	if !strings.Contains(body, `viewer_http_route_requests_total{Method="GET",Route="/api/pvcs",StatusClass="5xx"} 1`) {
+	if !strings.Contains(body, `viewer_http_route_requests_total{Method="GET",Route="/pvcs",StatusClass="5xx"} 1`) {
 		t.Fatalf("metrics missing HTTP request count: %s", body)
 	}
 	logLine := out.String()
-	if !strings.Contains(logLine, `"route":"/api/pvcs"`) {
+	if !strings.Contains(logLine, `"route":"/pvcs"`) {
 		t.Fatalf("log missing route: %s", logLine)
 	}
 	if strings.Contains(logLine, "kubeconfig") || strings.Contains(logLine, "token") {
@@ -49,13 +49,13 @@ func TestWritePrometheusExposesMetrics(t *testing.T) {
 	t.Setenv("ENCORERUNTIME_NOPANIC", "1")
 
 	recorder := MustNew(testConfig(), nil)
-	recorder.ObserveHTTP(t.Context(), "GET", "/api/pvcs", http.StatusOK, time.Millisecond)
-	recorder.ObserveHTTP(t.Context(), "GET", "/api/pvcs", http.StatusInternalServerError, 2*time.Millisecond)
+	recorder.ObserveHTTP(t.Context(), "GET", "/pvcs", http.StatusOK, time.Millisecond)
+	recorder.ObserveHTTP(t.Context(), "GET", "/pvcs", http.StatusInternalServerError, 2*time.Millisecond)
 	recorder.ObserveCleanupDeleted()
 
 	body := prometheusText(recorder)
-	if !strings.Contains(body, `viewer_http_route_requests_total{Method="GET",Route="/api/pvcs",StatusClass="2xx"} 1`) ||
-		!strings.Contains(body, `viewer_http_route_requests_total{Method="GET",Route="/api/pvcs",StatusClass="5xx"} 1`) {
+	if !strings.Contains(body, `viewer_http_route_requests_total{Method="GET",Route="/pvcs",StatusClass="2xx"} 1`) ||
+		!strings.Contains(body, `viewer_http_route_requests_total{Method="GET",Route="/pvcs",StatusClass="5xx"} 1`) {
 		t.Fatalf("metrics body missing HTTP count: %s", body)
 	}
 	if !strings.Contains(body, "viewer_cleanup_deleted_total 1") {

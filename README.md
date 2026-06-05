@@ -72,6 +72,12 @@ VITE_API_BASE_URL="http://localhost:4000"
 VITE_DEV_KUBECONFIG="$(cat ../config/kubeconfig.dev.yaml)"
 ```
 
+In Vite dev mode, `VITE_API_BASE_URL` takes precedence over
+`/runtime-config.js`, so local development talks directly to the Encore server
+without needing the production `/api/*` nginx rewrite.
+Production builds reject `VITE_API_BASE_URL`; use `runtime-config.js` for
+deploy-time API root overrides.
+
 Override those defaults when needed:
 
 ```sh
@@ -176,4 +182,32 @@ configuration.
 make build-image IMAGE=sealos-storage-manager-viewer:dev
 ```
 
-Deploy the image with the manifests in `deploy/`, mounting a real `viewer.yaml` through a ConfigMap or Secret.
+The frontend is a separate Vite build. Build `web/`, copy `web/dist` into an
+nginx-compatible static image, and use `sealos-storage-manager-web:dev` or your
+registry image name in the frontend deployment manifest.
+
+Deploy the backend image with the existing backend manifests in `deploy/`,
+mounting a real `viewer.yaml` through a ConfigMap or Secret. Deploy the
+frontend with:
+
+```sh
+kubectl apply -f deploy/namespace.yaml
+kubectl apply -f deploy/configmap.yaml
+kubectl apply -f deploy/service-account.yaml
+kubectl apply -f deploy/storageclass-admin.yaml
+kubectl apply -f deploy/deployment.yaml
+kubectl apply -f deploy/service.yaml
+kubectl apply -f deploy/web-configmap.yaml
+kubectl apply -f deploy/web-deployment.yaml
+kubectl apply -f deploy/web-service.yaml
+```
+
+Expose `viewer-web` as the public entrypoint. The committed frontend nginx
+config serves the SPA, rewrites public `/api/*` requests to the backend's
+unprefixed routes, and proxies `/metrics` plus
+`/internal/filebrowser-hook/verify` to the internal `viewer-backend` service.
+
+Override frontend runtime settings by replacing the `runtime-config.js` value in
+`deploy/web-configmap.yaml` or by mounting your own file at the same path. The
+default `apiBaseUrl` is `/api`, which keeps browser API requests on the same
+origin as the web app and lets the frontend service own the public rewrite.

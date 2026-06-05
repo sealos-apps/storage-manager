@@ -15,13 +15,13 @@ func (h *Handler) listPVCs(ctx context.Context, req *ListPVCsRequest) (*ListPVCs
 	start := time.Now()
 	principal, err := h.authenticateRequest(req)
 	if err != nil {
-		h.observe(ctx, http.MethodGet, "/api/pvcs", err.Status, start)
+		h.observe(ctx, http.MethodGet, "/pvcs", err.Status, start)
 		return nil, err
 	}
 	ctx = authn.WithPrincipal(ctx, principal)
-	op, apiErr := h.resolvePVCOperationContext(ctx, principal, req.Namespace, "/api/pvcs", "")
+	op, apiErr := h.resolvePVCOperationContext(ctx, principal, req.Namespace, "/pvcs", "")
 	if apiErr != nil {
-		h.observe(ctx, http.MethodGet, "/api/pvcs", apiErr.Status, start)
+		h.observe(ctx, http.MethodGet, "/pvcs", apiErr.Status, start)
 		return nil, apiErr
 	}
 	if op.mode == operationModeUser {
@@ -36,9 +36,9 @@ func (h *Handler) listPVCs(ctx context.Context, req *ListPVCsRequest) (*ListPVCs
 				namespace:         op.namespace,
 				namespaceAllowed:  true,
 				principal:         principal,
-				route:             "/api/pvcs",
+				route:             "/pvcs",
 			})
-			h.observe(ctx, http.MethodGet, "/api/pvcs", apiErr.Status, start)
+			h.observe(ctx, http.MethodGet, "/pvcs", apiErr.Status, start)
 			return nil, apiErr
 		}
 	}
@@ -52,18 +52,18 @@ func (h *Handler) listPVCs(ctx context.Context, req *ListPVCsRequest) (*ListPVCs
 		namespace:          op.namespace,
 		namespaceAllowed:   op.namespaceAllowed,
 		principal:          principal,
-		route:              "/api/pvcs",
+		route:              "/pvcs",
 	})
 	items, listErr := op.kubeService.ListPVCs(ctx, op.namespace)
 	if listErr != nil {
 		apiErr := apienv.FromError(listErr)
-		h.observe(ctx, http.MethodGet, "/api/pvcs", apiErr.Status, start)
+		h.observe(ctx, http.MethodGet, "/pvcs", apiErr.Status, start)
 		return nil, apiErr
 	}
 	if items == nil {
 		items = []domain.PVC{}
 	}
-	h.observe(ctx, http.MethodGet, "/api/pvcs", http.StatusOK, start)
+	h.observe(ctx, http.MethodGet, "/pvcs", http.StatusOK, start)
 	return &ListPVCsResponse{PVCList: PVCList{Items: items}}, nil
 }
 
@@ -71,16 +71,16 @@ func (h *Handler) getContext(ctx context.Context, req *AuthenticatedRequest) (*C
 	start := time.Now()
 	principal, err := h.authenticateRequest(req)
 	if err != nil {
-		h.observe(ctx, http.MethodGet, "/api/context", err.Status, start)
+		h.observe(ctx, http.MethodGet, "/context", err.Status, start)
 		return nil, err
 	}
 	ctx = authn.WithPrincipal(ctx, principal)
 	if err := h.authz.CanListPVCs(ctx, principal, principal.Namespace); err != nil {
 		apiErr := apienv.NewError(403, apienv.CodePVCAccessDenied, "Namespace access denied", nil)
-		h.observe(ctx, http.MethodGet, "/api/context", apiErr.Status, start)
+		h.observe(ctx, http.MethodGet, "/context", apiErr.Status, start)
 		return nil, apiErr
 	}
-	h.observe(ctx, http.MethodGet, "/api/context", http.StatusOK, start)
+	h.observe(ctx, http.MethodGet, "/context", http.StatusOK, start)
 	return &ContextResponse{
 		Context: ViewerContext{
 			ContextName: principal.ContextName,
@@ -93,13 +93,13 @@ func (h *Handler) createPVC(ctx context.Context, req *CreatePVCRequest) (*PVCRes
 	start := time.Now()
 	principal, err := h.authenticateRequest(req)
 	if err != nil {
-		h.observe(ctx, http.MethodPost, "/api/pvcs", err.Status, start)
+		h.observe(ctx, http.MethodPost, "/pvcs", err.Status, start)
 		return nil, err
 	}
 	ctx = authn.WithPrincipal(ctx, principal)
-	op, apiErr := h.resolvePVCOperationContext(ctx, principal, req.Namespace, "/api/pvcs", req.Name)
+	op, apiErr := h.resolvePVCOperationContext(ctx, principal, req.Namespace, "/pvcs", req.Name)
 	if apiErr != nil {
-		h.observe(ctx, http.MethodPost, "/api/pvcs", apiErr.Status, start)
+		h.observe(ctx, http.MethodPost, "/pvcs", apiErr.Status, start)
 		return nil, apiErr
 	}
 	if op.mode == operationModeUser {
@@ -113,9 +113,9 @@ func (h *Handler) createPVC(ctx context.Context, req *CreatePVCRequest) (*PVCRes
 				namespaceAllowed: true,
 				principal:        principal,
 				pvcName:          req.Name,
-				route:            "/api/pvcs",
+				route:            "/pvcs",
 			})
-			h.observe(ctx, http.MethodPost, "/api/pvcs", apiErr.Status, start)
+			h.observe(ctx, http.MethodPost, "/pvcs", apiErr.Status, start)
 			return nil, apiErr
 		}
 	}
@@ -130,7 +130,7 @@ func (h *Handler) createPVC(ctx context.Context, req *CreatePVCRequest) (*PVCRes
 		namespaceAllowed:   op.namespaceAllowed,
 		principal:          principal,
 		pvcName:            req.Name,
-		route:              "/api/pvcs",
+		route:              "/pvcs",
 	})
 	pvc, createErr := op.kubeService.CreatePVC(ctx, session.CreatePVCInput{
 		Namespace:        op.namespace,
@@ -142,10 +142,10 @@ func (h *Handler) createPVC(ctx context.Context, req *CreatePVCRequest) (*PVCRes
 	})
 	if createErr != nil {
 		apiErr := apienv.FromError(createErr)
-		h.observe(ctx, http.MethodPost, "/api/pvcs", apiErr.Status, start)
+		h.observe(ctx, http.MethodPost, "/pvcs", apiErr.Status, start)
 		return nil, apiErr
 	}
-	h.observe(ctx, http.MethodPost, "/api/pvcs", http.StatusCreated, start)
+	h.observe(ctx, http.MethodPost, "/pvcs", http.StatusCreated, start)
 	return &PVCResponse{PVC: pvc}, nil
 }
 
@@ -158,13 +158,13 @@ func (h *Handler) deletePVC(
 	start := time.Now()
 	principal, err := h.authenticateRequest(req)
 	if err != nil {
-		h.observe(ctx, http.MethodDelete, "/api/pvcs/:namespace/:name", err.Status, start)
+		h.observe(ctx, http.MethodDelete, "/pvcs/:namespace/:name", err.Status, start)
 		return nil, err
 	}
 	ctx = authn.WithPrincipal(ctx, principal)
-	op, apiErr := h.resolvePVCOperationContext(ctx, principal, namespace, "/api/pvcs/:namespace/:name", name)
+	op, apiErr := h.resolvePVCOperationContext(ctx, principal, namespace, "/pvcs/:namespace/:name", name)
 	if apiErr != nil {
-		h.observe(ctx, http.MethodDelete, "/api/pvcs/:namespace/:name", apiErr.Status, start)
+		h.observe(ctx, http.MethodDelete, "/pvcs/:namespace/:name", apiErr.Status, start)
 		return nil, apiErr
 	}
 	if op.mode == operationModeUser {
@@ -178,9 +178,9 @@ func (h *Handler) deletePVC(
 				namespaceAllowed: true,
 				principal:        principal,
 				pvcName:          name,
-				route:            "/api/pvcs/:namespace/:name",
+				route:            "/pvcs/:namespace/:name",
 			})
-			h.observe(ctx, http.MethodDelete, "/api/pvcs/:namespace/:name", apiErr.Status, start)
+			h.observe(ctx, http.MethodDelete, "/pvcs/:namespace/:name", apiErr.Status, start)
 			return nil, apiErr
 		}
 	}
@@ -195,7 +195,7 @@ func (h *Handler) deletePVC(
 		namespaceAllowed:   op.namespaceAllowed,
 		principal:          principal,
 		pvcName:            name,
-		route:              "/api/pvcs/:namespace/:name",
+		route:              "/pvcs/:namespace/:name",
 	})
 	pvc, deleteErr := op.kubeService.DeletePVC(ctx, session.DeletePVCInput{
 		Namespace: op.namespace,
@@ -203,10 +203,10 @@ func (h *Handler) deletePVC(
 	})
 	if deleteErr != nil {
 		apiErr := apienv.FromError(deleteErr)
-		h.observe(ctx, http.MethodDelete, "/api/pvcs/:namespace/:name", apiErr.Status, start)
+		h.observe(ctx, http.MethodDelete, "/pvcs/:namespace/:name", apiErr.Status, start)
 		return nil, apiErr
 	}
-	h.observe(ctx, http.MethodDelete, "/api/pvcs/:namespace/:name", http.StatusOK, start)
+	h.observe(ctx, http.MethodDelete, "/pvcs/:namespace/:name", http.StatusOK, start)
 	return &PVCResponse{PVC: pvc}, nil
 }
 
@@ -219,13 +219,13 @@ func (h *Handler) expandPVC(
 	start := time.Now()
 	principal, err := h.authenticateRequest(req)
 	if err != nil {
-		h.observe(ctx, http.MethodPost, "/api/pvcs/:namespace/:name/expand", err.Status, start)
+		h.observe(ctx, http.MethodPost, "/pvcs/:namespace/:name/expand", err.Status, start)
 		return nil, err
 	}
 	ctx = authn.WithPrincipal(ctx, principal)
-	op, apiErr := h.resolvePVCOperationContext(ctx, principal, namespace, "/api/pvcs/:namespace/:name/expand", name)
+	op, apiErr := h.resolvePVCOperationContext(ctx, principal, namespace, "/pvcs/:namespace/:name/expand", name)
 	if apiErr != nil {
-		h.observe(ctx, http.MethodPost, "/api/pvcs/:namespace/:name/expand", apiErr.Status, start)
+		h.observe(ctx, http.MethodPost, "/pvcs/:namespace/:name/expand", apiErr.Status, start)
 		return nil, apiErr
 	}
 	if op.mode == operationModeUser {
@@ -239,9 +239,9 @@ func (h *Handler) expandPVC(
 				namespaceAllowed: true,
 				principal:        principal,
 				pvcName:          name,
-				route:            "/api/pvcs/:namespace/:name/expand",
+				route:            "/pvcs/:namespace/:name/expand",
 			})
-			h.observe(ctx, http.MethodPost, "/api/pvcs/:namespace/:name/expand", apiErr.Status, start)
+			h.observe(ctx, http.MethodPost, "/pvcs/:namespace/:name/expand", apiErr.Status, start)
 			return nil, apiErr
 		}
 	}
@@ -256,7 +256,7 @@ func (h *Handler) expandPVC(
 		namespaceAllowed:   op.namespaceAllowed,
 		principal:          principal,
 		pvcName:            name,
-		route:              "/api/pvcs/:namespace/:name/expand",
+		route:              "/pvcs/:namespace/:name/expand",
 	})
 	pvc, expandErr := op.kubeService.ExpandPVC(ctx, session.ExpandPVCInput{
 		Namespace:     op.namespace,
@@ -266,10 +266,10 @@ func (h *Handler) expandPVC(
 	})
 	if expandErr != nil {
 		apiErr := apienv.FromError(expandErr)
-		h.observe(ctx, http.MethodPost, "/api/pvcs/:namespace/:name/expand", apiErr.Status, start)
+		h.observe(ctx, http.MethodPost, "/pvcs/:namespace/:name/expand", apiErr.Status, start)
 		return nil, apiErr
 	}
-	h.observe(ctx, http.MethodPost, "/api/pvcs/:namespace/:name/expand", http.StatusOK, start)
+	h.observe(ctx, http.MethodPost, "/pvcs/:namespace/:name/expand", http.StatusOK, start)
 	return &PVCResponse{PVC: pvc}, nil
 }
 
@@ -280,24 +280,24 @@ func (h *Handler) listStorageClasses(
 	start := time.Now()
 	principal, err := h.authenticateRequest(req)
 	if err != nil {
-		h.observe(ctx, http.MethodGet, "/api/storage-classes", err.Status, start)
+		h.observe(ctx, http.MethodGet, "/storage-classes", err.Status, start)
 		return nil, err
 	}
 	ctx = authn.WithPrincipal(ctx, principal)
 	if err := h.authz.CanListStorageClasses(ctx, principal); err != nil {
 		apiErr := apienv.NewError(403, apienv.CodePVCAccessDenied, "Storage class access denied", nil)
-		h.observe(ctx, http.MethodGet, "/api/storage-classes", apiErr.Status, start)
+		h.observe(ctx, http.MethodGet, "/storage-classes", apiErr.Status, start)
 		return nil, apiErr
 	}
 	items, listErr := h.viewers.ListStorageClasses(ctx)
 	if listErr != nil {
 		apiErr := apienv.FromError(listErr)
-		h.observe(ctx, http.MethodGet, "/api/storage-classes", apiErr.Status, start)
+		h.observe(ctx, http.MethodGet, "/storage-classes", apiErr.Status, start)
 		return nil, apiErr
 	}
 	if items == nil {
 		items = []domain.StorageClass{}
 	}
-	h.observe(ctx, http.MethodGet, "/api/storage-classes", http.StatusOK, start)
+	h.observe(ctx, http.MethodGet, "/storage-classes", http.StatusOK, start)
 	return &ListStorageClassesResponse{StorageClassList: StorageClassList{Items: items}}, nil
 }

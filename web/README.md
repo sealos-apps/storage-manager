@@ -44,15 +44,49 @@ debugging and real e2e runs. When `VITE_DEV_KUBECONFIG` is active, the browser
 console prints a prominent CSS-styled warning and production builds are blocked.
 Remove `VITE_DEV_KUBECONFIG` before running `pnpm build`.
 
-The active namespace is backend-owned. The frontend reads it from `/api/context`,
+The active namespace is backend-owned. In the bundled deploy manifests, the
+frontend reads it from `/api/context`, and nginx rewrites that public path to
+the backend service's `/context` endpoint.
 which derives the namespace from the kubeconfig current context, and the UI only
 shows that namespace as read-only context. PVC and viewer operations are sent for
 that backend-synchronized namespace; direct API calls with a different namespace
 are rejected by the backend.
 
+## Runtime Configuration
+
+The web bundle is deployable across environments without rebuilding. Production
+runtime config is loaded from `/runtime-config.js`, which must run before the
+React entry script. Replace or mount that file next to `index.html` when
+deploying.
+
+Default runtime config:
+
+```js
+window.__SEALOS_STORAGE_MANAGER_CONFIG__ = {
+	apiBaseUrl: '/api',
+	fileUploadTusThresholdBytes: 33554432,
+	fileUploadTusChunkBytes: 8388608,
+	fileUploadTusRetryCount: 5,
+}
+```
+
+Production API root config comes from runtime config, then the defaults above.
+`VITE_API_BASE_URL` and `VITE_DEV_KUBECONFIG` are development-only; production
+builds reject `VITE_API_BASE_URL` so API roots stay deploy-time configurable.
+File upload settings are configured through runtime config only.
+
+- `VITE_API_BASE_URL`
+- `VITE_DEV_KUBECONFIG`
+
+`apiBaseUrl: '/api'` is the recommended bundled deployment default. The backend
+service exposes routes without an `/api` prefix, and the frontend nginx config
+rewrites public `/api/*` requests to those backend routes. Use an absolute URL
+to the backend service root when the backend intentionally lives on a different
+origin, for example `https://storage.example.com`.
+
 Large File Browser uploads use TUS by default at 32 MiB with 8 MiB chunks and 5
-retry delays. Override with `VITE_FILE_UPLOAD_TUS_THRESHOLD_BYTES`,
-`VITE_FILE_UPLOAD_TUS_CHUNK_BYTES`, and `VITE_FILE_UPLOAD_TUS_RETRY_COUNT`.
+retry delays. Numeric runtime config values may be numbers or numeric strings.
+Invalid, empty, zero, negative, or non-finite values fall back to defaults.
 
 ## Encore Toolbar
 

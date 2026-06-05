@@ -20,7 +20,7 @@ import type {
 	ViewerToken,
 } from '@/features/viewer/types/viewer'
 
-import Client, { Local } from '@sealos-storage-manager/encore-client'
+import Client from '@sealos-storage-manager/encore-client'
 
 import { env } from '@/config/env'
 import { normalizeViewerError } from '@/features/viewer/api/viewer-error'
@@ -30,15 +30,21 @@ export function readAuthorizationHeader() {
 	return getCachedAuthorizationHeader()
 }
 
-function apiTarget() {
+export function apiTarget() {
 	const base = env.apiBaseUrl
-	if (!base || base === '/api') {
-		return Local
+	if (!base) {
+		return ''
 	}
-	return base
+	return base.replace(/\/+$/, '')
 }
 
-export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
+type ViewerClient = Pick<Client, 'viewer'>
+
+export function createViewerApi(
+	client?: ViewerClient,
+	fetcher?: typeof fetch,
+): ViewerAPI {
+	const activeClient = client ?? new Client(apiTarget(), fetcher ? { fetcher } : undefined)
 	function authorization() {
 		return readAuthorizationHeader()
 	}
@@ -46,7 +52,7 @@ export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
 	return {
 		async adminCapabilities(): Promise<AdminCapabilities> {
 			try {
-				const response = await client.viewer.AdminCapabilities({
+				const response = await activeClient.viewer.AdminCapabilities({
 					Authorization: authorization(),
 				})
 				return response.admin_capabilities
@@ -58,7 +64,7 @@ export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
 
 		async adminCreateStorageClass(input: StorageClassYAMLInput): Promise<StorageClass> {
 			try {
-				const response = await client.viewer.AdminCreateStorageClass({
+				const response = await activeClient.viewer.AdminCreateStorageClass({
 					Authorization: authorization(),
 					yaml: input.yaml,
 				})
@@ -71,7 +77,7 @@ export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
 
 		async adminDeleteStorageClass(name: string): Promise<StorageClass> {
 			try {
-				const response = await client.viewer.AdminDeleteStorageClass(name, {
+				const response = await activeClient.viewer.AdminDeleteStorageClass(name, {
 					Authorization: authorization(),
 				})
 				return response.storage_class
@@ -83,7 +89,7 @@ export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
 
 		async adminDescribeStorageClass(name: string): Promise<StorageClassDescribe> {
 			try {
-				const response = await client.viewer.AdminDescribeStorageClass(name, {
+				const response = await activeClient.viewer.AdminDescribeStorageClass(name, {
 					Authorization: authorization(),
 				})
 				return response.storage_class_describe
@@ -95,7 +101,7 @@ export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
 
 		async adminGetStorageClassYAML(name: string): Promise<StorageClassYAML> {
 			try {
-				const response = await client.viewer.AdminGetStorageClassYAML(name, {
+				const response = await activeClient.viewer.AdminGetStorageClassYAML(name, {
 					Authorization: authorization(),
 				})
 				return response.storage_class_yaml
@@ -107,7 +113,7 @@ export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
 
 		async adminListNamespaces(): Promise<AdminNamespace[]> {
 			try {
-				const response = await client.viewer.AdminListNamespaces({
+				const response = await activeClient.viewer.AdminListNamespaces({
 					Authorization: authorization(),
 				})
 				return response.namespace_list.items
@@ -119,7 +125,7 @@ export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
 
 		async adminListStorageClasses(): Promise<StorageClass[]> {
 			try {
-				const response = await client.viewer.AdminListStorageClasses({
+				const response = await activeClient.viewer.AdminListStorageClasses({
 					Authorization: authorization(),
 				})
 				return response.storage_class_list.items
@@ -131,7 +137,7 @@ export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
 
 		async adminUpdateStorageClass(name: string, input: StorageClassYAMLInput): Promise<StorageClass> {
 			try {
-				const response = await client.viewer.AdminUpdateStorageClass(name, {
+				const response = await activeClient.viewer.AdminUpdateStorageClass(name, {
 					Authorization: authorization(),
 					yaml: input.yaml,
 				})
@@ -144,7 +150,7 @@ export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
 
 		async adminUpdateStorageClassPolicy(name: string, input: StorageClassPolicyInput): Promise<StorageClass> {
 			try {
-				const response = await client.viewer.AdminUpdateStorageClassPolicy(name, {
+				const response = await activeClient.viewer.AdminUpdateStorageClassPolicy(name, {
 					Authorization: authorization(),
 					visible_in_create: input.visibleInCreate,
 					allowed_access_modes: input.allowedAccessModes,
@@ -158,7 +164,7 @@ export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
 
 		async closePodSession(podSessionID: string): Promise<PodSession> {
 			try {
-				const response = await client.viewer.ClosePodSession(podSessionID, {
+				const response = await activeClient.viewer.ClosePodSession(podSessionID, {
 					Authorization: authorization(),
 				})
 				return response.pod_session
@@ -170,7 +176,7 @@ export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
 
 		async closeViewerSession(viewerSessionID: string): Promise<ViewerSession> {
 			try {
-				const response = await client.viewer.CloseViewerSession(viewerSessionID, {
+				const response = await activeClient.viewer.CloseViewerSession(viewerSessionID, {
 					Authorization: authorization(),
 				})
 				return response.viewer_session
@@ -182,7 +188,7 @@ export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
 
 		async createPVC(input: CreatePVCInput): Promise<PVC> {
 			try {
-				const response = await client.viewer.CreatePVC({
+				const response = await activeClient.viewer.CreatePVC({
 					Authorization: authorization(),
 					namespace: input.namespace,
 					name: input.name,
@@ -200,7 +206,7 @@ export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
 
 		async createViewerSession(input: CreateViewerSessionInput): Promise<ViewerSession> {
 			try {
-				const response = await client.viewer.CreateViewerSession({
+				const response = await activeClient.viewer.CreateViewerSession({
 					Authorization: authorization(),
 					namespace: input.namespace,
 					pvc_name: input.pvcName,
@@ -214,7 +220,7 @@ export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
 
 		async deletePVC(input: DeletePVCInput): Promise<PVC> {
 			try {
-				const response = await client.viewer.DeletePVC(input.namespace, input.name, {
+				const response = await activeClient.viewer.DeletePVC(input.namespace, input.name, {
 					Authorization: authorization(),
 				})
 				return response.pvc
@@ -226,7 +232,7 @@ export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
 
 		async expandPVC(input: ExpandPVCInput): Promise<PVC> {
 			try {
-				const response = await client.viewer.ExpandPVC(input.namespace, input.name, {
+				const response = await activeClient.viewer.ExpandPVC(input.namespace, input.name, {
 					Authorization: authorization(),
 					capacity: input.capacity,
 					capacity_bytes: input.capacityBytes,
@@ -240,7 +246,7 @@ export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
 
 		async getContext(): Promise<ViewerContext> {
 			try {
-				const response = await client.viewer.GetContext({
+				const response = await activeClient.viewer.GetContext({
 					Authorization: authorization(),
 				})
 				return response.context
@@ -252,7 +258,7 @@ export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
 
 		async getPodSession(podSessionID: string): Promise<PodSession> {
 			try {
-				const response = await client.viewer.GetPodSession(podSessionID, {
+				const response = await activeClient.viewer.GetPodSession(podSessionID, {
 					Authorization: authorization(),
 				})
 				return response.pod_session
@@ -264,7 +270,7 @@ export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
 
 		async getViewerSession(viewerSessionID: string): Promise<ViewerSession> {
 			try {
-				const response = await client.viewer.GetViewerSession(viewerSessionID, {
+				const response = await activeClient.viewer.GetViewerSession(viewerSessionID, {
 					Authorization: authorization(),
 				})
 				return response.viewer_session
@@ -276,7 +282,7 @@ export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
 
 		async heartbeatViewerSession(viewerSessionID: string): Promise<Heartbeat> {
 			try {
-				const response = await client.viewer.HeartbeatViewerSession(viewerSessionID, {
+				const response = await activeClient.viewer.HeartbeatViewerSession(viewerSessionID, {
 					Authorization: authorization(),
 				})
 				return response.heartbeat
@@ -288,7 +294,7 @@ export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
 
 		async issueViewerToken(viewerSessionID: string): Promise<ViewerToken> {
 			try {
-				const response = await client.viewer.IssueViewerToken(viewerSessionID, {
+				const response = await activeClient.viewer.IssueViewerToken(viewerSessionID, {
 					Authorization: authorization(),
 				})
 				return response.viewer_token
@@ -300,7 +306,7 @@ export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
 
 		async listPVCs(input: ListPVCsInput): Promise<PVC[]> {
 			try {
-				const response = await client.viewer.ListPVCs({
+				const response = await activeClient.viewer.ListPVCs({
 					Authorization: authorization(),
 					Namespace: input.namespace,
 				})
@@ -313,7 +319,7 @@ export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
 
 		async listStorageClasses(): Promise<StorageClass[]> {
 			try {
-				const response = await client.viewer.ListStorageClasses({
+				const response = await activeClient.viewer.ListStorageClasses({
 					Authorization: authorization(),
 				})
 				return response.storage_class_list.items

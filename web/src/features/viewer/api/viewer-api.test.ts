@@ -1,7 +1,7 @@
 import { APIError, ErrCode } from '@sealos-storage-manager/encore-client'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createViewerApi, readAuthorizationHeader } from '@/features/viewer/api/viewer-api'
+import { apiTarget, createViewerApi, readAuthorizationHeader } from '@/features/viewer/api/viewer-api'
 import { ViewerApiError } from '@/features/viewer/api/viewer-error'
 import {
 	adminNamespaceFixture,
@@ -20,8 +20,65 @@ import {
 describe('viewer API adapter', () => {
 	afterEach(() => {
 		resetSealosAuthorizationForTest()
+		delete window.__SEALOS_STORAGE_MANAGER_CONFIG__
 		window.localStorage.clear()
+		vi.resetModules()
 		vi.unstubAllEnvs()
+	})
+
+	it('normalizes configured API base URL for generated endpoint paths', async () => {
+		expect(apiTarget()).toBe('/api')
+
+		window.__SEALOS_STORAGE_MANAGER_CONFIG__ = {
+			apiBaseUrl: '/api',
+		}
+		vi.resetModules()
+		const sameOriginProxy = await import('@/features/viewer/api/viewer-api')
+		expect(sameOriginProxy.apiTarget()).toBe('/api')
+
+		window.__SEALOS_STORAGE_MANAGER_CONFIG__ = {
+			apiBaseUrl: 'https://storage.example.com/',
+		}
+		vi.resetModules()
+		const absolute = await import('@/features/viewer/api/viewer-api')
+		expect(absolute.apiTarget()).toBe('https://storage.example.com')
+	})
+
+	it('calls the public rewrite path by default', async () => {
+		vi.stubEnv('DEV', true)
+		vi.stubEnv('VITE_DEV_KUBECONFIG', 'test-kubeconfig')
+		vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+		await initializeSealosAuthorization()
+
+		const sameOriginFetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+			context: viewerContextFixture(),
+		})))
+		const sameOrigin = createViewerApi(undefined, sameOriginFetcher)
+		await expect(sameOrigin.getContext()).resolves.toEqual(expect.objectContaining({
+			namespace: 'ns-admin',
+		}))
+		expect(sameOriginFetcher).toHaveBeenCalledWith('/api/context', expect.objectContaining({
+			method: 'GET',
+		}))
+	})
+
+	it('calls absolute backend roots directly', async () => {
+		vi.stubEnv('DEV', true)
+		vi.stubEnv('VITE_DEV_KUBECONFIG', 'test-kubeconfig')
+		vi.stubEnv('VITE_API_BASE_URL', 'https://storage.example.com/')
+		vi.resetModules()
+		const authorizationModule = await import('@/services/sealos/sealos-authorization')
+		const absoluteModule = await import('@/features/viewer/api/viewer-api')
+		vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+		await authorizationModule.initializeSealosAuthorization()
+		const absoluteFetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+			context: viewerContextFixture(),
+		})))
+		const absolute = absoluteModule.createViewerApi(undefined, absoluteFetcher)
+		await absolute.getContext()
+		expect(absoluteFetcher).toHaveBeenCalledWith('https://storage.example.com/context', expect.objectContaining({
+			method: 'GET',
+		}))
 	})
 
 	it('reads authorization from the Sealos bootstrap cache', async () => {

@@ -47,7 +47,7 @@ func TestHandlerIssueTokenNoStore(t *testing.T) {
 		observability.MustNew(testObservability(), nil),
 		allowAuthorizer{},
 	)
-	req := httptest.NewRequest(http.MethodPost, "/api/viewer-sessions/vs_1/token", nil)
+	req := httptest.NewRequest(http.MethodPost, "/viewer-sessions/vs_1/token", nil)
 	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
 	recorder := httptest.NewRecorder()
 
@@ -90,7 +90,7 @@ func TestHandlerIssueTokenAuthorizesFromViewerSessionPVC(t *testing.T) {
 		observability.MustNew(testObservability(), nil),
 		allowAuthorizer{},
 	)
-	req := httptest.NewRequest(http.MethodPost, "/api/viewer-sessions/vs_1/token", nil)
+	req := httptest.NewRequest(http.MethodPost, "/viewer-sessions/vs_1/token", nil)
 	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
 	recorder := httptest.NewRecorder()
 
@@ -175,22 +175,22 @@ func TestHandlerAdminSessionFollowUpAPIsUseExistingSessionEndpoints(t *testing.T
 	}{
 		{
 			name:   "token",
-			req:    httptest.NewRequest(http.MethodPost, "/api/viewer-sessions/vs_1/token", nil),
+			req:    httptest.NewRequest(http.MethodPost, "/viewer-sessions/vs_1/token", nil),
 			handle: (*Handler).IssueToken,
 		},
 		{
 			name:   "heartbeat",
-			req:    httptest.NewRequest(http.MethodPost, "/api/viewer-sessions/vs_1/heartbeat", nil),
+			req:    httptest.NewRequest(http.MethodPost, "/viewer-sessions/vs_1/heartbeat", nil),
 			handle: (*Handler).Heartbeat,
 		},
 		{
 			name:   "close viewer",
-			req:    httptest.NewRequest(http.MethodDelete, "/api/viewer-sessions/vs_1", nil),
+			req:    httptest.NewRequest(http.MethodDelete, "/viewer-sessions/vs_1", nil),
 			handle: (*Handler).CloseViewerSession,
 		},
 		{
 			name:   "close pod",
-			req:    httptest.NewRequest(http.MethodDelete, "/api/pod-sessions/ps_1", nil),
+			req:    httptest.NewRequest(http.MethodDelete, "/pod-sessions/ps_1", nil),
 			handle: (*Handler).ClosePodSession,
 		},
 	}
@@ -243,7 +243,7 @@ func TestHandlerAdminSessionFollowUpDeniedWhenAdminAccessRevoked(t *testing.T) {
 		allowAuthorizer{},
 		WithAdminAuthorizer(denyTestAdminAuthorizer{}),
 	)
-	req := httptest.NewRequest(http.MethodPost, "/api/viewer-sessions/vs_1/token", nil)
+	req := httptest.NewRequest(http.MethodPost, "/viewer-sessions/vs_1/token", nil)
 	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
 	recorder := httptest.NewRecorder()
 

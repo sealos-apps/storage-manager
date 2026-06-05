@@ -18,7 +18,7 @@ func (h *Handler) adminCapabilities(
 	start := time.Now()
 	principal, err := h.authenticateRequest(req)
 	if err != nil {
-		h.observe(ctx, http.MethodGet, "/api/admin/capabilities", err.Status, start)
+		h.observe(ctx, http.MethodGet, "/admin/capabilities", err.Status, start)
 		return nil, err
 	}
 	ctx = authn.WithPrincipal(ctx, principal)
@@ -36,9 +36,9 @@ func (h *Handler) adminCapabilities(
 		namespace:          principal.Namespace,
 		namespaceAllowed:   true,
 		principal:          principal,
-		route:              "/api/admin/capabilities",
+		route:              "/admin/capabilities",
 	})
-	h.observe(ctx, http.MethodGet, "/api/admin/capabilities", http.StatusOK, start)
+	h.observe(ctx, http.MethodGet, "/admin/capabilities", http.StatusOK, start)
 	return &AdminCapabilitiesResponse{
 		AdminCapabilities: AdminCapabilitySet{
 			CanManagePVCs:           canManage,
@@ -54,7 +54,7 @@ func (h *Handler) adminListNamespaces(
 	start := time.Now()
 	principal, err := h.authenticateRequest(req)
 	if err != nil {
-		h.observe(ctx, http.MethodGet, "/api/admin/namespaces", err.Status, start)
+		h.observe(ctx, http.MethodGet, "/admin/namespaces", err.Status, start)
 		return nil, err
 	}
 	ctx = authn.WithPrincipal(ctx, principal)
@@ -72,16 +72,16 @@ func (h *Handler) adminListNamespaces(
 			namespace:          principal.Namespace,
 			namespaceAllowed:   false,
 			principal:          principal,
-			route:              "/api/admin/namespaces",
+			route:              "/admin/namespaces",
 		})
 		apiErr := apienv.NewError(403, apienv.CodeAdminAccessDenied, "Admin access denied", nil)
-		h.observe(ctx, http.MethodGet, "/api/admin/namespaces", apiErr.Status, start)
+		h.observe(ctx, http.MethodGet, "/admin/namespaces", apiErr.Status, start)
 		return nil, apiErr
 	}
 	namespaces, listErr := h.viewers.ListNamespaces(ctx)
 	if listErr != nil {
 		apiErr := apienv.FromError(listErr)
-		h.observe(ctx, http.MethodGet, "/api/admin/namespaces", apiErr.Status, start)
+		h.observe(ctx, http.MethodGet, "/admin/namespaces", apiErr.Status, start)
 		return nil, apiErr
 	}
 	items := allowedAdminNamespaces(namespaces, principal.Namespace)
@@ -96,9 +96,9 @@ func (h *Handler) adminListNamespaces(
 		namespace:          principal.Namespace,
 		namespaceAllowed:   true,
 		principal:          principal,
-		route:              "/api/admin/namespaces",
+		route:              "/admin/namespaces",
 	})
-	h.observe(ctx, http.MethodGet, "/api/admin/namespaces", http.StatusOK, start)
+	h.observe(ctx, http.MethodGet, "/admin/namespaces", http.StatusOK, start)
 	return &ListNamespacesResponse{NamespaceList: NamespaceList{Items: items}}, nil
 }
 
@@ -108,19 +108,19 @@ func (h *Handler) adminListStorageClasses(
 ) (*ListStorageClassesResponse, *apienv.Error) {
 	start := time.Now()
 	if apiErr := h.authorizeStorageClassAdmin(ctx, req); apiErr != nil {
-		h.observe(ctx, http.MethodGet, "/api/admin/storage-classes", apiErr.Status, start)
+		h.observe(ctx, http.MethodGet, "/admin/storage-classes", apiErr.Status, start)
 		return nil, apiErr
 	}
 	items, listErr := h.storageClasses.ListStorageClasses(ctx, true)
 	if listErr != nil {
 		apiErr := apienv.FromError(listErr)
-		h.observe(ctx, http.MethodGet, "/api/admin/storage-classes", apiErr.Status, start)
+		h.observe(ctx, http.MethodGet, "/admin/storage-classes", apiErr.Status, start)
 		return nil, apiErr
 	}
 	if items == nil {
 		items = []domain.StorageClass{}
 	}
-	h.observe(ctx, http.MethodGet, "/api/admin/storage-classes", http.StatusOK, start)
+	h.observe(ctx, http.MethodGet, "/admin/storage-classes", http.StatusOK, start)
 	return &ListStorageClassesResponse{StorageClassList: StorageClassList{Items: items}}, nil
 }
 
@@ -131,16 +131,16 @@ func (h *Handler) adminGetStorageClassYAML(
 ) (*StorageClassYAMLResponse, *apienv.Error) {
 	start := time.Now()
 	if apiErr := h.authorizeStorageClassAdmin(ctx, req); apiErr != nil {
-		h.observe(ctx, http.MethodGet, "/api/admin/storage-classes/:name/yaml", apiErr.Status, start)
+		h.observe(ctx, http.MethodGet, "/admin/storage-classes/:name/yaml", apiErr.Status, start)
 		return nil, apiErr
 	}
 	result, getErr := h.storageClasses.GetStorageClassYAML(ctx, name)
 	if getErr != nil {
 		apiErr := apienv.FromError(getErr)
-		h.observe(ctx, http.MethodGet, "/api/admin/storage-classes/:name/yaml", apiErr.Status, start)
+		h.observe(ctx, http.MethodGet, "/admin/storage-classes/:name/yaml", apiErr.Status, start)
 		return nil, apiErr
 	}
-	h.observe(ctx, http.MethodGet, "/api/admin/storage-classes/:name/yaml", http.StatusOK, start)
+	h.observe(ctx, http.MethodGet, "/admin/storage-classes/:name/yaml", http.StatusOK, start)
 	return &StorageClassYAMLResponse{StorageClassYAML: result}, nil
 }
 
@@ -150,16 +150,16 @@ func (h *Handler) adminCreateStorageClass(
 ) (*StorageClassResponse, *apienv.Error) {
 	start := time.Now()
 	if apiErr := h.authorizeStorageClassAdmin(ctx, req); apiErr != nil {
-		h.observe(ctx, http.MethodPost, "/api/admin/storage-classes", apiErr.Status, start)
+		h.observe(ctx, http.MethodPost, "/admin/storage-classes", apiErr.Status, start)
 		return nil, apiErr
 	}
 	item, createErr := h.storageClasses.CreateStorageClass(ctx, req.YAML)
 	if createErr != nil {
 		apiErr := apienv.FromError(createErr)
-		h.observe(ctx, http.MethodPost, "/api/admin/storage-classes", apiErr.Status, start)
+		h.observe(ctx, http.MethodPost, "/admin/storage-classes", apiErr.Status, start)
 		return nil, apiErr
 	}
-	h.observe(ctx, http.MethodPost, "/api/admin/storage-classes", http.StatusCreated, start)
+	h.observe(ctx, http.MethodPost, "/admin/storage-classes", http.StatusCreated, start)
 	return &StorageClassResponse{StorageClass: item}, nil
 }
 
@@ -170,16 +170,16 @@ func (h *Handler) adminUpdateStorageClass(
 ) (*StorageClassResponse, *apienv.Error) {
 	start := time.Now()
 	if apiErr := h.authorizeStorageClassAdmin(ctx, req); apiErr != nil {
-		h.observe(ctx, http.MethodPut, "/api/admin/storage-classes/:name", apiErr.Status, start)
+		h.observe(ctx, http.MethodPut, "/admin/storage-classes/:name", apiErr.Status, start)
 		return nil, apiErr
 	}
 	item, updateErr := h.storageClasses.UpdateStorageClass(ctx, name, req.YAML)
 	if updateErr != nil {
 		apiErr := apienv.FromError(updateErr)
-		h.observe(ctx, http.MethodPut, "/api/admin/storage-classes/:name", apiErr.Status, start)
+		h.observe(ctx, http.MethodPut, "/admin/storage-classes/:name", apiErr.Status, start)
 		return nil, apiErr
 	}
-	h.observe(ctx, http.MethodPut, "/api/admin/storage-classes/:name", http.StatusOK, start)
+	h.observe(ctx, http.MethodPut, "/admin/storage-classes/:name", http.StatusOK, start)
 	return &StorageClassResponse{StorageClass: item}, nil
 }
 
@@ -190,7 +190,7 @@ func (h *Handler) adminUpdateStorageClassPolicy(
 ) (*StorageClassResponse, *apienv.Error) {
 	start := time.Now()
 	if apiErr := h.authorizeStorageClassAdmin(ctx, req); apiErr != nil {
-		h.observe(ctx, http.MethodPut, "/api/admin/storage-classes/:name/policy", apiErr.Status, start)
+		h.observe(ctx, http.MethodPut, "/admin/storage-classes/:name/policy", apiErr.Status, start)
 		return nil, apiErr
 	}
 	item, updateErr := h.storageClasses.UpdateStorageClassPolicy(
@@ -203,10 +203,10 @@ func (h *Handler) adminUpdateStorageClassPolicy(
 	)
 	if updateErr != nil {
 		apiErr := apienv.FromError(updateErr)
-		h.observe(ctx, http.MethodPut, "/api/admin/storage-classes/:name/policy", apiErr.Status, start)
+		h.observe(ctx, http.MethodPut, "/admin/storage-classes/:name/policy", apiErr.Status, start)
 		return nil, apiErr
 	}
-	h.observe(ctx, http.MethodPut, "/api/admin/storage-classes/:name/policy", http.StatusOK, start)
+	h.observe(ctx, http.MethodPut, "/admin/storage-classes/:name/policy", http.StatusOK, start)
 	return &StorageClassResponse{StorageClass: item}, nil
 }
 
@@ -217,16 +217,16 @@ func (h *Handler) adminDeleteStorageClass(
 ) (*StorageClassResponse, *apienv.Error) {
 	start := time.Now()
 	if apiErr := h.authorizeStorageClassAdmin(ctx, req); apiErr != nil {
-		h.observe(ctx, http.MethodDelete, "/api/admin/storage-classes/:name", apiErr.Status, start)
+		h.observe(ctx, http.MethodDelete, "/admin/storage-classes/:name", apiErr.Status, start)
 		return nil, apiErr
 	}
 	item, deleteErr := h.storageClasses.DeleteStorageClass(ctx, name)
 	if deleteErr != nil {
 		apiErr := apienv.FromError(deleteErr)
-		h.observe(ctx, http.MethodDelete, "/api/admin/storage-classes/:name", apiErr.Status, start)
+		h.observe(ctx, http.MethodDelete, "/admin/storage-classes/:name", apiErr.Status, start)
 		return nil, apiErr
 	}
-	h.observe(ctx, http.MethodDelete, "/api/admin/storage-classes/:name", http.StatusOK, start)
+	h.observe(ctx, http.MethodDelete, "/admin/storage-classes/:name", http.StatusOK, start)
 	return &StorageClassResponse{StorageClass: item}, nil
 }
 
@@ -237,16 +237,16 @@ func (h *Handler) adminDescribeStorageClass(
 ) (*StorageClassDescribeResponse, *apienv.Error) {
 	start := time.Now()
 	if apiErr := h.authorizeStorageClassAdmin(ctx, req); apiErr != nil {
-		h.observe(ctx, http.MethodGet, "/api/admin/storage-classes/:name/describe", apiErr.Status, start)
+		h.observe(ctx, http.MethodGet, "/admin/storage-classes/:name/describe", apiErr.Status, start)
 		return nil, apiErr
 	}
 	result, describeErr := h.storageClasses.DescribeStorageClass(ctx, name)
 	if describeErr != nil {
 		apiErr := apienv.FromError(describeErr)
-		h.observe(ctx, http.MethodGet, "/api/admin/storage-classes/:name/describe", apiErr.Status, start)
+		h.observe(ctx, http.MethodGet, "/admin/storage-classes/:name/describe", apiErr.Status, start)
 		return nil, apiErr
 	}
-	h.observe(ctx, http.MethodGet, "/api/admin/storage-classes/:name/describe", http.StatusOK, start)
+	h.observe(ctx, http.MethodGet, "/admin/storage-classes/:name/describe", http.StatusOK, start)
 	return &StorageClassDescribeResponse{StorageClassDescribe: result}, nil
 }
 
@@ -271,7 +271,7 @@ func (h *Handler) authorizeStorageClassAdmin(
 			namespace:          principal.Namespace,
 			namespaceAllowed:   true,
 			principal:          principal,
-			route:              "/api/admin/storage-classes",
+			route:              "/admin/storage-classes",
 		})
 		return apienv.NewError(403, apienv.CodeAdminAccessDenied, "Admin access denied", nil)
 	}
@@ -284,7 +284,7 @@ func (h *Handler) authorizeStorageClassAdmin(
 		namespace:          principal.Namespace,
 		namespaceAllowed:   true,
 		principal:          principal,
-		route:              "/api/admin/storage-classes",
+		route:              "/admin/storage-classes",
 	})
 	return nil
 }

@@ -26,7 +26,7 @@ func TestHandlerListPVCsUsesEnvelope(t *testing.T) {
 		observability.MustNew(testObservability(), nil),
 		allowAuthorizer{},
 	)
-	req := httptest.NewRequest(http.MethodGet, "/api/pvcs?namespace=ns", nil)
+	req := httptest.NewRequest(http.MethodGet, "/pvcs?namespace=ns", nil)
 	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
 	recorder := httptest.NewRecorder()
 
@@ -57,7 +57,7 @@ func TestHandlerGetContextUsesKubeconfigNamespace(t *testing.T) {
 		observability.MustNew(testObservability(), nil),
 		allowAuthorizer{},
 	)
-	req := httptest.NewRequest(http.MethodGet, "/api/context", nil)
+	req := httptest.NewRequest(http.MethodGet, "/context", nil)
 	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
 	recorder := httptest.NewRecorder()
 
@@ -86,7 +86,7 @@ func TestHandlerGetContextUsesDebugForcedNamespace(t *testing.T) {
 			ForcedNamespace: "forced-ns",
 		}),
 	)
-	req := httptest.NewRequest(http.MethodGet, "/api/context", nil)
+	req := httptest.NewRequest(http.MethodGet, "/context", nil)
 	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
 	recorder := httptest.NewRecorder()
 
@@ -115,7 +115,7 @@ func TestHandlerForcedNamespaceRejectsKubeconfigNamespaceRequest(t *testing.T) {
 			ForcedNamespace: "forced-ns",
 		}),
 	)
-	req := httptest.NewRequest(http.MethodGet, "/api/pvcs?namespace=ns", nil)
+	req := httptest.NewRequest(http.MethodGet, "/pvcs?namespace=ns", nil)
 	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
 	recorder := httptest.NewRecorder()
 
@@ -137,7 +137,7 @@ func TestHandlerRejectsExplicitDifferentNamespace(t *testing.T) {
 		{
 			name: "list pvcs",
 			request: func() *http.Request {
-				return httptest.NewRequest(http.MethodGet, "/api/pvcs?namespace=other", nil)
+				return httptest.NewRequest(http.MethodGet, "/pvcs?namespace=other", nil)
 			},
 			handle: (*Handler).ListPVCs,
 		},
@@ -146,7 +146,7 @@ func TestHandlerRejectsExplicitDifferentNamespace(t *testing.T) {
 			request: func() *http.Request {
 				return httptest.NewRequest(
 					http.MethodPost,
-					"/api/pvcs",
+					"/pvcs",
 					strings.NewReader(`{"namespace":"other","name":"data","capacity":"10Gi","access_modes":["ReadWriteOnce"]}`),
 				)
 			},
@@ -157,7 +157,7 @@ func TestHandlerRejectsExplicitDifferentNamespace(t *testing.T) {
 			request: func() *http.Request {
 				return httptest.NewRequest(
 					http.MethodPost,
-					"/api/pvcs/other/data/expand",
+					"/pvcs/other/data/expand",
 					strings.NewReader(`{"capacity":"20Gi"}`),
 				)
 			},
@@ -166,7 +166,7 @@ func TestHandlerRejectsExplicitDifferentNamespace(t *testing.T) {
 		{
 			name: "delete pvc",
 			request: func() *http.Request {
-				return httptest.NewRequest(http.MethodDelete, "/api/pvcs/other/data", nil)
+				return httptest.NewRequest(http.MethodDelete, "/pvcs/other/data", nil)
 			},
 			handle: (*Handler).DeletePVC,
 		},
@@ -175,7 +175,7 @@ func TestHandlerRejectsExplicitDifferentNamespace(t *testing.T) {
 			request: func() *http.Request {
 				return httptest.NewRequest(
 					http.MethodPost,
-					"/api/viewer-sessions",
+					"/viewer-sessions",
 					strings.NewReader(`{"namespace":"other","pvc_name":"data"}`),
 				)
 			},
@@ -223,7 +223,7 @@ func TestHandlerCreatePVCUsesEnvelope(t *testing.T) {
 	)
 	req := httptest.NewRequest(
 		http.MethodPost,
-		"/api/pvcs",
+		"/pvcs",
 		strings.NewReader(`{"namespace":"ns","name":"data","capacity":"10Gi","access_modes":["ReadWriteOnce"]}`),
 	)
 	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
@@ -254,7 +254,7 @@ func TestHandlerExpandPVCUsesPathParams(t *testing.T) {
 	)
 	req := httptest.NewRequest(
 		http.MethodPost,
-		"/api/pvcs/ns/data/expand",
+		"/pvcs/ns/data/expand",
 		strings.NewReader(`{"capacity":"20Gi"}`),
 	)
 	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
@@ -283,7 +283,7 @@ func TestHandlerListStorageClassesUsesEnvelope(t *testing.T) {
 		observability.MustNew(testObservability(), nil),
 		allowAuthorizer{},
 	)
-	req := httptest.NewRequest(http.MethodGet, "/api/storage-classes", nil)
+	req := httptest.NewRequest(http.MethodGet, "/storage-classes", nil)
 	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
 	recorder := httptest.NewRecorder()
 

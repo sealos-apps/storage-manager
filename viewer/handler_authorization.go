@@ -313,7 +313,7 @@ func (h *Handler) authorizeViewerSessionPVC(
 			principal:        principal,
 			pvcName:          session.PVCName,
 			viewerSessionID:  viewerSessionID,
-			route:            "/api/viewer-sessions/:id",
+			route:            "/viewer-sessions/:id",
 		})
 		return apienv.NewError(403, apienv.CodePVCAccessDenied, "PVC access denied", nil)
 	}
@@ -325,7 +325,7 @@ func (h *Handler) authorizeViewerSessionPVC(
 		principal:        principal,
 		pvcName:          session.PVCName,
 		viewerSessionID:  viewerSessionID,
-		route:            "/api/viewer-sessions/:id",
+		route:            "/viewer-sessions/:id",
 	})
 	return nil
 }
@@ -352,7 +352,7 @@ func (h *Handler) authorizePodSessionPVC(
 			podSessionID:     podSessionID,
 			principal:        principal,
 			pvcName:          podSession.PVCName,
-			route:            "/api/pod-sessions/:id",
+			route:            "/pod-sessions/:id",
 		})
 		return apienv.NewError(403, apienv.CodePVCAccessDenied, "PVC access denied", nil)
 	}
@@ -364,7 +364,7 @@ func (h *Handler) authorizePodSessionPVC(
 		podSessionID:     podSessionID,
 		principal:        principal,
 		pvcName:          podSession.PVCName,
-		route:            "/api/pod-sessions/:id",
+		route:            "/pod-sessions/:id",
 	})
 	return nil
 }
@@ -441,12 +441,12 @@ func (h *Handler) authorizeAdminSessionPVC(
 
 func sessionAuditRoute(viewerSessionID string, podSessionID string) string {
 	if viewerSessionID != "" {
-		return "/api/viewer-sessions/:id"
+		return "/viewer-sessions/:id"
 	}
 	if podSessionID != "" {
-		return "/api/pod-sessions/:id"
+		return "/pod-sessions/:id"
 	}
-	return "/api/session"
+	return "/session"
 }
 
 func pathID(path string, prefix string) string {
@@ -454,7 +454,7 @@ func pathID(path string, prefix string) string {
 }
 
 func pvcPathParams(path string) (string, string) {
-	remainder := strings.Trim(strings.TrimPrefix(path, "/api/pvcs/"), "/")
+	remainder := strings.Trim(strings.TrimPrefix(path, "/pvcs/"), "/")
 	parts := strings.SplitN(remainder, "/", 2)
 	if len(parts) != 2 {
 		return "", ""
@@ -463,7 +463,7 @@ func pvcPathParams(path string) (string, string) {
 }
 
 func expandPVCPathParams(path string) (string, string) {
-	remainder := strings.TrimSuffix(strings.Trim(strings.TrimPrefix(path, "/api/pvcs/"), "/"), "/expand")
+	remainder := strings.TrimSuffix(strings.Trim(strings.TrimPrefix(path, "/pvcs/"), "/"), "/expand")
 	parts := strings.SplitN(remainder, "/", 2)
 	if len(parts) != 2 {
 		return "", ""
