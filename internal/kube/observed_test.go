@@ -55,6 +55,23 @@ func TestObservedClientRecordsPVCMutation(t *testing.T) {
 	}
 }
 
+func TestObservedClientRecordsNamespaceList(t *testing.T) {
+	t.Setenv("ENCORERUNTIME_NOPANIC", "1")
+
+	recorder := observability.MustNew(testObservability(), nil)
+	client := WithObservability(New(fake.NewSimpleClientset(
+		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "default"}},
+	)), recorder)
+
+	if _, err := client.ListNamespaces(t.Context()); err != nil {
+		t.Fatalf("ListNamespaces() error = %v", err)
+	}
+	metrics := prometheusText(t, recorder)
+	if !strings.Contains(metrics, `viewer_kubernetes_operation_requests_total{Operation="list",Resource="namespaces",Result="success"} 1`) {
+		t.Fatalf("missing namespace list metric: %s", metrics)
+	}
+}
+
 func TestObservedClientRecordsKubernetesError(t *testing.T) {
 	t.Setenv("ENCORERUNTIME_NOPANIC", "1")
 

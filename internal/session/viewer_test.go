@@ -110,6 +110,44 @@ func TestCreateViewerSessionRejectsRWOP(t *testing.T) {
 	}
 }
 
+func TestCreateViewerSessionPropagatesAdminContext(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	client := kube.New(fake.NewSimpleClientset(&corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "kube-system", Name: "data", UID: types.UID("uid")},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")},
+			},
+		},
+	}))
+	store := state.New(cfg.Cache)
+	pods := NewPodService(cfg, store, client, observability.MustNew(cfg.Observability, nil))
+	service := NewViewerService(cfg, store, client, pods, nil, observability.MustNew(cfg.Observability, nil))
+
+	viewer, err := service.CreateViewerSession(t.Context(), CreateViewerSessionInput{
+		AdminContext: true,
+		Namespace:    "kube-system",
+		PVCName:      "data",
+		UserID:       "admin",
+	})
+	if err != nil {
+		t.Fatalf("CreateViewerSession() error = %v", err)
+	}
+	if !viewer.AdminContext {
+		t.Fatalf("viewer.AdminContext = false")
+	}
+	podSession, ok := store.GetPodSession(viewer.PodSessionID, time.Now())
+	if !ok {
+		t.Fatalf("pod session missing")
+	}
+	if !podSession.AdminContext {
+		t.Fatalf("podSession.AdminContext = false")
+	}
+}
+
 func TestCreateViewerSessionPreservesTransientPVCGetErrors(t *testing.T) {
 	t.Parallel()
 

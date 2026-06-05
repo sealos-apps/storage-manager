@@ -129,6 +129,22 @@ func TestSchedulingForPVC(t *testing.T) {
 	}
 }
 
+func TestClientListNamespaces(t *testing.T) {
+	t.Parallel()
+
+	client := New(fake.NewSimpleClientset(
+		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "default"}},
+		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "kube-system"}},
+	))
+	namespaces, err := client.ListNamespaces(t.Context())
+	if err != nil {
+		t.Fatalf("ListNamespaces() error = %v", err)
+	}
+	if len(namespaces) != 2 {
+		t.Fatalf("namespaces = %d", len(namespaces))
+	}
+}
+
 func testPod(
 	namespace string,
 	name string,

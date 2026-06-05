@@ -246,6 +246,46 @@ func TestEnsurePodSessionSkipsStoredSessionWithDifferentRuntimeVersion(t *testin
 	}
 }
 
+func TestEnsurePodSessionSkipsStoredSessionWithDifferentAdminContext(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	store := state.New(cfg.Cache)
+	store.PutPodSession(&domain.PodSession{
+		ID:             "ps_user",
+		Namespace:      "default",
+		PVCName:        "data",
+		PVCUID:         "uid",
+		PodName:        "viewer-ps-user",
+		ServiceName:    "viewer-ps-user",
+		RuntimeVersion: runtimeVersion(cfg),
+		Status:         domain.PodStatusReady,
+		ExpiresAt:      fixedNow().Add(time.Minute),
+		AdminContext:   false,
+	})
+	client := kube.New(fake.NewSimpleClientset())
+	service := NewPodService(cfg, store, client, observability.MustNew(cfg.Observability, nil))
+	service.now = fixedNow
+
+	podSession, err := service.EnsurePodSession(t.Context(), EnsurePodSessionInput{
+		AdminContext: true,
+		Namespace:    "default",
+		PVCName:      "data",
+		PVCUID:       "uid",
+		AccessMode:   domain.AccessModeReadWriteMany,
+		Mode:         domain.ModeReadWrite,
+	})
+	if err != nil {
+		t.Fatalf("EnsurePodSession() error = %v", err)
+	}
+	if podSession.ID == "ps_user" {
+		t.Fatal("stored pod session with different admin context was reused")
+	}
+	if !podSession.AdminContext {
+		t.Fatal("replacement pod session did not preserve requested admin context")
+	}
+}
+
 func TestEnsurePodSessionSkipsExistingViewerPodWithDifferentRuntimeVersion(t *testing.T) {
 	t.Parallel()
 

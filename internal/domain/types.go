@@ -42,6 +42,7 @@ type PodSession struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 	LastActiveAt   time.Time `json:"last_active_at"`
 	ExpiresAt      time.Time `json:"expires_at"`
+	AdminContext   bool      `json:"-"`
 }
 
 type ViewerSession struct {
@@ -61,6 +62,7 @@ type ViewerSession struct {
 	CreatedAt       time.Time `json:"created_at"`
 	LastHeartbeatAt time.Time `json:"last_heartbeat_at"`
 	ExpiresAt       time.Time `json:"expires_at"`
+	AdminContext    bool      `json:"-"`
 }
 
 type AuthRequest struct {
@@ -109,6 +111,11 @@ type PVC struct {
 	ViewerMode       string           `json:"viewer_mode"`
 	ViewerScheduling ViewerScheduling `json:"viewer_scheduling"`
 	Reason           string           `json:"reason"`
+}
+
+type Namespace struct {
+	Name             string `json:"name"`
+	IsCurrentContext bool   `json:"is_current_context"`
 }
 
 type StorageClass struct {

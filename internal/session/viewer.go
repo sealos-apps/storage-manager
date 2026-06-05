@@ -31,9 +31,10 @@ type ViewerService struct {
 }
 
 type CreateViewerSessionInput struct {
-	Namespace string
-	PVCName   string
-	UserID    string
+	AdminContext bool
+	Namespace    string
+	PVCName      string
+	UserID       string
 }
 
 type CreatePVCInput struct {
@@ -74,6 +75,14 @@ func NewViewerService(
 		recorder: recorder,
 		now:      time.Now,
 	}
+}
+
+func (s *ViewerService) ListNamespaces(ctx context.Context) (items []corev1.Namespace, err error) {
+	ctx, finish := s.recorder.TraceOperation(ctx, "viewer.list_namespaces")
+	defer func() {
+		finish(err)
+	}()
+	return s.kube.ListNamespaces(ctx)
 }
 
 func (s *ViewerService) ListPVCs(ctx context.Context, namespace string) (items []domain.PVC, err error) {
@@ -314,12 +323,13 @@ func (s *ViewerService) CreateViewerSession(
 		}
 	}
 	podSession, err := s.pods.EnsurePodSession(ctx, EnsurePodSessionInput{
-		Namespace:  input.Namespace,
-		PVCName:    pvc.Name,
-		PVCUID:     string(pvc.UID),
-		AccessMode: primaryAccessMode(accessModes),
-		Mode:       viewerMode,
-		MountInfo:  mountInfo,
+		AdminContext: input.AdminContext,
+		Namespace:    input.Namespace,
+		PVCName:      pvc.Name,
+		PVCUID:       string(pvc.UID),
+		AccessMode:   primaryAccessMode(accessModes),
+		Mode:         viewerMode,
+		MountInfo:    mountInfo,
 	})
 	if err != nil {
 		return nil, err
@@ -346,6 +356,7 @@ func (s *ViewerService) CreateViewerSession(
 		CreatedAt:       now,
 		LastHeartbeatAt: now,
 		ExpiresAt:       now.Add(s.cfg.Sessions.ViewerSessionTimout),
+		AdminContext:    input.AdminContext,
 	}
 	s.store.PutViewerSession(viewer)
 	s.recorder.ObserveViewerSession("created")
@@ -482,12 +493,13 @@ func (s *ViewerService) replaceMissingPodSessionForViewer(
 		return nil, err
 	}
 	return s.pods.EnsurePodSession(ctx, EnsurePodSessionInput{
-		Namespace:  viewer.Namespace,
-		PVCName:    pvc.Name,
-		PVCUID:     string(pvc.UID),
-		AccessMode: primaryAccessMode(accessModes),
-		Mode:       viewerMode,
-		MountInfo:  mountInfo,
+		AdminContext: viewer.AdminContext,
+		Namespace:    viewer.Namespace,
+		PVCName:      pvc.Name,
+		PVCUID:       string(pvc.UID),
+		AccessMode:   primaryAccessMode(accessModes),
+		Mode:         viewerMode,
+		MountInfo:    mountInfo,
 	})
 }
 

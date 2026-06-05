@@ -30,13 +30,26 @@ import (
 type fakeViewerService struct {
 	pvcs           []domain.PVC
 	pvc            *domain.PVC
+	namespaces     []corev1.Namespace
 	storageClasses []domain.StorageClass
 	created        *domain.ViewerSession
+	createInput    *session.CreateViewerSessionInput
+	deleteInput    *session.DeletePVCInput
+	expandInput    *session.ExpandPVCInput
+	pvcInput       *session.CreatePVCInput
 	token          *domain.ViewerToken
+	tokenInput     *viewerSessionCall
 	heartbeat      *domain.Heartbeat
+	heartbeatInput *viewerSessionCall
 	closed         *domain.ViewerSession
+	closeInput     *viewerSessionCall
 	podSession     *domain.PodSession
 	podSessionErr  error
+}
+
+type viewerSessionCall struct {
+	id     string
+	userID string
 }
 
 type fakeStorageClassService struct {
@@ -68,19 +81,37 @@ contexts:
     namespace: ns
 `
 
-func (f *fakeViewerService) ListPVCs(_ context.Context, _ string) ([]domain.PVC, error) {
+func (f *fakeViewerService) ListPVCs(_ context.Context, namespace string) ([]domain.PVC, error) {
+	if len(f.pvcs) > 0 {
+		for i := range f.pvcs {
+			f.pvcs[i].Namespace = namespace
+		}
+	}
 	return f.pvcs, nil
 }
 
-func (f *fakeViewerService) CreatePVC(_ context.Context, _ session.CreatePVCInput) (*domain.PVC, error) {
+func (f *fakeViewerService) ListNamespaces(_ context.Context) ([]corev1.Namespace, error) {
+	return f.namespaces, nil
+}
+
+func (f *fakeViewerService) CreatePVC(_ context.Context, input session.CreatePVCInput) (*domain.PVC, error) {
+	if f.pvcInput != nil {
+		*f.pvcInput = input
+	}
 	return f.pvc, nil
 }
 
-func (f *fakeViewerService) DeletePVC(_ context.Context, _ session.DeletePVCInput) (*domain.PVC, error) {
+func (f *fakeViewerService) DeletePVC(_ context.Context, input session.DeletePVCInput) (*domain.PVC, error) {
+	if f.deleteInput != nil {
+		*f.deleteInput = input
+	}
 	return f.pvc, nil
 }
 
-func (f *fakeViewerService) ExpandPVC(_ context.Context, _ session.ExpandPVCInput) (*domain.PVC, error) {
+func (f *fakeViewerService) ExpandPVC(_ context.Context, input session.ExpandPVCInput) (*domain.PVC, error) {
+	if f.expandInput != nil {
+		*f.expandInput = input
+	}
 	return f.pvc, nil
 }
 
@@ -90,8 +121,11 @@ func (f *fakeViewerService) ListStorageClasses(_ context.Context) ([]domain.Stor
 
 func (f *fakeViewerService) CreateViewerSession(
 	_ context.Context,
-	_ session.CreateViewerSessionInput,
+	input session.CreateViewerSessionInput,
 ) (*domain.ViewerSession, error) {
+	if f.createInput != nil {
+		*f.createInput = input
+	}
 	return f.created, nil
 }
 
@@ -103,15 +137,24 @@ func (f *fakeViewerService) GetViewerSession(
 	return f.created, nil
 }
 
-func (f *fakeViewerService) IssueToken(_ context.Context, _ string, _ string) (*domain.ViewerToken, error) {
+func (f *fakeViewerService) IssueToken(_ context.Context, id string, userID string) (*domain.ViewerToken, error) {
+	if f.tokenInput != nil {
+		*f.tokenInput = viewerSessionCall{id: id, userID: userID}
+	}
 	return f.token, nil
 }
 
-func (f *fakeViewerService) HeartbeatForUser(_ context.Context, _ string, _ string) (*domain.Heartbeat, error) {
+func (f *fakeViewerService) HeartbeatForUser(_ context.Context, id string, userID string) (*domain.Heartbeat, error) {
+	if f.heartbeatInput != nil {
+		*f.heartbeatInput = viewerSessionCall{id: id, userID: userID}
+	}
 	return f.heartbeat, nil
 }
 
-func (f *fakeViewerService) CloseViewerSessionForUser(_ string, _ string) (*domain.ViewerSession, error) {
+func (f *fakeViewerService) CloseViewerSessionForUser(id string, userID string) (*domain.ViewerSession, error) {
+	if f.closeInput != nil {
+		*f.closeInput = viewerSessionCall{id: id, userID: userID}
+	}
 	return f.closed, nil
 }
 
@@ -224,11 +267,23 @@ func (allowAuthorizer) CanListStorageClasses(_ context.Context, _ *authn.Princip
 
 type allowAdminAuthorizer struct{}
 
+func (allowAdminAuthorizer) CanAdmin(_ context.Context, _ *authn.Principal) (AdminAuthorizationResult, error) {
+	return AdminAuthorizationResult{
+		Allowed:            true,
+		KubernetesUsername: "system:serviceaccount:user-system:admin",
+		Reason:             "allowed",
+	}, nil
+}
+
 func (allowAdminAuthorizer) CanManageStorageClasses(_ context.Context, _ *authn.Principal) error {
 	return nil
 }
 
 type denyTestAdminAuthorizer struct{}
+
+func (denyTestAdminAuthorizer) CanAdmin(_ context.Context, _ *authn.Principal) (AdminAuthorizationResult, error) {
+	return AdminAuthorizationResult{Reason: "not_admin"}, errors.New("denied")
+}
 
 func (denyTestAdminAuthorizer) CanManageStorageClasses(_ context.Context, _ *authn.Principal) error {
 	return errors.New("denied")
@@ -657,6 +712,228 @@ func TestHandlerAdminStorageClassEndpointsUseEnvelope(t *testing.T) {
 	}
 }
 
+func TestHandlerAdminListNamespacesFiltersUserNamespaces(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(
+		&fakeViewerService{
+			namespaces: []corev1.Namespace{
+				{ObjectMeta: metav1.ObjectMeta{Name: "kube-system"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "ns-other-user"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "sealos-storage-manager"}},
+			},
+		},
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+		WithAdminAuthorizer(allowAdminAuthorizer{}),
+	)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/namespaces", nil)
+	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
+	recorder := httptest.NewRecorder()
+
+	handler.AdminListNamespaces(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `"name":"ns","is_current_context":true`) {
+		t.Fatalf("current namespace missing: %s", recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `"name":"kube-system"`) {
+		t.Fatalf("system namespace missing: %s", recorder.Body.String())
+	}
+	if strings.Contains(recorder.Body.String(), "ns-other-user") {
+		t.Fatalf("user namespace leaked: %s", recorder.Body.String())
+	}
+}
+
+func TestHandlerAdminListNamespacesRequiresAdmin(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(
+		&fakeViewerService{},
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+		WithAdminAuthorizer(denyTestAdminAuthorizer{}),
+	)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/namespaces", nil)
+	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
+	recorder := httptest.NewRecorder()
+
+	handler.AdminListNamespaces(recorder, req)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), string(apienv.CodeAdminAccessDenied)) {
+		t.Fatalf("body = %s", recorder.Body.String())
+	}
+}
+
+func TestHandlerAdminImplicitPVCOperationsUseRequestedSystemNamespace(t *testing.T) {
+	t.Parallel()
+
+	var createInput session.CreatePVCInput
+	var expandInput session.ExpandPVCInput
+	var deleteInput session.DeletePVCInput
+	viewers := &fakeViewerService{
+		namespaces: []corev1.Namespace{
+			{ObjectMeta: metav1.ObjectMeta{Name: "kube-system"}},
+		},
+		pvcs:        []domain.PVC{{Name: "data", UID: "uid", MountedPods: []domain.MountedPod{}}},
+		pvc:         &domain.PVC{Namespace: "kube-system", Name: "data"},
+		pvcInput:    &createInput,
+		expandInput: &expandInput,
+		deleteInput: &deleteInput,
+	}
+	handler := NewHandler(
+		viewers,
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+		WithAdminAuthorizer(allowAdminAuthorizer{}),
+	)
+	tests := []struct {
+		name   string
+		req    *http.Request
+		handle func(*Handler, http.ResponseWriter, *http.Request)
+	}{
+		{
+			name:   "list",
+			req:    httptest.NewRequest(http.MethodGet, "/api/pvcs?namespace=kube-system", nil),
+			handle: (*Handler).ListPVCs,
+		},
+		{
+			name: "create",
+			req: httptest.NewRequest(
+				http.MethodPost,
+				"/api/pvcs",
+				strings.NewReader(`{"namespace":"kube-system","name":"data","capacity":"10Gi","access_modes":["ReadWriteOnce"],"storage_class_name":"standard"}`),
+			),
+			handle: (*Handler).CreatePVC,
+		},
+		{
+			name: "expand",
+			req: httptest.NewRequest(
+				http.MethodPost,
+				"/api/pvcs/kube-system/data/expand",
+				strings.NewReader(`{"capacity":"20Gi"}`),
+			),
+			handle: (*Handler).ExpandPVC,
+		},
+		{
+			name:   "delete",
+			req:    httptest.NewRequest(http.MethodDelete, "/api/pvcs/kube-system/data", nil),
+			handle: (*Handler).DeletePVC,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
+			recorder := httptest.NewRecorder()
+
+			tt.handle(handler, recorder, tt.req)
+
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+			}
+		})
+	}
+	if createInput.Namespace != "kube-system" {
+		t.Fatalf("create namespace = %q", createInput.Namespace)
+	}
+	if expandInput.Namespace != "kube-system" {
+		t.Fatalf("expand namespace = %q", expandInput.Namespace)
+	}
+	if deleteInput.Namespace != "kube-system" {
+		t.Fatalf("delete namespace = %q", deleteInput.Namespace)
+	}
+}
+
+func TestHandlerAdminImplicitPVCRejectsUserNamespace(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(
+		&fakeViewerService{
+			namespaces: []corev1.Namespace{
+				{ObjectMeta: metav1.ObjectMeta{Name: "ns-other-user"}},
+			},
+		},
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+		WithAdminAuthorizer(allowAdminAuthorizer{}),
+	)
+	req := httptest.NewRequest(http.MethodGet, "/api/pvcs?namespace=ns-other-user", nil)
+	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
+	recorder := httptest.NewRecorder()
+
+	handler.ListPVCs(recorder, req)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), string(apienv.CodePVCAccessDenied)) {
+		t.Fatalf("body = %s", recorder.Body.String())
+	}
+}
+
+func TestHandlerAdminViewerSessionMarksAdminContext(t *testing.T) {
+	t.Parallel()
+
+	var input session.CreateViewerSessionInput
+	handler := NewHandler(
+		&fakeViewerService{
+			namespaces: []corev1.Namespace{
+				{ObjectMeta: metav1.ObjectMeta{Name: "kube-system"}},
+			},
+			created: &domain.ViewerSession{
+				ID:           "vs_1",
+				PodSessionID: "ps_1",
+				Namespace:    "kube-system",
+				PVCName:      "data",
+				AdminContext: true,
+			},
+			createInput: &input,
+		},
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+		WithAdminAuthorizer(allowAdminAuthorizer{}),
+	)
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/viewer-sessions",
+		strings.NewReader(`{"namespace":"kube-system","pvc_name":"data"}`),
+	)
+	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
+	recorder := httptest.NewRecorder()
+
+	handler.CreateViewerSession(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !input.AdminContext {
+		t.Fatalf("AdminContext = false")
+	}
+	if input.Namespace != "kube-system" {
+		t.Fatalf("namespace = %q", input.Namespace)
+	}
+}
+
 func TestHandlerAdminUpdateStorageClassPolicyMapsRequest(t *testing.T) {
 	t.Parallel()
 
@@ -790,6 +1067,165 @@ func TestHandlerIssueTokenAuthorizesFromViewerSessionPVC(t *testing.T) {
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestHandlerAdminSessionFollowUpAPIsUseExistingSessionEndpoints(t *testing.T) {
+	t.Parallel()
+
+	tokenCall := viewerSessionCall{}
+	heartbeatCall := viewerSessionCall{}
+	closeCall := viewerSessionCall{}
+	principal, err := authn.PrincipalFromAuthorization(url.QueryEscape(testKubeconfig))
+	if err != nil {
+		t.Fatalf("PrincipalFromAuthorization() error = %v", err)
+	}
+	handler := NewHandler(
+		&fakeViewerService{
+			namespaces: []corev1.Namespace{
+				{ObjectMeta: metav1.ObjectMeta{Name: "kube-system"}},
+			},
+			created: &domain.ViewerSession{
+				ID:           "vs_1",
+				PodSessionID: "ps_1",
+				Namespace:    "kube-system",
+				PVCName:      "data",
+				AdminContext: true,
+			},
+			token: &domain.ViewerToken{
+				ViewerSessionID: "vs_1",
+				PodSessionID:    "ps_1",
+				Token:           "fb-token",
+				TokenType:       "Bearer",
+				ExpiresAt:       time.Now().Add(time.Minute),
+			},
+			tokenInput: &tokenCall,
+			heartbeat: &domain.Heartbeat{
+				ViewerSessionID: "vs_1",
+				ExpiresAt:       time.Now().Add(time.Minute),
+				Status:          domain.ViewerStatusReady,
+			},
+			heartbeatInput: &heartbeatCall,
+			closed: &domain.ViewerSession{
+				ID:           "vs_1",
+				PodSessionID: "ps_1",
+				Namespace:    "kube-system",
+				PVCName:      "data",
+				Status:       domain.ViewerStatusClosed,
+				AdminContext: true,
+			},
+			closeInput: &closeCall,
+			podSession: &domain.PodSession{
+				ID:           "ps_1",
+				Namespace:    "kube-system",
+				PVCName:      "data",
+				AdminContext: true,
+			},
+		},
+		fakePodService{
+			closed: &domain.PodSession{
+				ID:           "ps_1",
+				Namespace:    "kube-system",
+				PVCName:      "data",
+				Status:       domain.PodStatusTerminated,
+				AdminContext: true,
+			},
+		},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+		WithAdminAuthorizer(allowAdminAuthorizer{}),
+	)
+	tests := []struct {
+		name   string
+		req    *http.Request
+		handle func(*Handler, http.ResponseWriter, *http.Request)
+	}{
+		{
+			name:   "token",
+			req:    httptest.NewRequest(http.MethodPost, "/api/viewer-sessions/vs_1/token", nil),
+			handle: (*Handler).IssueToken,
+		},
+		{
+			name:   "heartbeat",
+			req:    httptest.NewRequest(http.MethodPost, "/api/viewer-sessions/vs_1/heartbeat", nil),
+			handle: (*Handler).Heartbeat,
+		},
+		{
+			name:   "close viewer",
+			req:    httptest.NewRequest(http.MethodDelete, "/api/viewer-sessions/vs_1", nil),
+			handle: (*Handler).CloseViewerSession,
+		},
+		{
+			name:   "close pod",
+			req:    httptest.NewRequest(http.MethodDelete, "/api/pod-sessions/ps_1", nil),
+			handle: (*Handler).ClosePodSession,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
+			recorder := httptest.NewRecorder()
+
+			tt.handle(handler, recorder, tt.req)
+
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+			}
+		})
+	}
+	if tokenCall != (viewerSessionCall{id: "vs_1", userID: principal.ID}) {
+		t.Fatalf("token call = %#v", tokenCall)
+	}
+	if heartbeatCall != (viewerSessionCall{id: "vs_1", userID: principal.ID}) {
+		t.Fatalf("heartbeat call = %#v", heartbeatCall)
+	}
+	if closeCall != (viewerSessionCall{id: "vs_1", userID: principal.ID}) {
+		t.Fatalf("close call = %#v", closeCall)
+	}
+}
+
+func TestHandlerAdminSessionFollowUpDeniedWhenAdminAccessRevoked(t *testing.T) {
+	t.Parallel()
+
+	var tokenCall viewerSessionCall
+	handler := NewHandler(
+		&fakeViewerService{
+			namespaces: []corev1.Namespace{
+				{ObjectMeta: metav1.ObjectMeta{Name: "kube-system"}},
+			},
+			created: &domain.ViewerSession{
+				ID:           "vs_1",
+				PodSessionID: "ps_1",
+				Namespace:    "kube-system",
+				PVCName:      "data",
+				AdminContext: true,
+			},
+			tokenInput: &tokenCall,
+			token:      &domain.ViewerToken{ViewerSessionID: "vs_1", Token: "fb-token"},
+		},
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+		WithAdminAuthorizer(denyTestAdminAuthorizer{}),
+	)
+	req := httptest.NewRequest(http.MethodPost, "/api/viewer-sessions/vs_1/token", nil)
+	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
+	recorder := httptest.NewRecorder()
+
+	handler.IssueToken(recorder, req)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), string(apienv.CodeAdminAccessDenied)) {
+		t.Fatalf("body = %s", recorder.Body.String())
+	}
+	if tokenCall != (viewerSessionCall{}) {
+		t.Fatalf("token issued after admin denial: %#v", tokenCall)
 	}
 }
 

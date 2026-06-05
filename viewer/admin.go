@@ -24,6 +24,12 @@ type kubernetesAdminAuthorizer struct {
 
 type denyAdminAuthorizer struct{}
 
+type AdminAuthorizationResult struct {
+	Allowed            bool
+	KubernetesUsername string
+	Reason             string
+}
+
 func newKubernetesAdminAuthorizer(cfg config.AdminConfig, recorder *observability.Recorder) kubernetesAdminAuthorizer {
 	return kubernetesAdminAuthorizer{
 		allowedUserIDs: cfg.AllowedUserIDs,
@@ -31,25 +37,31 @@ func newKubernetesAdminAuthorizer(cfg config.AdminConfig, recorder *observabilit
 	}
 }
 
+func (denyAdminAuthorizer) CanAdmin(_ context.Context, _ *authn.Principal) (AdminAuthorizationResult, error) {
+	return AdminAuthorizationResult{Reason: "not_configured"}, errors.New("admin access denied")
+}
+
 func (denyAdminAuthorizer) CanManageStorageClasses(_ context.Context, _ *authn.Principal) error {
 	return errors.New("admin access denied")
 }
 
-func (a kubernetesAdminAuthorizer) CanManageStorageClasses(
+func (a kubernetesAdminAuthorizer) CanAdmin(
 	ctx context.Context,
 	principal *authn.Principal,
-) (err error) {
+) (result AdminAuthorizationResult, err error) {
 	ctx, finish := a.recorder.TraceOperation(ctx, "admin.authorize_storageclasses")
 	defer func() {
 		finish(err)
 	}()
 
 	if len(a.allowedUserIDs) == 0 {
-		return errors.New("no admin users configured")
+		result.Reason = "no_admin_users_configured"
+		return result, errors.New("no admin users configured")
 	}
 	clientset, err := kubernetesClientsetForConfig(principal.ClientConfig)
 	if err != nil {
-		return err
+		result.Reason = "client_config_error"
+		return result, err
 	}
 	review, err := clientset.AuthenticationV1().SelfSubjectReviews().Create(
 		ctx,
@@ -57,21 +69,32 @@ func (a kubernetesAdminAuthorizer) CanManageStorageClasses(
 		metav1.CreateOptions{},
 	)
 	if err != nil {
-		return err
+		result.Reason = "self_subject_review_failed"
+		return result, err
 	}
 	username := strings.TrimSpace(review.Status.UserInfo.Username)
 	if username == "" {
-		return errors.New("self subject review returned empty username")
+		result.Reason = "empty_username"
+		return result, errors.New("self subject review returned empty username")
 	}
+	result.KubernetesUsername = username
 	a.recorder.Logger().LogAttrs(ctx, slog.LevelDebug, "admin.self_subject_review",
 		slog.String("username", username),
 	)
 	for _, userID := range a.allowedUserIDs {
 		if username == sealosAdminUsername(userID) {
-			return nil
+			result.Allowed = true
+			result.Reason = "allowed"
+			return result, nil
 		}
 	}
-	return fmt.Errorf("username %q is not an allowed admin", username)
+	result.Reason = "not_admin"
+	return result, fmt.Errorf("username %q is not an allowed admin", username)
+}
+
+func (a kubernetesAdminAuthorizer) CanManageStorageClasses(ctx context.Context, principal *authn.Principal) error {
+	_, err := a.CanAdmin(ctx, principal)
+	return err
 }
 
 func sealosAdminUsername(userID string) string {

@@ -15,6 +15,7 @@ import (
 )
 
 type Interface interface {
+	ListNamespaces(ctx context.Context) ([]corev1.Namespace, error)
 	GetPVC(ctx context.Context, namespace string, name string) (*corev1.PersistentVolumeClaim, error)
 	ListPVCs(ctx context.Context, namespace string) ([]corev1.PersistentVolumeClaim, error)
 	CreatePVC(ctx context.Context, pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error)
@@ -52,6 +53,14 @@ type Client struct {
 
 func New(clientset kubernetes.Interface) *Client {
 	return &Client{clientset: clientset}
+}
+
+func (c *Client) ListNamespaces(ctx context.Context) ([]corev1.Namespace, error) {
+	list, err := c.clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("listing namespaces: %w", err)
+	}
+	return list.Items, nil
 }
 
 func (c *Client) GetPVC(ctx context.Context, namespace string, name string) (*corev1.PersistentVolumeClaim, error) {

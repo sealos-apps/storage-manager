@@ -6,6 +6,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/nixieboluo/sealos-storage-manager/internal/observability"
 	"github.com/nixieboluo/sealos-storage-manager/internal/session"
 	authorizationv1 "k8s.io/api/authorization/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -27,6 +30,7 @@ var kubernetesClientsetForConfig = func(c *rest.Config) (kubernetes.Interface, e
 }
 
 type viewerService interface {
+	ListNamespaces(ctx context.Context) ([]corev1.Namespace, error)
 	ListPVCs(ctx context.Context, namespace string) ([]domain.PVC, error)
 	CreatePVC(ctx context.Context, input session.CreatePVCInput) (*domain.PVC, error)
 	DeletePVC(ctx context.Context, input session.DeletePVCInput) (*domain.PVC, error)
@@ -72,6 +76,7 @@ type authorizer interface {
 }
 
 type adminAuthorizer interface {
+	CanAdmin(ctx context.Context, principal *authn.Principal) (AdminAuthorizationResult, error)
 	CanManageStorageClasses(ctx context.Context, principal *authn.Principal) error
 }
 
@@ -87,6 +92,43 @@ type Handler struct {
 }
 
 type HandlerOption func(*Handler)
+
+type operationMode string
+
+const (
+	operationModeUser  operationMode = "user"
+	operationModeAdmin operationMode = "admin"
+)
+
+type operationContext struct {
+	admin             AdminAuthorizationResult
+	adminContext      bool
+	implicitElevation bool
+	kubeService       viewerService
+	mode              operationMode
+	namespace         string
+	namespaceAllowed  bool
+	principal         *authn.Principal
+}
+
+type auditDecision struct {
+	adminAllowed       bool
+	authorizationKind  string
+	decision           string
+	denyReason         string
+	executionKind      string
+	identityMethod     string
+	implicitElevation  bool
+	kubernetesUsername string
+	mode               operationMode
+	namespace          string
+	namespaceAllowed   bool
+	podSessionID       string
+	principal          *authn.Principal
+	pvcName            string
+	route              string
+	viewerSessionID    string
+}
 
 func WithDebugConfig(debug config.DebugConfig) HandlerOption {
 	return func(h *Handler) {
@@ -154,6 +196,14 @@ type ListPVCsResponse struct {
 	PVCList PVCList `json:"pvc_list"`
 }
 
+type NamespaceList struct {
+	Items []domain.Namespace `json:"items"`
+}
+
+type ListNamespacesResponse struct {
+	NamespaceList NamespaceList `json:"namespace_list"`
+}
+
 type ViewerContext struct {
 	ContextName string `json:"context_name"`
 	Namespace   string `json:"namespace"`
@@ -176,6 +226,7 @@ type ListStorageClassesResponse struct {
 }
 
 type AdminCapabilitySet struct {
+	CanManagePVCs           bool `json:"can_manage_pvcs"`
 	CanManageStorageClasses bool `json:"can_manage_storage_classes"`
 }
 
@@ -311,6 +362,14 @@ func (h *Handler) AdminCapabilitiesData(
 	req *AuthenticatedRequest,
 ) (*AdminCapabilitiesResponse, error) {
 	response, apiErr := h.adminCapabilities(ctx, req)
+	return response, toEncoreError(apiErr)
+}
+
+func (h *Handler) AdminListNamespacesData(
+	ctx context.Context,
+	req *AuthenticatedRequest,
+) (*ListNamespacesResponse, error) {
+	response, apiErr := h.adminListNamespaces(ctx, req)
 	return response, toEncoreError(apiErr)
 }
 
@@ -508,6 +567,11 @@ func (h *Handler) AdminCapabilities(w http.ResponseWriter, req *http.Request) {
 	writeHTTPResponse(w, response, err)
 }
 
+func (h *Handler) AdminListNamespaces(w http.ResponseWriter, req *http.Request) {
+	response, err := h.adminListNamespaces(req.Context(), authenticatedRequest(req))
+	writeHTTPResponse(w, response, err)
+}
+
 func (h *Handler) AdminListStorageClasses(w http.ResponseWriter, req *http.Request) {
 	response, err := h.adminListStorageClasses(req.Context(), authenticatedRequest(req))
 	writeHTTPResponse(w, response, err)
@@ -637,17 +701,42 @@ func (h *Handler) listPVCs(ctx context.Context, req *ListPVCsRequest) (*ListPVCs
 		return nil, err
 	}
 	ctx = authn.WithPrincipal(ctx, principal)
-	namespace := principal.Namespace
-	if err := requirePrincipalNamespace(req.Namespace, principal); err != nil {
-		h.observe(ctx, http.MethodGet, "/api/pvcs", err.Status, start)
-		return nil, err
-	}
-	if err := h.authz.CanListPVCs(ctx, principal, namespace); err != nil {
-		apiErr := apienv.NewError(403, apienv.CodePVCAccessDenied, "PVC access denied", nil)
+	op, apiErr := h.resolvePVCOperationContext(ctx, principal, req.Namespace, "/api/pvcs", "")
+	if apiErr != nil {
 		h.observe(ctx, http.MethodGet, "/api/pvcs", apiErr.Status, start)
 		return nil, apiErr
 	}
-	items, listErr := h.viewers.ListPVCs(ctx, namespace)
+	if op.mode == operationModeUser {
+		if err := h.authz.CanListPVCs(ctx, principal, op.namespace); err != nil {
+			apiErr := apienv.NewError(403, apienv.CodePVCAccessDenied, "PVC access denied", nil)
+			h.recordAudit(ctx, auditDecision{
+				adminAllowed:      false,
+				decision:          "deny",
+				denyReason:        "ssar_denied",
+				implicitElevation: false,
+				mode:              operationModeUser,
+				namespace:         op.namespace,
+				namespaceAllowed:  true,
+				principal:         principal,
+				route:             "/api/pvcs",
+			})
+			h.observe(ctx, http.MethodGet, "/api/pvcs", apiErr.Status, start)
+			return nil, apiErr
+		}
+	}
+	h.recordAudit(ctx, auditDecision{
+		adminAllowed:       op.mode == operationModeAdmin,
+		decision:           "allow",
+		identityMethod:     identityMethodForOperation(op),
+		implicitElevation:  op.implicitElevation,
+		kubernetesUsername: op.admin.KubernetesUsername,
+		mode:               op.mode,
+		namespace:          op.namespace,
+		namespaceAllowed:   op.namespaceAllowed,
+		principal:          principal,
+		route:              "/api/pvcs",
+	})
+	items, listErr := op.kubeService.ListPVCs(ctx, op.namespace)
 	if listErr != nil {
 		apiErr := apienv.FromError(listErr)
 		h.observe(ctx, http.MethodGet, "/api/pvcs", apiErr.Status, start)
@@ -690,18 +779,43 @@ func (h *Handler) createPVC(ctx context.Context, req *CreatePVCRequest) (*PVCRes
 		return nil, err
 	}
 	ctx = authn.WithPrincipal(ctx, principal)
-	namespace := principal.Namespace
-	if err := requirePrincipalNamespace(req.Namespace, principal); err != nil {
-		h.observe(ctx, http.MethodPost, "/api/pvcs", err.Status, start)
-		return nil, err
-	}
-	if err := h.authz.CanCreatePVC(ctx, principal, namespace); err != nil {
-		apiErr := apienv.NewError(403, apienv.CodePVCCreateForbidden, "PVC create access denied", nil)
+	op, apiErr := h.resolvePVCOperationContext(ctx, principal, req.Namespace, "/api/pvcs", req.Name)
+	if apiErr != nil {
 		h.observe(ctx, http.MethodPost, "/api/pvcs", apiErr.Status, start)
 		return nil, apiErr
 	}
-	pvc, createErr := h.viewers.CreatePVC(ctx, session.CreatePVCInput{
-		Namespace:        namespace,
+	if op.mode == operationModeUser {
+		if err := h.authz.CanCreatePVC(ctx, principal, op.namespace); err != nil {
+			apiErr := apienv.NewError(403, apienv.CodePVCCreateForbidden, "PVC create access denied", nil)
+			h.recordAudit(ctx, auditDecision{
+				decision:         "deny",
+				denyReason:       "ssar_denied",
+				mode:             operationModeUser,
+				namespace:        op.namespace,
+				namespaceAllowed: true,
+				principal:        principal,
+				pvcName:          req.Name,
+				route:            "/api/pvcs",
+			})
+			h.observe(ctx, http.MethodPost, "/api/pvcs", apiErr.Status, start)
+			return nil, apiErr
+		}
+	}
+	h.recordAudit(ctx, auditDecision{
+		adminAllowed:       op.mode == operationModeAdmin,
+		decision:           "allow",
+		identityMethod:     identityMethodForOperation(op),
+		implicitElevation:  op.implicitElevation,
+		kubernetesUsername: op.admin.KubernetesUsername,
+		mode:               op.mode,
+		namespace:          op.namespace,
+		namespaceAllowed:   op.namespaceAllowed,
+		principal:          principal,
+		pvcName:            req.Name,
+		route:              "/api/pvcs",
+	})
+	pvc, createErr := op.kubeService.CreatePVC(ctx, session.CreatePVCInput{
+		Namespace:        op.namespace,
 		Name:             req.Name,
 		Capacity:         req.Capacity,
 		CapacityBytes:    req.CapacityBytes,
@@ -730,18 +844,43 @@ func (h *Handler) deletePVC(
 		return nil, err
 	}
 	ctx = authn.WithPrincipal(ctx, principal)
-	if err := requirePrincipalNamespace(namespace, principal); err != nil {
-		h.observe(ctx, http.MethodDelete, "/api/pvcs/:namespace/:name", err.Status, start)
-		return nil, err
-	}
-	namespace = principal.Namespace
-	if err := h.authz.CanDeletePVC(ctx, principal, namespace, name); err != nil {
-		apiErr := apienv.NewError(403, apienv.CodePVCDeleteForbidden, "PVC delete access denied", nil)
+	op, apiErr := h.resolvePVCOperationContext(ctx, principal, namespace, "/api/pvcs/:namespace/:name", name)
+	if apiErr != nil {
 		h.observe(ctx, http.MethodDelete, "/api/pvcs/:namespace/:name", apiErr.Status, start)
 		return nil, apiErr
 	}
-	pvc, deleteErr := h.viewers.DeletePVC(ctx, session.DeletePVCInput{
-		Namespace: namespace,
+	if op.mode == operationModeUser {
+		if err := h.authz.CanDeletePVC(ctx, principal, op.namespace, name); err != nil {
+			apiErr := apienv.NewError(403, apienv.CodePVCDeleteForbidden, "PVC delete access denied", nil)
+			h.recordAudit(ctx, auditDecision{
+				decision:         "deny",
+				denyReason:       "ssar_denied",
+				mode:             operationModeUser,
+				namespace:        op.namespace,
+				namespaceAllowed: true,
+				principal:        principal,
+				pvcName:          name,
+				route:            "/api/pvcs/:namespace/:name",
+			})
+			h.observe(ctx, http.MethodDelete, "/api/pvcs/:namespace/:name", apiErr.Status, start)
+			return nil, apiErr
+		}
+	}
+	h.recordAudit(ctx, auditDecision{
+		adminAllowed:       op.mode == operationModeAdmin,
+		decision:           "allow",
+		identityMethod:     identityMethodForOperation(op),
+		implicitElevation:  op.implicitElevation,
+		kubernetesUsername: op.admin.KubernetesUsername,
+		mode:               op.mode,
+		namespace:          op.namespace,
+		namespaceAllowed:   op.namespaceAllowed,
+		principal:          principal,
+		pvcName:            name,
+		route:              "/api/pvcs/:namespace/:name",
+	})
+	pvc, deleteErr := op.kubeService.DeletePVC(ctx, session.DeletePVCInput{
+		Namespace: op.namespace,
 		Name:      name,
 	})
 	if deleteErr != nil {
@@ -766,18 +905,43 @@ func (h *Handler) expandPVC(
 		return nil, err
 	}
 	ctx = authn.WithPrincipal(ctx, principal)
-	if err := requirePrincipalNamespace(namespace, principal); err != nil {
-		h.observe(ctx, http.MethodPost, "/api/pvcs/:namespace/:name/expand", err.Status, start)
-		return nil, err
-	}
-	namespace = principal.Namespace
-	if err := h.authz.CanUpdatePVC(ctx, principal, namespace, name); err != nil {
-		apiErr := apienv.NewError(403, apienv.CodePVCExpandForbidden, "PVC expand access denied", nil)
+	op, apiErr := h.resolvePVCOperationContext(ctx, principal, namespace, "/api/pvcs/:namespace/:name/expand", name)
+	if apiErr != nil {
 		h.observe(ctx, http.MethodPost, "/api/pvcs/:namespace/:name/expand", apiErr.Status, start)
 		return nil, apiErr
 	}
-	pvc, expandErr := h.viewers.ExpandPVC(ctx, session.ExpandPVCInput{
-		Namespace:     namespace,
+	if op.mode == operationModeUser {
+		if err := h.authz.CanUpdatePVC(ctx, principal, op.namespace, name); err != nil {
+			apiErr := apienv.NewError(403, apienv.CodePVCExpandForbidden, "PVC expand access denied", nil)
+			h.recordAudit(ctx, auditDecision{
+				decision:         "deny",
+				denyReason:       "ssar_denied",
+				mode:             operationModeUser,
+				namespace:        op.namespace,
+				namespaceAllowed: true,
+				principal:        principal,
+				pvcName:          name,
+				route:            "/api/pvcs/:namespace/:name/expand",
+			})
+			h.observe(ctx, http.MethodPost, "/api/pvcs/:namespace/:name/expand", apiErr.Status, start)
+			return nil, apiErr
+		}
+	}
+	h.recordAudit(ctx, auditDecision{
+		adminAllowed:       op.mode == operationModeAdmin,
+		decision:           "allow",
+		identityMethod:     identityMethodForOperation(op),
+		implicitElevation:  op.implicitElevation,
+		kubernetesUsername: op.admin.KubernetesUsername,
+		mode:               op.mode,
+		namespace:          op.namespace,
+		namespaceAllowed:   op.namespaceAllowed,
+		principal:          principal,
+		pvcName:            name,
+		route:              "/api/pvcs/:namespace/:name/expand",
+	})
+	pvc, expandErr := op.kubeService.ExpandPVC(ctx, session.ExpandPVCInput{
+		Namespace:     op.namespace,
 		Name:          name,
 		Capacity:      req.Capacity,
 		CapacityBytes: req.CapacityBytes,
@@ -831,11 +995,84 @@ func (h *Handler) adminCapabilities(
 		return nil, err
 	}
 	ctx = authn.WithPrincipal(ctx, principal)
-	canManage := h.adminAuthz != nil && h.adminAuthz.CanManageStorageClasses(ctx, principal) == nil
+	adminResult, adminErr := h.checkAdmin(ctx, principal)
+	canManage := adminErr == nil && adminResult.Allowed
+	h.recordAudit(ctx, auditDecision{
+		adminAllowed:       canManage,
+		authorizationKind:  "kubeconfig",
+		decision:           allowDeny(canManage),
+		denyReason:         denyReason(adminErr, adminResult.Reason),
+		executionKind:      "management_service_account",
+		identityMethod:     "kubeconfig_context+self_subject_review",
+		kubernetesUsername: adminResult.KubernetesUsername,
+		mode:               operationModeAdmin,
+		namespace:          principal.Namespace,
+		namespaceAllowed:   true,
+		principal:          principal,
+		route:              "/api/admin/capabilities",
+	})
 	h.observe(ctx, http.MethodGet, "/api/admin/capabilities", http.StatusOK, start)
 	return &AdminCapabilitiesResponse{
-		AdminCapabilities: AdminCapabilitySet{CanManageStorageClasses: canManage},
+		AdminCapabilities: AdminCapabilitySet{
+			CanManagePVCs:           canManage,
+			CanManageStorageClasses: canManage,
+		},
 	}, nil
+}
+
+func (h *Handler) adminListNamespaces(
+	ctx context.Context,
+	req *AuthenticatedRequest,
+) (*ListNamespacesResponse, *apienv.Error) {
+	start := time.Now()
+	principal, err := h.authenticateRequest(req)
+	if err != nil {
+		h.observe(ctx, http.MethodGet, "/api/admin/namespaces", err.Status, start)
+		return nil, err
+	}
+	ctx = authn.WithPrincipal(ctx, principal)
+	adminResult, adminErr := h.checkAdmin(ctx, principal)
+	if adminErr != nil {
+		h.recordAudit(ctx, auditDecision{
+			adminAllowed:       false,
+			authorizationKind:  "kubeconfig",
+			decision:           "deny",
+			denyReason:         denyReason(adminErr, adminResult.Reason),
+			executionKind:      "management_service_account",
+			identityMethod:     "kubeconfig_context+self_subject_review",
+			kubernetesUsername: adminResult.KubernetesUsername,
+			mode:               operationModeAdmin,
+			namespace:          principal.Namespace,
+			namespaceAllowed:   false,
+			principal:          principal,
+			route:              "/api/admin/namespaces",
+		})
+		apiErr := apienv.NewError(403, apienv.CodeAdminAccessDenied, "Admin access denied", nil)
+		h.observe(ctx, http.MethodGet, "/api/admin/namespaces", apiErr.Status, start)
+		return nil, apiErr
+	}
+	namespaces, listErr := h.viewers.ListNamespaces(ctx)
+	if listErr != nil {
+		apiErr := apienv.FromError(listErr)
+		h.observe(ctx, http.MethodGet, "/api/admin/namespaces", apiErr.Status, start)
+		return nil, apiErr
+	}
+	items := allowedAdminNamespaces(namespaces, principal.Namespace)
+	h.recordAudit(ctx, auditDecision{
+		adminAllowed:       true,
+		authorizationKind:  "kubeconfig",
+		decision:           "allow",
+		executionKind:      "management_service_account",
+		identityMethod:     "kubeconfig_context+self_subject_review",
+		kubernetesUsername: adminResult.KubernetesUsername,
+		mode:               operationModeAdmin,
+		namespace:          principal.Namespace,
+		namespaceAllowed:   true,
+		principal:          principal,
+		route:              "/api/admin/namespaces",
+	})
+	h.observe(ctx, http.MethodGet, "/api/admin/namespaces", http.StatusOK, start)
+	return &ListNamespacesResponse{NamespaceList: NamespaceList{Items: items}}, nil
 }
 
 func (h *Handler) adminListStorageClasses(
@@ -995,12 +1232,33 @@ func (h *Handler) authorizeStorageClassAdmin(
 		return err
 	}
 	ctx = authn.WithPrincipal(ctx, principal)
-	if h.adminAuthz == nil {
+	adminResult, adminErr := h.checkAdmin(ctx, principal)
+	if adminErr != nil {
+		h.recordAudit(ctx, auditDecision{
+			adminAllowed:       false,
+			decision:           "deny",
+			denyReason:         denyReason(adminErr, adminResult.Reason),
+			identityMethod:     "kubeconfig_context+self_subject_review",
+			kubernetesUsername: adminResult.KubernetesUsername,
+			mode:               operationModeAdmin,
+			namespace:          principal.Namespace,
+			namespaceAllowed:   true,
+			principal:          principal,
+			route:              "/api/admin/storage-classes",
+		})
 		return apienv.NewError(403, apienv.CodeAdminAccessDenied, "Admin access denied", nil)
 	}
-	if err := h.adminAuthz.CanManageStorageClasses(ctx, principal); err != nil {
-		return apienv.NewError(403, apienv.CodeAdminAccessDenied, "Admin access denied", nil)
-	}
+	h.recordAudit(ctx, auditDecision{
+		adminAllowed:       true,
+		decision:           "allow",
+		identityMethod:     "kubeconfig_context+self_subject_review",
+		kubernetesUsername: adminResult.KubernetesUsername,
+		mode:               operationModeAdmin,
+		namespace:          principal.Namespace,
+		namespaceAllowed:   true,
+		principal:          principal,
+		route:              "/api/admin/storage-classes",
+	})
 	return nil
 }
 
@@ -1015,25 +1273,51 @@ func (h *Handler) createViewerSession(
 		return nil, err
 	}
 	ctx = authn.WithPrincipal(ctx, principal)
-	namespace := principal.Namespace
-	if err := requirePrincipalNamespace(req.Namespace, principal); err != nil {
-		h.observe(ctx, http.MethodPost, "/api/viewer-sessions", err.Status, start)
-		return nil, err
-	}
 	if req.PVCName == "" {
 		apiErr := apienv.NewError(400, apienv.CodeValidationError, "pvc_name is required", nil)
 		h.observe(ctx, http.MethodPost, "/api/viewer-sessions", apiErr.Status, start)
 		return nil, apiErr
 	}
-	if err := h.authz.CanGetPVC(ctx, principal, namespace, req.PVCName); err != nil {
-		apiErr := apienv.NewError(403, apienv.CodePVCAccessDenied, "PVC access denied", nil)
+	op, apiErr := h.resolvePVCOperationContext(ctx, principal, req.Namespace, "/api/viewer-sessions", req.PVCName)
+	if apiErr != nil {
 		h.observe(ctx, http.MethodPost, "/api/viewer-sessions", apiErr.Status, start)
 		return nil, apiErr
 	}
-	viewerSession, createErr := h.viewers.CreateViewerSession(ctx, session.CreateViewerSessionInput{
-		Namespace: namespace,
-		PVCName:   req.PVCName,
-		UserID:    principal.ID,
+	if op.mode == operationModeUser {
+		if err := h.authz.CanGetPVC(ctx, principal, op.namespace, req.PVCName); err != nil {
+			apiErr := apienv.NewError(403, apienv.CodePVCAccessDenied, "PVC access denied", nil)
+			h.recordAudit(ctx, auditDecision{
+				decision:         "deny",
+				denyReason:       "ssar_denied",
+				mode:             operationModeUser,
+				namespace:        op.namespace,
+				namespaceAllowed: true,
+				principal:        principal,
+				pvcName:          req.PVCName,
+				route:            "/api/viewer-sessions",
+			})
+			h.observe(ctx, http.MethodPost, "/api/viewer-sessions", apiErr.Status, start)
+			return nil, apiErr
+		}
+	}
+	h.recordAudit(ctx, auditDecision{
+		adminAllowed:       op.mode == operationModeAdmin,
+		decision:           "allow",
+		identityMethod:     identityMethodForOperation(op),
+		implicitElevation:  op.implicitElevation,
+		kubernetesUsername: op.admin.KubernetesUsername,
+		mode:               op.mode,
+		namespace:          op.namespace,
+		namespaceAllowed:   op.namespaceAllowed,
+		principal:          principal,
+		pvcName:            req.PVCName,
+		route:              "/api/viewer-sessions",
+	})
+	viewerSession, createErr := op.kubeService.CreateViewerSession(ctx, session.CreateViewerSessionInput{
+		AdminContext: op.adminContext,
+		Namespace:    op.namespace,
+		PVCName:      req.PVCName,
+		UserID:       principal.ID,
 	})
 	if createErr != nil {
 		apiErr := apienv.FromError(createErr)
@@ -1051,6 +1335,132 @@ func requirePrincipalNamespace(namespace string, principal *authn.Principal) *ap
 		return nil
 	}
 	return apienv.NewError(403, apienv.CodePVCAccessDenied, "Namespace must match kubeconfig context namespace", nil)
+}
+
+func (h *Handler) resolvePVCOperationContext(
+	ctx context.Context,
+	principal *authn.Principal,
+	requestedNamespace string,
+	route string,
+	pvcName string,
+) (*operationContext, *apienv.Error) {
+	namespace := strings.TrimSpace(requestedNamespace)
+	if namespace == "" {
+		namespace = principal.Namespace
+	}
+	if namespace == principal.Namespace {
+		return &operationContext{
+			kubeService:      h.viewers,
+			mode:             operationModeUser,
+			namespace:        namespace,
+			namespaceAllowed: true,
+			principal:        principal,
+		}, nil
+	}
+	adminResult, adminErr := h.checkAdmin(ctx, principal)
+	if adminErr != nil {
+		h.recordAudit(ctx, auditDecision{
+			adminAllowed:       false,
+			authorizationKind:  "kubeconfig",
+			decision:           "deny",
+			denyReason:         denyReason(adminErr, adminResult.Reason),
+			executionKind:      "management_service_account",
+			identityMethod:     "kubeconfig_context+self_subject_review",
+			implicitElevation:  true,
+			kubernetesUsername: adminResult.KubernetesUsername,
+			mode:               operationModeAdmin,
+			namespace:          namespace,
+			namespaceAllowed:   false,
+			principal:          principal,
+			pvcName:            pvcName,
+			route:              route,
+		})
+		return nil, apienv.NewError(403, apienv.CodeAdminAccessDenied, "Admin access denied", nil)
+	}
+	namespaces, err := h.viewers.ListNamespaces(ctx)
+	if err != nil {
+		return nil, apienv.FromError(err)
+	}
+	namespaceAllowed := isAdminNamespaceAllowed(namespaces, principal.Namespace, namespace)
+	if !namespaceAllowed {
+		h.recordAudit(ctx, auditDecision{
+			adminAllowed:       true,
+			authorizationKind:  "kubeconfig",
+			decision:           "deny",
+			denyReason:         "namespace_not_allowed",
+			executionKind:      "management_service_account",
+			identityMethod:     "kubeconfig_context+self_subject_review",
+			implicitElevation:  true,
+			kubernetesUsername: adminResult.KubernetesUsername,
+			mode:               operationModeAdmin,
+			namespace:          namespace,
+			namespaceAllowed:   false,
+			principal:          principal,
+			pvcName:            pvcName,
+			route:              route,
+		})
+		return nil, apienv.NewError(403, apienv.CodePVCAccessDenied, "Namespace is not allowed for admin PVC access", nil)
+	}
+	return &operationContext{
+		admin:             adminResult,
+		adminContext:      true,
+		implicitElevation: true,
+		kubeService:       h.viewers,
+		mode:              operationModeAdmin,
+		namespace:         namespace,
+		namespaceAllowed:  true,
+		principal:         principal,
+	}, nil
+}
+
+func (h *Handler) checkAdmin(ctx context.Context, principal *authn.Principal) (AdminAuthorizationResult, error) {
+	if h.adminAuthz == nil {
+		return AdminAuthorizationResult{Reason: "not_configured"}, errors.New("admin access denied")
+	}
+	return h.adminAuthz.CanAdmin(ctx, principal)
+}
+
+func allowedAdminNamespaces(namespaces []corev1.Namespace, currentNamespace string) []domain.Namespace {
+	items := make([]domain.Namespace, 0, len(namespaces)+1)
+	seen := map[string]struct{}{}
+	currentNamespace = strings.TrimSpace(currentNamespace)
+	if currentNamespace != "" {
+		seen[currentNamespace] = struct{}{}
+		items = append(items, domain.Namespace{Name: currentNamespace, IsCurrentContext: true})
+	}
+	for _, namespace := range namespaces {
+		name := strings.TrimSpace(namespace.Name)
+		if name == "" {
+			continue
+		}
+		// Sealos user namespaces use the ns- prefix. Admin PVC browsing only exposes
+		// system namespaces so the dropdown stays bounded and never lists other users.
+		if strings.HasPrefix(name, "ns-") {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		items = append(items, domain.Namespace{Name: name, IsCurrentContext: name == currentNamespace})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].IsCurrentContext != items[j].IsCurrentContext {
+			return items[i].IsCurrentContext
+		}
+		return items[i].Name < items[j].Name
+	})
+	return items
+}
+
+func isAdminNamespaceAllowed(namespaces []corev1.Namespace, currentNamespace string, target string) bool {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return false
+	}
+	return slices.ContainsFunc(allowedAdminNamespaces(namespaces, currentNamespace), func(namespace domain.Namespace) bool {
+		return namespace.Name == target
+	})
 }
 
 func (h *Handler) getViewerSession(
@@ -1252,6 +1662,82 @@ func (h *Handler) observe(ctx context.Context, method string, route string, stat
 	h.recorder.ObserveHTTP(ctx, method, route, status, time.Since(start))
 }
 
+func (h *Handler) recordAudit(ctx context.Context, decision auditDecision) {
+	if decision.authorizationKind == "" {
+		decision.authorizationKind = "kubeconfig"
+	}
+	if decision.executionKind == "" {
+		decision.executionKind = "management_service_account"
+	}
+	if decision.identityMethod == "" {
+		decision.identityMethod = "kubeconfig_context"
+	}
+	if decision.decision == "" {
+		decision.decision = "allow"
+	}
+	attrs := []slog.Attr{
+		slog.String("route", decision.route),
+		slog.String("namespace", decision.namespace),
+		slog.String("auth_mode", string(decision.mode)),
+		slog.Bool("implicit_admin_elevation", decision.implicitElevation),
+		slog.String("identity_method", decision.identityMethod),
+		slog.String("authorization_credential", decision.authorizationKind),
+		slog.String("execution_credential", decision.executionKind),
+		slog.Bool("admin_allowed", decision.adminAllowed),
+		slog.Bool("namespace_allowed", decision.namespaceAllowed),
+		slog.String("decision", decision.decision),
+	}
+	if decision.denyReason != "" {
+		attrs = append(attrs, slog.String("deny_reason", decision.denyReason))
+	}
+	if decision.principal != nil {
+		attrs = append(attrs,
+			slog.String("principal_id", decision.principal.ID),
+			slog.String("principal_context_name", decision.principal.ContextName),
+			slog.String("principal_namespace", decision.principal.Namespace),
+		)
+	}
+	if decision.kubernetesUsername != "" {
+		attrs = append(attrs, slog.String("kubernetes_username", decision.kubernetesUsername))
+	}
+	if decision.pvcName != "" {
+		attrs = append(attrs, slog.String("pvc_name", decision.pvcName))
+	}
+	if decision.viewerSessionID != "" {
+		attrs = append(attrs, slog.String("viewer_session_id", decision.viewerSessionID))
+	}
+	if decision.podSessionID != "" {
+		attrs = append(attrs, slog.String("pod_session_id", decision.podSessionID))
+	}
+	ctx, finish := h.recorder.TraceOperation(ctx, "authorization.audit", attrs...)
+	defer finish(nil)
+	h.recorder.Logger().LogAttrs(ctx, slog.LevelInfo, "authorization.audit", attrs...)
+}
+
+func allowDeny(allowed bool) string {
+	if allowed {
+		return "allow"
+	}
+	return "deny"
+}
+
+func denyReason(err error, reason string) string {
+	if err == nil {
+		return ""
+	}
+	if strings.TrimSpace(reason) != "" {
+		return reason
+	}
+	return "denied"
+}
+
+func identityMethodForOperation(op *operationContext) string {
+	if op != nil && op.mode == operationModeAdmin {
+		return "kubeconfig_context+self_subject_review"
+	}
+	return "kubeconfig_context"
+}
+
 func (h *Handler) authenticateRequest(req interface{ authorizationHeader() string }) (*authn.Principal, *apienv.Error) {
 	principal, err := authn.PrincipalFromAuthorization(req.authorizationHeader())
 	if err != nil {
@@ -1404,9 +1890,33 @@ func (h *Handler) authorizeViewerSessionPVC(
 	if session.Namespace == "" || session.PVCName == "" {
 		return apienv.NewError(500, apienv.CodeInternal, "Viewer session is missing PVC identity", nil)
 	}
+	if session.AdminContext {
+		return h.authorizeAdminSessionPVC(ctx, principal, session.Namespace, session.PVCName, viewerSessionID, "")
+	}
 	if err := h.authz.CanGetPVC(ctx, principal, session.Namespace, session.PVCName); err != nil {
+		h.recordAudit(ctx, auditDecision{
+			decision:         "deny",
+			denyReason:       "ssar_denied",
+			mode:             operationModeUser,
+			namespace:        session.Namespace,
+			namespaceAllowed: true,
+			principal:        principal,
+			pvcName:          session.PVCName,
+			viewerSessionID:  viewerSessionID,
+			route:            "/api/viewer-sessions/:id",
+		})
 		return apienv.NewError(403, apienv.CodePVCAccessDenied, "PVC access denied", nil)
 	}
+	h.recordAudit(ctx, auditDecision{
+		decision:         "allow",
+		mode:             operationModeUser,
+		namespace:        session.Namespace,
+		namespaceAllowed: true,
+		principal:        principal,
+		pvcName:          session.PVCName,
+		viewerSessionID:  viewerSessionID,
+		route:            "/api/viewer-sessions/:id",
+	})
 	return nil
 }
 
@@ -1419,10 +1929,114 @@ func (h *Handler) authorizePodSessionPVC(
 	if err != nil {
 		return err
 	}
+	if podSession.AdminContext {
+		return h.authorizeAdminSessionPVC(ctx, principal, podSession.Namespace, podSession.PVCName, "", podSessionID)
+	}
 	if err := h.authz.CanGetPVC(ctx, principal, podSession.Namespace, podSession.PVCName); err != nil {
+		h.recordAudit(ctx, auditDecision{
+			decision:         "deny",
+			denyReason:       "ssar_denied",
+			mode:             operationModeUser,
+			namespace:        podSession.Namespace,
+			namespaceAllowed: true,
+			podSessionID:     podSessionID,
+			principal:        principal,
+			pvcName:          podSession.PVCName,
+			route:            "/api/pod-sessions/:id",
+		})
 		return apienv.NewError(403, apienv.CodePVCAccessDenied, "PVC access denied", nil)
 	}
+	h.recordAudit(ctx, auditDecision{
+		decision:         "allow",
+		mode:             operationModeUser,
+		namespace:        podSession.Namespace,
+		namespaceAllowed: true,
+		podSessionID:     podSessionID,
+		principal:        principal,
+		pvcName:          podSession.PVCName,
+		route:            "/api/pod-sessions/:id",
+	})
 	return nil
+}
+
+func (h *Handler) authorizeAdminSessionPVC(
+	ctx context.Context,
+	principal *authn.Principal,
+	namespace string,
+	pvcName string,
+	viewerSessionID string,
+	podSessionID string,
+) error {
+	adminResult, adminErr := h.checkAdmin(ctx, principal)
+	if adminErr != nil {
+		h.recordAudit(ctx, auditDecision{
+			adminAllowed:       false,
+			decision:           "deny",
+			denyReason:         denyReason(adminErr, adminResult.Reason),
+			identityMethod:     "kubeconfig_context+self_subject_review",
+			implicitElevation:  true,
+			kubernetesUsername: adminResult.KubernetesUsername,
+			mode:               operationModeAdmin,
+			namespace:          namespace,
+			namespaceAllowed:   false,
+			podSessionID:       podSessionID,
+			principal:          principal,
+			pvcName:            pvcName,
+			route:              sessionAuditRoute(viewerSessionID, podSessionID),
+			viewerSessionID:    viewerSessionID,
+		})
+		return apienv.NewError(403, apienv.CodeAdminAccessDenied, "Admin access denied", nil)
+	}
+	namespaces, err := h.viewers.ListNamespaces(ctx)
+	if err != nil {
+		return err
+	}
+	namespaceAllowed := isAdminNamespaceAllowed(namespaces, principal.Namespace, namespace)
+	if !namespaceAllowed {
+		h.recordAudit(ctx, auditDecision{
+			adminAllowed:       true,
+			decision:           "deny",
+			denyReason:         "namespace_not_allowed",
+			identityMethod:     "kubeconfig_context+self_subject_review",
+			implicitElevation:  true,
+			kubernetesUsername: adminResult.KubernetesUsername,
+			mode:               operationModeAdmin,
+			namespace:          namespace,
+			namespaceAllowed:   false,
+			podSessionID:       podSessionID,
+			principal:          principal,
+			pvcName:            pvcName,
+			route:              sessionAuditRoute(viewerSessionID, podSessionID),
+			viewerSessionID:    viewerSessionID,
+		})
+		return apienv.NewError(403, apienv.CodePVCAccessDenied, "Namespace is not allowed for admin PVC access", nil)
+	}
+	h.recordAudit(ctx, auditDecision{
+		adminAllowed:       true,
+		decision:           "allow",
+		identityMethod:     "kubeconfig_context+self_subject_review",
+		implicitElevation:  true,
+		kubernetesUsername: adminResult.KubernetesUsername,
+		mode:               operationModeAdmin,
+		namespace:          namespace,
+		namespaceAllowed:   true,
+		podSessionID:       podSessionID,
+		principal:          principal,
+		pvcName:            pvcName,
+		route:              sessionAuditRoute(viewerSessionID, podSessionID),
+		viewerSessionID:    viewerSessionID,
+	})
+	return nil
+}
+
+func sessionAuditRoute(viewerSessionID string, podSessionID string) string {
+	if viewerSessionID != "" {
+		return "/api/viewer-sessions/:id"
+	}
+	if podSessionID != "" {
+		return "/api/pod-sessions/:id"
+	}
+	return "/api/session"
 }
 
 func pathID(path string, prefix string) string {

@@ -24,6 +24,16 @@ func WithObservability(next Interface, recorder *observability.Recorder) Interfa
 	}
 }
 
+func (c observedClient) ListNamespaces(ctx context.Context) ([]corev1.Namespace, error) {
+	var namespaces []corev1.Namespace
+	err := c.observe(ctx, "list", "namespaces", "", "", func(ctx context.Context) error {
+		var err error
+		namespaces, err = c.next.ListNamespaces(ctx)
+		return err
+	})
+	return namespaces, err
+}
+
 func (c observedClient) GetPVC(
 	ctx context.Context,
 	namespace string,

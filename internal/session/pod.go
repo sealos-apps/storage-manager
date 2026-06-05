@@ -76,12 +76,13 @@ type PodService struct {
 }
 
 type EnsurePodSessionInput struct {
-	Namespace  string
-	PVCName    string
-	PVCUID     string
-	AccessMode string
-	Mode       string
-	MountInfo  *domain.PVCMountInfo
+	AdminContext bool
+	Namespace    string
+	PVCName      string
+	PVCUID       string
+	AccessMode   string
+	Mode         string
+	MountInfo    *domain.PVCMountInfo
 }
 
 func NewPodService(
@@ -123,6 +124,7 @@ func (s *PodService) EnsurePodSession(
 	now := s.now()
 	if session, ok := s.store.FindPodSessionByPVC(input.Namespace, input.PVCUID, now); ok {
 		if session.RuntimeVersion == s.runtimeVersion &&
+			session.AdminContext == input.AdminContext &&
 			session.Status != domain.PodStatusTerminated &&
 			now.Before(session.ExpiresAt) {
 			s.recorder.ObservePodSession("reused")
@@ -179,6 +181,7 @@ func (s *PodService) EnsurePodSession(
 		UpdatedAt:      now,
 		LastActiveAt:   now,
 		ExpiresAt:      now.Add(s.cfg.Sessions.PodKeepaliveGrace),
+		AdminContext:   input.AdminContext,
 	}
 
 	pod := s.buildPod(podSession, input.MountInfo)

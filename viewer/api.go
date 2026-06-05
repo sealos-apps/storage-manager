@@ -7,6 +7,7 @@ import (
 	"github.com/nixieboluo/sealos-storage-manager/internal/authn"
 	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
 	"github.com/nixieboluo/sealos-storage-manager/internal/session"
+	corev1 "k8s.io/api/core/v1"
 )
 
 var defaultHandler *Handler
@@ -54,6 +55,11 @@ func ListStorageClasses(ctx context.Context, req *AuthenticatedRequest) (*ListSt
 //encore:api public method=GET path=/api/admin/capabilities
 func AdminCapabilities(ctx context.Context, req *AuthenticatedRequest) (*AdminCapabilitiesResponse, error) {
 	return runtimeHandler().AdminCapabilitiesData(ctx, req)
+}
+
+//encore:api public method=GET path=/api/admin/namespaces
+func AdminListNamespaces(ctx context.Context, req *AuthenticatedRequest) (*ListNamespacesResponse, error) {
+	return runtimeHandler().AdminListNamespacesData(ctx, req)
 }
 
 //encore:api public method=GET path=/api/admin/storage-classes
@@ -187,6 +193,10 @@ func Metrics(w http.ResponseWriter, req *http.Request) {
 }
 
 type unavailableViewerService struct{}
+
+func (unavailableViewerService) ListNamespaces(_ context.Context) ([]corev1.Namespace, error) {
+	return nil, errRuntimeUnavailable
+}
 
 func (unavailableViewerService) ListPVCs(_ context.Context, _ string) ([]domain.PVC, error) {
 	return nil, errRuntimeUnavailable
