@@ -1,9 +1,10 @@
 import type { FileBrowserResource } from '@sealos-storage-manager/filebrowser-client'
 import type { UseQueryResult } from '@tanstack/react-query'
 import type { ColumnDef, SortingState } from '@tanstack/react-table'
-import type { FileBrowserSession, FileEntry, FileListResult, FileTableRow } from '@/features/file-manager/types/file-manager'
+import type { FileBrowserSession, FileEntry, FileListResult, FileTableRow, FileUsage } from '@/features/file-manager/types/file-manager'
 import type { FileSortState } from '@/features/file-manager/utils/file-tree'
-import type { SessionCapability } from '@/features/viewer/utils/session-capability'
+import type { ViewerAPI, ViewerSession } from '@/features/viewer/types/viewer'
+import type { ManualCloseKind, SessionCapability } from '@/features/viewer/utils/session-capability'
 
 import { parentPath } from '@sealos-storage-manager/filebrowser-client'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -17,6 +18,7 @@ import {
 	File,
 	Folder,
 	FolderPlus,
+	Info,
 	Loader2,
 	RefreshCw,
 	Trash2,
@@ -37,6 +39,14 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+	Popover,
+	PopoverContent,
+	PopoverDescription,
+	PopoverHeader,
+	PopoverTitle,
+	PopoverTrigger,
+} from '@/components/ui/popover'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -56,7 +66,7 @@ import {
 	saveFileTextMutationOptions,
 	uploadFileMutationOptions,
 } from '@/features/file-manager/api/file-manager-mutations'
-import { fileListQueryOptions, fileTextQueryOptions } from '@/features/file-manager/api/file-manager-query-options'
+import { fileListQueryOptions, fileTextQueryOptions, fileUsageQueryOptions } from '@/features/file-manager/api/file-manager-query-options'
 import { uploadActions, useUploadTask, useUploadTasks } from '@/features/file-manager/stores/upload-store'
 import {
 	buildFileTableRows,
@@ -65,12 +75,17 @@ import {
 	nextSortState,
 	sortEntries,
 } from '@/features/file-manager/utils/file-tree'
+import { viewerApi } from '@/features/viewer/api/viewer-api'
+import { translateViewerError } from '@/features/viewer/api/viewer-error'
+import { SessionActions } from '@/features/viewer/components/session-actions'
 import { formatBytes } from '@/features/viewer/utils/format-capacity'
 import { cn } from '@/utils/cn'
 
 interface FileManagerViewProps {
+	api?: ViewerAPI
 	currentPath: string
 	onBackToVolumes: () => void
+	onManualClose?: (kind: ManualCloseKind) => void
 	onPathChange: (path: string) => void
 	onReconnect: (error?: unknown) => void
 	onRefreshSession: () => void
@@ -80,6 +95,7 @@ interface FileManagerViewProps {
 	sessionCapability: SessionCapability
 	sort: FileSortState
 	setSort: (sort: FileSortState) => void
+	viewerSession?: ViewerSession | null
 	viewerSessionID?: string | null
 }
 
@@ -115,8 +131,10 @@ function createBranchTreeState(scope: string): BranchTreeState {
 }
 
 export function FileManagerView({
+	api = viewerApi,
 	currentPath,
 	onBackToVolumes,
+	onManualClose,
 	onPathChange,
 	onReconnect,
 	onRefreshSession,
@@ -126,6 +144,7 @@ export function FileManagerView({
 	sessionCapability,
 	sort,
 	setSort,
+	viewerSession,
 	viewerSessionID,
 }: FileManagerViewProps) {
 	const { t } = useTranslation()
@@ -133,6 +152,7 @@ export function FileManagerView({
 	const canShowFileList = sessionCapability.canShowFileList && session !== null
 	const canUseFiles = sessionCapability.canUseFiles && session !== null
 	const fileQuery = useQuery(fileListQueryOptions(session, currentPath, sort, canUseFiles))
+	const usageQuery = useQuery(fileUsageQueryOptions(session, canUseFiles))
 	const entries = fileQuery.data?.entries ?? emptyEntries
 	const treeScope = `${session?.pvcKey ?? 'inactive'}:${currentPath}`
 	const [treeState, setTreeState] = useState<BranchTreeState>(() => createBranchTreeState(treeScope))
@@ -327,7 +347,17 @@ export function FileManagerView({
 						{pvcName ? t('files.subtitle', { pvc: pvcName }) : t('files.noSelection')}
 					</p>
 				</div>
-				<div className="flex flex-wrap items-center gap-2">
+				<div className="flex flex-wrap items-center gap-3">
+					<SessionStatusPopover
+						api={api}
+						onManualClose={onManualClose}
+						onRefreshSession={onRefreshSession}
+						podSessionID={podSessionID ?? null}
+						session={viewerSession ?? null}
+						sessionCapability={sessionCapability}
+						viewerSessionID={viewerSessionID ?? null}
+					/>
+					{canShowFileList ? <StorageUsageSummary query={usageQuery} /> : null}
 					<Button onClick={onBackToVolumes} size="sm" variant="outline">
 						<ArrowLeft data-icon="inline-start" />
 						{t('files.backToVolumes')}
@@ -352,6 +382,7 @@ export function FileManagerView({
 										disabled={!canUseFiles || operationsDisabled}
 										onClick={() => {
 											onRefreshSession()
+											void usageQuery.refetch()
 											void fileQuery.refetch()
 										}}
 										size="icon"
@@ -431,13 +462,16 @@ export function FileManagerView({
 										{fileQuery.error && rows.length === 0
 											? (
 													<TableRow>
-														<TableCell className="py-12 text-center text-destructive" colSpan={4}>
-															<div className="flex flex-col items-center gap-3">
-																<span>{fileQuery.error instanceof Error ? fileQuery.error.message : t('errors.generic')}</span>
-																<Button onClick={() => void fileQuery.refetch()} size="sm" variant="outline">
-																	{t('actions.retry')}
-																</Button>
-															</div>
+														<TableCell className="py-10" colSpan={4}>
+															<FileListErrorState
+																api={api}
+																error={fileQuery.error}
+																onManualClose={onManualClose}
+																onRetry={() => void fileQuery.refetch()}
+																podSessionID={podSessionID ?? null}
+																sessionCapability={sessionCapability}
+																viewerSessionID={viewerSessionID ?? null}
+															/>
 														</TableCell>
 													</TableRow>
 												)
@@ -515,6 +549,207 @@ function UploadTaskList() {
 			{tasks.map(task => (
 				<UploadTaskRow key={task.id} taskID={task.id} />
 			))}
+		</div>
+	)
+}
+
+interface SessionStatusPopoverProps {
+	api: ViewerAPI
+	onRefreshSession: () => void
+	onManualClose?: (kind: ManualCloseKind) => void
+	podSessionID: string | null
+	session: ViewerSession | null
+	sessionCapability: SessionCapability
+	viewerSessionID: string | null
+}
+
+function SessionStatusPopover({
+	api,
+	onManualClose,
+	onRefreshSession,
+	podSessionID,
+	session,
+	sessionCapability,
+	viewerSessionID,
+}: SessionStatusPopoverProps) {
+	const { t } = useTranslation()
+	const statusClassName = sessionStatusDotClassName(sessionCapability.kind)
+	const canRetry = sessionCapability.kind !== 'viewer-ready'
+
+	return (
+		<Popover>
+			<PopoverTrigger asChild>
+				<Button aria-label={t('files.sessionStatus')} title={t('files.sessionStatus')} size="icon" variant="outline">
+					<span className={cn('block size-2.5 rounded-full', statusClassName)} />
+				</Button>
+			</PopoverTrigger>
+			<PopoverContent align="end" className="w-[min(calc(100vw-2rem),30rem)]">
+				<PopoverHeader>
+					<PopoverTitle className="flex items-center gap-2">
+						<span className={cn('block size-2.5 rounded-full', statusClassName)} />
+						{t('files.sessionStatus')}
+					</PopoverTitle>
+					<PopoverDescription>
+						{t(sessionCapability.messageKey)}
+					</PopoverDescription>
+				</PopoverHeader>
+				<div className="mt-4 flex flex-col gap-3 text-sm">
+					<SessionDetailRow label={t('status.label')} value={session ? t(`status.${session.status}`, { defaultValue: session.status }) : t('status.idle')} />
+					<SessionDetailRow label={t('viewer.podSession')} value={session?.pod_session_id ?? podSessionID ?? '-'} />
+					<SessionDetailRow label={t('viewer.podStatus')} value={session?.pod_status ?? '-'} />
+					<SessionDetailRow label={t('viewer.viewerUrl')} value={session?.viewer_url || '-'} />
+					<SessionDetailRow label={t('viewer.viewerMode')} value={session?.mode ?? '-'} />
+					<SessionDetailRow label={t('viewer.lastHeartbeat')} value={session?.last_heartbeat_at || '-'} />
+					{session?.reason
+						? <SessionDetailRow label={t('viewer.scheduling')} value={session.reason} />
+						: null}
+					{sessionCapability.error
+						? (
+								<div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-destructive">
+									{translateViewerError(sessionCapability.error, t)}
+								</div>
+							)
+						: null}
+					<div className="flex flex-wrap items-center gap-2 pt-1">
+						{canRetry
+							? (
+									<Button onClick={onRefreshSession} size="sm" variant="outline">
+										<RefreshCw data-icon="inline-start" />
+										{t('actions.retry')}
+									</Button>
+								)
+							: null}
+						<SessionActions
+							api={api}
+							canDiscardLocalState={sessionCapability.kind === 'failed' || sessionCapability.kind === 'manual-closed'}
+							onManualClose={onManualClose}
+							podSessionID={podSessionID}
+							showPodAction={false}
+							viewerSessionID={viewerSessionID}
+						/>
+					</div>
+				</div>
+			</PopoverContent>
+		</Popover>
+	)
+}
+
+interface SessionDetailRowProps {
+	label: string
+	value: string
+}
+
+function SessionDetailRow({ label, value }: SessionDetailRowProps) {
+	return (
+		<div className="flex flex-col gap-1">
+			<span className="text-xs text-muted-foreground">{label}</span>
+			<span className="min-w-0 break-words font-mono text-xs text-foreground">{value}</span>
+		</div>
+	)
+}
+
+interface FileListErrorStateProps {
+	api: ViewerAPI
+	error: Error
+	onManualClose?: (kind: ManualCloseKind) => void
+	onRetry: () => void
+	podSessionID: string | null
+	sessionCapability: SessionCapability
+	viewerSessionID: string | null
+}
+
+function FileListErrorState({
+	api,
+	error,
+	onManualClose,
+	onRetry,
+	podSessionID,
+	sessionCapability,
+	viewerSessionID,
+}: FileListErrorStateProps) {
+	const { t } = useTranslation()
+
+	return (
+		<div className="mx-auto flex max-w-lg flex-col items-center gap-4 text-center">
+			<div className="flex size-10 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+				<Info />
+			</div>
+			<div className="flex flex-col gap-1">
+				<div className="font-medium text-foreground">{t('files.fileListUnavailable')}</div>
+				<div className="text-sm text-muted-foreground">{t(sessionCapability.messageKey)}</div>
+				<div className="text-sm text-destructive">
+					{error instanceof Error ? error.message : t('errors.generic')}
+				</div>
+			</div>
+			<div className="flex flex-wrap justify-center gap-2">
+				<Button onClick={onRetry} size="sm" variant="outline">
+					<RefreshCw data-icon="inline-start" />
+					{t('actions.retry')}
+				</Button>
+				<SessionActions
+					api={api}
+					onManualClose={onManualClose}
+					podSessionID={podSessionID}
+					showPodAction={false}
+					viewerSessionID={viewerSessionID}
+				/>
+			</div>
+		</div>
+	)
+}
+
+function sessionStatusDotClassName(kind: SessionCapability['kind']) {
+	if (kind === 'viewer-ready') {
+		return 'bg-emerald-500'
+	}
+	if (kind === 'failed') {
+		return 'bg-destructive'
+	}
+	if (kind === 'starting-pod' || kind === 'pod-only' || kind === 'viewer-reconnecting') {
+		return 'bg-amber-500'
+	}
+	return 'bg-muted-foreground'
+}
+
+interface StorageUsageSummaryProps {
+	query: UseQueryResult<FileUsage, Error>
+}
+
+function StorageUsageSummary({ query }: StorageUsageSummaryProps) {
+	const { t } = useTranslation()
+	const usage = query.data
+	const percent = usage && usage.total > 0
+		? Math.min(100, Math.max(0, Math.round((usage.used / usage.total) * 100)))
+		: 0
+
+	if (query.isLoading) {
+		return (
+			<div className="grid min-w-48 gap-2 rounded-lg border bg-card px-3 py-2" role="status">
+				<div className="h-3 w-32 rounded bg-muted" />
+				<div className="h-2 w-full rounded bg-muted" />
+			</div>
+		)
+	}
+
+	if (query.error || !usage) {
+		return (
+			<div className="rounded-lg border bg-card px-3 py-2 text-xs text-muted-foreground">
+				{t('files.usageUnavailable')}
+			</div>
+		)
+	}
+
+	return (
+		<div className="grid min-w-56 gap-2 rounded-lg border bg-card px-3 py-2">
+			<div className="flex items-center justify-between gap-3 text-xs">
+				<span className="font-medium text-foreground">{t('files.usedCapacity')}</span>
+				<span className="text-muted-foreground">
+					{formatBytes(usage.used)}
+					{' / '}
+					{formatBytes(usage.total)}
+				</span>
+			</div>
+			<Progress aria-label={t('files.usedCapacity')} value={percent} />
 		</div>
 	)
 }

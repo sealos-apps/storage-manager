@@ -5,7 +5,7 @@ import type { FileSortState } from '@/features/file-manager/utils/file-tree'
 import type { ViewerFlowSnapshot } from '@/features/viewer/components/viewer-launch-panel'
 import type { ViewerView } from '@/features/viewer/stores/viewer-ui-store'
 import type { PVC, StorageClass, ViewerAPI, ViewerSession, ViewerToken } from '@/features/viewer/types/viewer'
-import type { ViewerFlowStatus } from '@/features/viewer/utils/session-capability'
+import type { ManualCloseKind, ViewerFlowStatus } from '@/features/viewer/utils/session-capability'
 import { FileBrowserClient } from '@sealos-storage-manager/filebrowser-client'
 import { useForm } from '@tanstack/react-form'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -138,6 +138,7 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 	const view = useViewerView()
 	const queryClient = useQueryClient()
 	const recoverRef = useRef<ViewerFlowSnapshot['recover'] | null>(null)
+	const registerManualCloseRef = useRef<ViewerFlowSnapshot['registerManualClose'] | null>(null)
 	const lastFileSessionRef = useRef<FileBrowserSession | null>(null)
 	const [launchKey, setLaunchKey] = useState<string | null>(null)
 	const [selectedPVC, setSelectedPVC] = useState<PVC | null>(null)
@@ -220,6 +221,7 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 
 	const handleFlowChange = useCallback((flow: ViewerFlowSnapshot) => {
 		recoverRef.current = flow.recover
+		registerManualCloseRef.current = flow.registerManualClose
 		setViewerSession(flow.session)
 		if (flow.manualCloseKind) {
 			lastFileSessionRef.current = null
@@ -241,6 +243,10 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 
 	const handleReconnect = useCallback((error?: unknown) => {
 		void recoverRef.current?.(error)
+	}, [])
+
+	const handleManualClose = useCallback((kind: ManualCloseKind) => {
+		registerManualCloseRef.current?.(kind)
 	}, [])
 
 	useEffect(() => {
@@ -363,8 +369,10 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 									setToken={setToken}
 								/>
 								<FileManagerView
+									api={api}
 									currentPath={currentPath}
 									onBackToVolumes={() => viewerUIStore.actions.setView('volumes')}
+									onManualClose={handleManualClose}
 									onPathChange={(path) => {
 										if (path !== trashRootPath) {
 											setCurrentPath(path)
@@ -378,6 +386,7 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 									sessionCapability={sessionCapability}
 									setSort={setSort}
 									sort={sort}
+									viewerSession={viewerSession}
 									viewerSessionID={viewerSession?.id ?? null}
 								/>
 							</TabsContent>
@@ -509,7 +518,6 @@ function VolumesView({
 									<TableRow>
 										<TableHead>{t('viewer.pvc')}</TableHead>
 										<TableHead>{t('status.label')}</TableHead>
-										<TableHead>{t('viewer.capacity')}</TableHead>
 										<TableHead>{t('viewer.accessModes')}</TableHead>
 										<TableHead className="text-right">{t('files.columns.actions')}</TableHead>
 									</TableRow>
@@ -527,7 +535,7 @@ function VolumesView({
 									{filteredPVCs.length === 0
 										? (
 												<TableRow>
-													<TableCell className="py-12 text-center text-muted-foreground" colSpan={5}>
+													<TableCell className="py-12 text-center text-muted-foreground" colSpan={4}>
 														{storageClasses.length === 0 ? t('common.empty') : t('volumes.empty')}
 													</TableCell>
 												</TableRow>
@@ -561,7 +569,6 @@ interface PVCRowProps {
 function PVCRow({ onDelete, onExpand, onOpenFiles, pvc }: PVCRowProps) {
 	const { t } = useTranslation()
 	const mountedTarget = pvc.mounted_pods[0]
-	const usagePercent = estimateUsagePercent(pvc)
 	const canDelete = !pvc.mounted
 
 	return (
@@ -585,20 +592,6 @@ function PVCRow({ onDelete, onExpand, onOpenFiles, pvc }: PVCRowProps) {
 					<span className="text-xs text-muted-foreground">
 						{pvc.mounted ? t('status.mounted') : t('status.ready')}
 					</span>
-				</div>
-			</TableCell>
-			<TableCell>
-				<div className="min-w-36">
-					<div className="flex justify-between gap-2 text-sm">
-						<span>{pvc.capacity || formatBytes(pvc.capacity_bytes)}</span>
-						<span className="text-muted-foreground">
-							{usagePercent}
-							%
-						</span>
-					</div>
-					<div className="mt-2 h-2 rounded-full bg-muted">
-						<div className="h-2 rounded-full bg-primary" style={{ width: `${usagePercent}%` }} />
-					</div>
 				</div>
 			</TableCell>
 			<TableCell>
@@ -643,16 +636,6 @@ function PVCRow({ onDelete, onExpand, onOpenFiles, pvc }: PVCRowProps) {
 			</TableCell>
 		</TableRow>
 	)
-}
-
-function estimateUsagePercent(pvc: PVC) {
-	if (!pvc.capacity_bytes) {
-		return 0
-	}
-	if (pvc.mounted) {
-		return 74
-	}
-	return 18
 }
 
 interface CreatePVCDialogProps {

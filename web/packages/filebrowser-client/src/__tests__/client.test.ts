@@ -30,6 +30,31 @@ describe('fileBrowserClient', () => {
 		}))
 	})
 
+	it('reads File Browser disk usage for the mounted root', async () => {
+		const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+			total: 20 * 1024 * 1024 * 1024,
+			used: 7 * 1024 * 1024 * 1024,
+		})))
+		const client = new FileBrowserClient({
+			baseUrl: 'https://viewer.example.test/',
+			token: 'token',
+			fetcher,
+		})
+
+		await expect(client.usage()).resolves.toEqual({
+			total: 20 * 1024 * 1024 * 1024,
+			used: 7 * 1024 * 1024 * 1024,
+		})
+
+		expect(fetcher).toHaveBeenCalledWith('https://viewer.example.test/api/usage/', expect.objectContaining({
+			method: 'GET',
+			headers: expect.objectContaining({
+				'Authorization': 'Bearer token',
+				'X-Auth': 'token',
+			}),
+		}))
+	})
+
 	it('uses simple upload below the TUS threshold', async () => {
 		const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
 		const client = new FileBrowserClient({

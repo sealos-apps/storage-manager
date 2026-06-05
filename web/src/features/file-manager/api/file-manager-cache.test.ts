@@ -3,7 +3,7 @@ import type { FileBrowserSession } from '@/features/file-manager/types/file-mana
 import { QueryClient } from '@tanstack/react-query'
 import { describe, expect, it } from 'vitest'
 
-import { invalidateFileTreeQueries } from '@/features/file-manager/api/file-manager-cache'
+import { invalidateFileManagerAfterMutation, invalidateFileTreeQueries } from '@/features/file-manager/api/file-manager-cache'
 import { fileManagerKeys } from '@/features/file-manager/api/file-manager-query-keys'
 
 describe('file manager cache', () => {
@@ -21,5 +21,15 @@ describe('file manager cache', () => {
 		expect(queryClient.getQueryState(fileManagerKeys.files('pvc-1', '/docs', 'name:asc'))?.isInvalidated).toBe(true)
 		expect(queryClient.getQueryState(fileManagerKeys.files('pvc-1', '/docs/nested', 'name:asc'))?.isInvalidated).toBe(true)
 		expect(queryClient.getQueryState(fileManagerKeys.files('pvc-1', '/other', 'name:asc'))?.isInvalidated).toBe(false)
+	})
+
+	it('invalidates disk usage after file mutations', () => {
+		const queryClient = new QueryClient()
+		const session = { pvcKey: 'pvc-1' } as FileBrowserSession
+		queryClient.setQueryData(fileManagerKeys.usage('pvc-1'), { total: 100, used: 20 })
+
+		invalidateFileManagerAfterMutation(queryClient, session, ['/docs/file.txt'])
+
+		expect(queryClient.getQueryState(fileManagerKeys.usage('pvc-1'))?.isInvalidated).toBe(true)
 	})
 })

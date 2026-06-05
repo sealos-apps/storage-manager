@@ -20,6 +20,11 @@ export interface FileBrowserResource {
 	readonly items?: FileBrowserResource[]
 }
 
+export interface FileBrowserUsage {
+	readonly total: number
+	readonly used: number
+}
+
 export interface RecursiveEntry {
 	readonly path: string
 	readonly name: string
@@ -45,6 +50,10 @@ export class FileBrowserClient {
 
 	async listRecursive(path = '/', signal?: AbortSignal): Promise<RecursiveEntry[]> {
 		return this.json<RecursiveEntry[]>('GET', `/api/resources/recursive${encodePath(path)}`, { signal })
+	}
+
+	async usage(path = '/', signal?: AbortSignal): Promise<FileBrowserUsage> {
+		return this.json<FileBrowserUsage>('GET', `/api/usage${encodePath(path)}`, { signal })
 	}
 
 	downloadUrl(path: string, inline = false): string {

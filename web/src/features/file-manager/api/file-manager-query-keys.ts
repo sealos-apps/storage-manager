@@ -3,6 +3,7 @@ export const fileManagerKeys = {
 	fileLists: (pvcKey: string) => [...fileManagerKeys.all, pvcKey, 'files'] as const,
 	files: (pvcKey: string, path: string, sortKey = '') =>
 		[...fileManagerKeys.fileLists(pvcKey), path, sortKey] as const,
+	usage: (pvcKey: string) => [...fileManagerKeys.all, pvcKey, 'usage'] as const,
 	mutations: {
 		clearRecycleBin: (pvcKey: string) =>
 			[...fileManagerKeys.all, pvcKey, 'mutation', 'clear-recycle-bin'] as const,

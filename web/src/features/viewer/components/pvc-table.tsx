@@ -17,7 +17,6 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { PVCStatusBadge } from '@/features/viewer/components/pvc-status-badge'
 import { useViewerSearch } from '@/features/viewer/stores/viewer-ui-store'
-import { formatBytes } from '@/features/viewer/utils/format-capacity'
 import { canLaunchViewer, launchBlockReason } from '@/features/viewer/utils/viewer-status'
 
 interface PVCTableProps {
@@ -52,7 +51,6 @@ export function PVCTable({ onLaunch, pvcs }: PVCTableProps) {
 					<TableHeader>
 						<TableRow>
 							<TableHead>{t('viewer.pvc')}</TableHead>
-							<TableHead>{t('viewer.capacity')}</TableHead>
 							<TableHead>{t('viewer.accessModes')}</TableHead>
 							<TableHead>{t('viewer.mountedPods')}</TableHead>
 							<TableHead>{t('viewer.viewerMode')}</TableHead>
@@ -73,7 +71,6 @@ export function PVCTable({ onLaunch, pvcs }: PVCTableProps) {
 										</div>
 									</div>
 								</TableCell>
-								<TableCell>{pvc.capacity || formatBytes(pvc.capacity_bytes)}</TableCell>
 								<TableCell>
 									<div className="flex flex-wrap gap-1">
 										{pvc.access_modes.map(mode => (
@@ -121,7 +118,7 @@ export function PVCTable({ onLaunch, pvcs }: PVCTableProps) {
 						{filtered.length === 0
 							? (
 									<TableRow>
-										<TableCell className="py-12 text-center text-muted-foreground" colSpan={6}>
+										<TableCell className="py-12 text-center text-muted-foreground" colSpan={5}>
 											{t('common.empty')}
 										</TableCell>
 									</TableRow>

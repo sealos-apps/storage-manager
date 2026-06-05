@@ -1,4 +1,5 @@
 import type { FileBrowserResource } from '@sealos-storage-manager/filebrowser-client'
+import type { ComponentProps } from 'react'
 import type { FileBrowserSession } from '@/features/file-manager/types/file-manager'
 
 import { screen, waitFor, within } from '@testing-library/react'
@@ -7,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { FileManagerView } from '@/features/file-manager/components/file-manager-view'
 import { uploadActions, uploadStore } from '@/features/file-manager/stores/upload-store'
-import { pvcFixture, viewerSessionFixture, viewerTokenFixture } from '@/features/viewer/test/fakes'
+import { createFakeViewerAPI, pvcFixture, viewerSessionFixture, viewerTokenFixture } from '@/features/viewer/test/fakes'
 import { deriveSessionCapability } from '@/features/viewer/utils/session-capability'
 import { renderWithProviders } from '@/test/render'
 
@@ -62,31 +63,67 @@ function reconnectingCapability() {
 	})
 }
 
-function renderFileManager(session: FileBrowserSession | null, currentPath = '/', onPathChange = vi.fn()) {
+interface RenderFileManagerOptions {
+	api?: ComponentProps<typeof FileManagerView>['api']
+	currentPath?: string
+	onManualClose?: ComponentProps<typeof FileManagerView>['onManualClose']
+	onPathChange?: (path: string) => void
+	onRefreshSession?: () => void
+	podSessionID?: string | null
+	sessionCapability?: ComponentProps<typeof FileManagerView>['sessionCapability']
+	viewerSession?: ComponentProps<typeof FileManagerView>['viewerSession']
+	viewerSessionID?: string | null
+}
+
+function renderFileManager(
+	session: FileBrowserSession | null,
+	currentPathOrOptions: string | RenderFileManagerOptions = '/',
+	onPathChange = vi.fn(),
+) {
+	const options: RenderFileManagerOptions = typeof currentPathOrOptions === 'string'
+		? { currentPath: currentPathOrOptions, onPathChange }
+		: currentPathOrOptions
+	const capability = options.sessionCapability ?? (session
+		? readyCapability()
+		: deriveSessionCapability({
+				error: null,
+				isReconnecting: false,
+				manualCloseKind: null,
+				selectedPVC: pvcFixture(),
+				session: viewerSessionFixture({ status: 'creating', token_ready: false }),
+				status: 'polling',
+				token: null,
+			}))
+
 	return renderWithProviders(
 		<FileManagerView
-			currentPath={currentPath}
+			api={options.api}
+			currentPath={options.currentPath ?? '/'}
 			onBackToVolumes={vi.fn()}
-			onPathChange={onPathChange}
+			onManualClose={options.onManualClose}
+			onPathChange={options.onPathChange ?? vi.fn()}
 			onReconnect={vi.fn()}
-			onRefreshSession={vi.fn()}
+			onRefreshSession={options.onRefreshSession ?? vi.fn()}
+			podSessionID={options.podSessionID}
 			pvcName="data"
 			session={session}
-			sessionCapability={session
-				? readyCapability()
-				: deriveSessionCapability({
-						error: null,
-						isReconnecting: false,
-						manualCloseKind: null,
-						selectedPVC: pvcFixture(),
-						session: viewerSessionFixture({ status: 'creating', token_ready: false }),
-						status: 'polling',
-						token: null,
-					})}
+			sessionCapability={capability}
 			setSort={vi.fn()}
 			sort={{ field: 'name', direction: 'asc' }}
+			viewerSession={options.viewerSession}
+			viewerSessionID={options.viewerSessionID}
 		/>,
 	)
+}
+
+function sessionWithClient(client: Record<string, unknown>): FileBrowserSession {
+	return {
+		client: {
+			usage: vi.fn().mockResolvedValue({ total: 20 * 1024 * 1024 * 1024, used: 5 * 1024 * 1024 * 1024 }),
+			...client,
+		},
+		pvcKey: 'pvc-1',
+	} as unknown as FileBrowserSession
 }
 
 describe('fileManagerView', () => {
@@ -98,8 +135,43 @@ describe('fileManagerView', () => {
 		renderFileManager(null)
 
 		expect(screen.getByText(/pod session is available/i)).toBeInTheDocument()
+		expect(screen.getByRole('button', { name: /session status/i })).toBeInTheDocument()
 		expect(screen.queryByRole('columnheader', { name: /name/i })).not.toBeInTheDocument()
 		expect(screen.queryByRole('button', { name: /new folder/i })).not.toBeInTheDocument()
+	})
+
+	it('shows session details from the file manager title status popover', async () => {
+		const user = userEvent.setup()
+		const session = sessionWithClient({
+			list: vi.fn(async () => resource('/', '', true, [
+				resource('/readme.md', 'readme.md', false),
+			])),
+		})
+		const viewerSession = viewerSessionFixture({
+			id: 'vs_ready',
+			mode: 'readwrite',
+			pod_session_id: 'ps_ready',
+			pod_status: 'ready',
+			status: 'ready',
+			token_ready: true,
+			viewer_url: 'https://viewer.example.test',
+		})
+
+		renderFileManager(session, {
+			podSessionID: 'ps_ready',
+			viewerSession,
+			viewerSessionID: 'vs_ready',
+		})
+
+		await screen.findByText('readme.md')
+		await user.click(screen.getByRole('button', { name: /session status/i }))
+
+		const popover = await screen.findByText('https://viewer.example.test')
+		expect(popover).toBeInTheDocument()
+		expect(screen.getByText('ps_ready')).toBeInTheDocument()
+		expect(screen.getByText('readwrite')).toBeInTheDocument()
+		expect(screen.queryByRole('button', { name: /^retry$/i })).not.toBeInTheDocument()
+		expect(screen.getByRole('button', { name: /close viewer/i })).toBeInTheDocument()
 	})
 
 	it('expands folder rows and renders all returned children without a page limit', async () => {
@@ -115,12 +187,7 @@ describe('fileManagerView', () => {
 				resource('/readme.md', 'readme.md', false),
 			])
 		})
-		const session = {
-			client: {
-				list,
-			},
-			pvcKey: 'pvc-1',
-		} as unknown as FileBrowserSession
+		const session = sessionWithClient({ list })
 
 		renderFileManager(session)
 
@@ -148,12 +215,7 @@ describe('fileManagerView', () => {
 				resource('/readme.md', 'readme.md', false),
 			])
 		})
-		const session = {
-			client: {
-				list,
-			},
-			pvcKey: 'pvc-1',
-		} as unknown as FileBrowserSession
+		const session = sessionWithClient({ list })
 
 		renderFileManager(session)
 
@@ -171,14 +233,11 @@ describe('fileManagerView', () => {
 	it('opens folders from the entry name', async () => {
 		const user = userEvent.setup()
 		const onPathChange = vi.fn()
-		const session = {
-			client: {
-				list: vi.fn(async () => resource('/', '', true, [
-					resource('/docs', 'docs', true),
-				])),
-			},
-			pvcKey: 'pvc-1',
-		} as unknown as FileBrowserSession
+		const session = sessionWithClient({
+			list: vi.fn(async () => resource('/', '', true, [
+				resource('/docs', 'docs', true),
+			])),
+		})
 
 		renderFileManager(session, '/', onPathChange)
 
@@ -189,14 +248,11 @@ describe('fileManagerView', () => {
 
 	it('keeps file table columns fixed and formats modified time for reading', async () => {
 		const modified = '2026-05-14T10:00:00Z'
-		const session = {
-			client: {
-				list: vi.fn(async () => resource('/', '', true, [
-					{ ...resource('/readme.md', 'readme.md', false), modified },
-				])),
-			},
-			pvcKey: 'pvc-1',
-		} as unknown as FileBrowserSession
+		const session = sessionWithClient({
+			list: vi.fn(async () => resource('/', '', true, [
+				{ ...resource('/readme.md', 'readme.md', false), modified },
+			])),
+		})
 
 		renderFileManager(session)
 
@@ -212,18 +268,70 @@ describe('fileManagerView', () => {
 		expect(modifiedTime).toHaveAttribute('title', expect.stringContaining('2026'))
 	})
 
+	it('shows mounted storage usage from File Browser after the viewer is ready', async () => {
+		const usage = vi.fn().mockResolvedValue({
+			total: 20 * 1024 * 1024 * 1024,
+			used: 5 * 1024 * 1024 * 1024,
+		})
+		const session = sessionWithClient({
+			list: vi.fn(async () => resource('/', '', true, [
+				resource('/readme.md', 'readme.md', false),
+			])),
+			usage,
+		})
+
+		renderFileManager(session)
+
+		expect(await screen.findByText('readme.md')).toBeInTheDocument()
+		expect(await screen.findByText((_, element) => element?.textContent === '5 GiB / 20 GiB')).toBeInTheDocument()
+		expect(screen.getByRole('progressbar', { name: /used/i }).querySelector('[data-slot="progress-indicator"]')).toHaveStyle({
+			transform: 'translateX(-75%)',
+		})
+		expect(usage).toHaveBeenCalledWith('/', expect.any(AbortSignal))
+	})
+
+	it('keeps files usable when mounted storage usage cannot be read', async () => {
+		const session = sessionWithClient({
+			list: vi.fn(async () => resource('/', '', true, [
+				resource('/readme.md', 'readme.md', false),
+			])),
+			usage: vi.fn().mockRejectedValue(new Error('usage failed')),
+		})
+
+		renderFileManager(session)
+
+		expect(await screen.findByText('readme.md')).toBeInTheDocument()
+		expect(await screen.findByText(/capacity unavailable/i)).toBeInTheDocument()
+		expect(screen.getByRole('table')).toBeInTheDocument()
+	})
+
+	it('refreshes mounted storage usage with the file list', async () => {
+		const user = userEvent.setup()
+		const list = vi.fn(async () => resource('/', '', true, [
+			resource('/readme.md', 'readme.md', false),
+		]))
+		const usage = vi.fn().mockResolvedValue({ total: 100, used: 25 })
+		const session = sessionWithClient({ list, usage })
+
+		renderFileManager(session)
+
+		await screen.findByText('readme.md')
+		await waitFor(() => expect(usage).toHaveBeenCalledTimes(1))
+		await user.click(screen.getByRole('button', { name: /refresh/i }))
+
+		await waitFor(() => expect(list).toHaveBeenCalledTimes(2))
+		await waitFor(() => expect(usage).toHaveBeenCalledTimes(2))
+	})
+
 	it('opens editable files from the entry name', async () => {
 		const user = userEvent.setup()
 		const readText = vi.fn().mockResolvedValue('hello')
-		const session = {
-			client: {
-				list: vi.fn(async () => resource('/', '', true, [
-					resource('/readme.md', 'readme.md', false),
-				])),
-				readText,
-			},
-			pvcKey: 'pvc-1',
-		} as unknown as FileBrowserSession
+		const session = sessionWithClient({
+			list: vi.fn(async () => resource('/', '', true, [
+				resource('/readme.md', 'readme.md', false),
+			])),
+			readText,
+		})
 
 		renderFileManager(session)
 
@@ -237,16 +345,13 @@ describe('fileManagerView', () => {
 		const user = userEvent.setup()
 		const downloadUrl = vi.fn(() => 'https://viewer.example.test/api/raw/archive.zip?auth=token')
 		const readText = vi.fn()
-		const session = {
-			client: {
-				downloadUrl,
-				list: vi.fn(async () => resource('/', '', true, [
-					resource('/archive.zip', 'archive.zip', false),
-				])),
-				readText,
-			},
-			pvcKey: 'pvc-1',
-		} as unknown as FileBrowserSession
+		const session = sessionWithClient({
+			downloadUrl,
+			list: vi.fn(async () => resource('/', '', true, [
+				resource('/archive.zip', 'archive.zip', false),
+			])),
+			readText,
+		})
 
 		renderFileManager(session)
 
@@ -270,12 +375,9 @@ describe('fileManagerView', () => {
 				resource('/docs', 'docs', true),
 			])
 		})
-		const session = {
-			client: {
-				list,
-			},
-			pvcKey: 'pvc-1',
-		} as unknown as FileBrowserSession
+		const session = sessionWithClient({
+			list,
+		})
 
 		renderFileManager(session)
 
@@ -300,12 +402,9 @@ describe('fileManagerView', () => {
 				resource('/readme.md', 'readme.md', false),
 			])
 		})
-		const session = {
-			client: {
-				list,
-			},
-			pvcKey: 'pvc-1',
-		} as unknown as FileBrowserSession
+		const session = sessionWithClient({
+			list,
+		})
 		const { rerender } = renderWithProviders(
 			<FileManagerView
 				currentPath="/"
@@ -352,12 +451,9 @@ describe('fileManagerView', () => {
 		const list = vi.fn(async () => resource('/', '', true, [
 			resource('/readme.md', 'readme.md', false),
 		]))
-		const session = {
-			client: {
-				list,
-			},
-			pvcKey: 'pvc-1',
-		} as unknown as FileBrowserSession
+		const session = sessionWithClient({
+			list,
+		})
 		const { rerender } = renderWithProviders(
 			<FileManagerView
 				currentPath="/"
@@ -397,6 +493,54 @@ describe('fileManagerView', () => {
 		expect(list).toHaveBeenCalledTimes(1)
 	})
 
+	it('shows file list failure details with retry when the first list request fails', async () => {
+		const user = userEvent.setup()
+		const list = vi
+			.fn()
+			.mockRejectedValueOnce(new Error('list failed'))
+			.mockResolvedValueOnce(resource('/', '', true, [
+				resource('/recovered.txt', 'recovered.txt', false),
+			]))
+		const session = sessionWithClient({ list })
+
+		renderFileManager(session, {
+			podSessionID: 'ps_1',
+			viewerSession: viewerSessionFixture({ id: 'vs_1', status: 'ready', token_ready: true }),
+			viewerSessionID: 'vs_1',
+		})
+
+		expect(await screen.findByText(/file list unavailable/i)).toBeInTheDocument()
+		expect(screen.getByText('list failed')).toBeInTheDocument()
+
+		await user.click(screen.getByRole('button', { name: /^retry$/i }))
+
+		expect(await screen.findByText('recovered.txt')).toBeInTheDocument()
+		expect(list).toHaveBeenCalledTimes(2)
+	})
+
+	it('closes the viewer from the file list failure state', async () => {
+		const user = userEvent.setup()
+		const list = vi.fn().mockRejectedValue(new Error('list failed'))
+		const closeViewerSession = vi.fn().mockResolvedValue(viewerSessionFixture({ id: 'vs_1', status: 'closed' }))
+		const onManualClose = vi.fn()
+		const api = createFakeViewerAPI({ closeViewerSession })
+		const session = sessionWithClient({ list })
+
+		renderFileManager(session, {
+			api,
+			onManualClose,
+			podSessionID: 'ps_1',
+			viewerSession: viewerSessionFixture({ id: 'vs_1', status: 'ready', token_ready: true }),
+			viewerSessionID: 'vs_1',
+		})
+
+		expect(await screen.findByText(/file list unavailable/i)).toBeInTheDocument()
+		await user.click(screen.getByRole('button', { name: /close viewer/i }))
+
+		await waitFor(() => expect(closeViewerSession).toHaveBeenCalledWith('vs_1'))
+		expect(onManualClose).toHaveBeenCalledWith('viewer')
+	})
+
 	it('shows a branch error row when folder expansion fails', async () => {
 		const user = userEvent.setup()
 		const list = vi.fn(async (path: string) => {
@@ -407,12 +551,9 @@ describe('fileManagerView', () => {
 				resource('/docs', 'docs', true),
 			])
 		})
-		const session = {
-			client: {
-				list,
-			},
-			pvcKey: 'pvc-1',
-		} as unknown as FileBrowserSession
+		const session = sessionWithClient({
+			list,
+		})
 
 		renderFileManager(session)
 
@@ -427,13 +568,10 @@ describe('fileManagerView', () => {
 		const user = userEvent.setup()
 		const list = vi.fn(async () => resource('/', '', true, []))
 		const createFolder = vi.fn().mockResolvedValue(undefined)
-		const session = {
-			client: {
-				createFolder,
-				list,
-			},
-			pvcKey: 'pvc-1',
-		} as unknown as FileBrowserSession
+		const session = sessionWithClient({
+			createFolder,
+			list,
+		})
 
 		renderFileManager(session)
 
@@ -449,19 +587,16 @@ describe('fileManagerView', () => {
 	it('moves a directory named test to a raw trash destination path', async () => {
 		const user = userEvent.setup()
 		const move = vi.fn().mockResolvedValue(undefined)
-		const session = {
-			client: {
-				createFolder: vi.fn().mockResolvedValue(undefined),
-				list: vi.fn(async () => resource('/', '', true, [
-					resource('/test', 'test', true),
-				])),
-				move,
-				readText: vi.fn().mockResolvedValue('{"version":1,"items":[]}'),
-				saveText: vi.fn().mockResolvedValue(undefined),
-				writeText: vi.fn().mockResolvedValue(undefined),
-			},
-			pvcKey: 'pvc-1',
-		} as unknown as FileBrowserSession
+		const session = sessionWithClient({
+			createFolder: vi.fn().mockResolvedValue(undefined),
+			list: vi.fn(async () => resource('/', '', true, [
+				resource('/test', 'test', true),
+			])),
+			move,
+			readText: vi.fn().mockResolvedValue('{"version":1,"items":[]}'),
+			saveText: vi.fn().mockResolvedValue(undefined),
+			writeText: vi.fn().mockResolvedValue(undefined),
+		})
 
 		renderFileManager(session)
 
@@ -485,17 +620,14 @@ describe('fileManagerView', () => {
 		})
 		const readText = vi.fn().mockResolvedValue('old content')
 		const saveText = vi.fn().mockReturnValue(savePromise)
-		const session = {
-			client: {
-				downloadUrl: vi.fn(() => 'https://viewer.example.test/api/raw/readme.md?auth=token'),
-				list: vi.fn(async () => resource('/', '', true, [
-					resource('/readme.md', 'readme.md', false),
-				])),
-				readText,
-				saveText,
-			},
-			pvcKey: 'pvc-1',
-		} as unknown as FileBrowserSession
+		const session = sessionWithClient({
+			downloadUrl: vi.fn(() => 'https://viewer.example.test/api/raw/readme.md?auth=token'),
+			list: vi.fn(async () => resource('/', '', true, [
+				resource('/readme.md', 'readme.md', false),
+			])),
+			readText,
+			saveText,
+		})
 
 		renderFileManager(session)
 
@@ -517,16 +649,13 @@ describe('fileManagerView', () => {
 	it('blocks browser editing for files larger than 32 MB', async () => {
 		const user = userEvent.setup()
 		const readText = vi.fn()
-		const session = {
-			client: {
-				downloadUrl: vi.fn(() => 'https://viewer.example.test/api/raw/large.log?auth=token'),
-				list: vi.fn(async () => resource('/', '', true, [
-					{ ...resource('/large.log', 'large.log', false), size: 33 * 1024 * 1024 },
-				])),
-				readText,
-			},
-			pvcKey: 'pvc-1',
-		} as unknown as FileBrowserSession
+		const session = sessionWithClient({
+			downloadUrl: vi.fn(() => 'https://viewer.example.test/api/raw/large.log?auth=token'),
+			list: vi.fn(async () => resource('/', '', true, [
+				{ ...resource('/large.log', 'large.log', false), size: 33 * 1024 * 1024 },
+			])),
+			readText,
+		})
 
 		renderFileManager(session)
 
@@ -550,16 +679,13 @@ describe('fileManagerView', () => {
 		})
 		const downloadBlob = vi.fn()
 		const downloadUrl = vi.fn(() => 'https://viewer.example.test/api/raw/readme.md?auth=token')
-		const session = {
-			client: {
-				downloadBlob,
-				downloadUrl,
-				list: vi.fn(async () => resource('/', '', true, [
-					resource('/readme.md', 'readme.md', false),
-				])),
-			},
-			pvcKey: 'pvc-1',
-		} as unknown as FileBrowserSession
+		const session = sessionWithClient({
+			downloadBlob,
+			downloadUrl,
+			list: vi.fn(async () => resource('/', '', true, [
+				resource('/readme.md', 'readme.md', false),
+			])),
+		})
 
 		try {
 			renderFileManager(session)
@@ -586,13 +712,10 @@ describe('fileManagerView', () => {
 			options.onProgress({ bytesUploaded: 4, bytesTotal: 8 })
 			await uploadPromise
 		})
-		const session = {
-			client: {
-				list: vi.fn(async () => resource('/', '', true, [])),
-				uploadFile,
-			},
-			pvcKey: 'pvc-1',
-		} as unknown as FileBrowserSession
+		const session = sessionWithClient({
+			list: vi.fn(async () => resource('/', '', true, [])),
+			uploadFile,
+		})
 
 		renderWithProviders(
 			<FileManagerView
@@ -642,13 +765,10 @@ describe('fileManagerView', () => {
 				resource('/readme.md', 'readme.md', false),
 			])
 		})
-		const session = {
-			client: {
-				list,
-				uploadFile,
-			},
-			pvcKey: 'pvc-1',
-		} as unknown as FileBrowserSession
+		const session = sessionWithClient({
+			list,
+			uploadFile,
+		})
 
 		renderFileManager(session)
 
@@ -667,12 +787,9 @@ describe('fileManagerView', () => {
 		const list = vi.fn(async () => resource('/', '', true, [
 			resource('/readme.md', 'readme.md', false),
 		]))
-		const session = {
-			client: {
-				list,
-			},
-			pvcKey: 'pvc-1',
-		} as unknown as FileBrowserSession
+		const session = sessionWithClient({
+			list,
+		})
 
 		renderFileManager(session)
 
@@ -702,13 +819,10 @@ describe('fileManagerView', () => {
 			options.onProgress({ bytesUploaded: 0, bytesTotal: 8 })
 			throw new Error('chunk failed')
 		})
-		const session = {
-			client: {
-				list: vi.fn(async () => resource('/', '', true, [])),
-				uploadFile,
-			},
-			pvcKey: 'pvc-1',
-		} as unknown as FileBrowserSession
+		const session = sessionWithClient({
+			list: vi.fn(async () => resource('/', '', true, [])),
+			uploadFile,
+		})
 
 		renderFileManager(session)
 

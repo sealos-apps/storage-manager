@@ -25,6 +25,7 @@ interface SessionActionsProps {
 	canDiscardLocalState?: boolean
 	onManualClose?: (kind: ManualCloseKind) => void
 	podSessionID: string | null
+	showPodAction?: boolean
 	viewerSessionID: string | null
 }
 
@@ -33,6 +34,7 @@ export function SessionActions({
 	canDiscardLocalState = false,
 	onManualClose,
 	podSessionID,
+	showPodAction = true,
 	viewerSessionID,
 }: SessionActionsProps) {
 	const queryClient = useQueryClient()
@@ -74,7 +76,7 @@ export function SessionActions({
 					<Power />
 					{t('actions.closeViewer')}
 				</Button>
-				{podSessionID
+				{showPodAction && podSessionID
 					? (
 							<Button
 								disabled={closePod.isPending}
@@ -97,7 +99,7 @@ export function SessionActions({
 							</Button>
 						)
 					: null}
-				{canDiscardLocalState && !viewerSessionID && !podSessionID
+				{showPodAction && canDiscardLocalState && !viewerSessionID && !podSessionID
 					? (
 							<Button
 								onClick={() => {

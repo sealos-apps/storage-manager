@@ -36,6 +36,8 @@ describe('storageAppShell', () => {
 
 		expect(await screen.findByText('mysql-data')).toBeInTheDocument()
 		expect(screen.getByText('logs')).toBeInTheDocument()
+		expect(screen.queryByRole('columnheader', { name: /capacity/i })).not.toBeInTheDocument()
+		expect(screen.queryByText('10Gi')).not.toBeInTheDocument()
 		expect(screen.getAllByText('ns-admin').length).toBeGreaterThan(0)
 		expect(listPVCs).toHaveBeenCalledWith({ namespace: 'ns-admin' })
 		expect(listPVCs).not.toHaveBeenCalledWith({ namespace: 'default' })
@@ -146,7 +148,6 @@ describe('storageAppShell', () => {
 
 		await waitFor(() => expect(createViewerSession).toHaveBeenCalledTimes(2), { timeout: 3_000 })
 		await waitFor(() => expect(issueViewerToken).toHaveBeenCalledTimes(2), { timeout: 3_000 })
-		await waitFor(() => expect(screen.getByText(/pod session was lost/i)).toBeInTheDocument())
 		await new Promise(resolve => window.setTimeout(resolve, 100))
 		expect(createViewerSession).toHaveBeenCalledTimes(2)
 	})
