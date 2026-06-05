@@ -14,6 +14,10 @@ rules that must shape code changes. Do not turn it into a generic Encore manual.
 - Business configuration lives in `config/viewer.yaml` locally and is ignored by
   git. Keep committed defaults in `config/viewer.example.yaml` and deployment
   examples in `deploy/configmap.yaml`.
+- Local development kubeconfigs live under `config/`: use
+  `config/kubeconfig.dev.yaml` for frontend user authorization and
+  `config/kubeconfig.management.yaml` for backend debug/integration management
+  access. Keep both ignored by git.
 - Self-hosted runtime configuration such as metrics/log export belongs in
   `infra-config.json` and deploy-time config, not in business endpoint code.
 - Do not commit kubeconfigs, tokens, cluster credentials, generated Encore
@@ -91,13 +95,15 @@ When adding configuration:
 
 ## Testing And Quality Gates
 
-Use Makefile targets so Encore code generation/runtime setup is included.
+Use Makefile targets so Encore code generation/runtime setup and frontend checks
+are included. Top-level targets cover the full repository when both backend and
+frontend have matching commands.
 
-Required before completing backend changes:
+Required before completing full-stack or cross-cutting changes:
 
 ```sh
 go mod tidy          # when imports/dependencies changed
-make verify          # runs go vet ./... and encore test ./...
+make verify          # runs backend and frontend verification
 encore check
 git diff --check
 ```
@@ -105,11 +111,26 @@ git diff --check
 Additional gates:
 
 ```sh
-make lint            # when golangci-lint is installed
+make lint            # backend golangci-lint plus frontend eslint
 make security        # for security-sensitive changes, requires govulncheck
 make test-race       # when race risk is relevant and local Encore runtime supports it
 make test-integration CONFIG=config/viewer.yaml
 ```
+
+Scoped targets are available when a change only affects one side:
+
+```sh
+make backend-verify
+make web-verify
+make backend-test
+make web-test
+make backend-dev
+make web-dev
+```
+
+`make web-dev` injects `VITE_API_BASE_URL=http://localhost:4000` and reads
+`VITE_DEV_KUBECONFIG` from `../config/kubeconfig.dev.yaml` by default.
+Override `WEB_DEV_API_BASE_URL` or `WEB_DEV_KUBECONFIG` when local paths differ.
 
 Testing rules:
 
@@ -144,19 +165,18 @@ Required frontend stack:
 Frontend development flow:
 
 ```sh
-cd web
-pnpm install
-pnpm dev
-pnpm lint
-pnpm test
-pnpm exec tsc -b
-pnpm build
-pnpm check:css
+make web-install
+make web-dev
+make web-lint
+make web-test
+make web-typecheck
+make web-build
+make web-check-css
 ```
 
-Run `pnpm build && pnpm check:css` before claiming Chrome compatibility work is
-complete. Use `pnpm test` for unit/integration checks and `pnpm test:watch`
-only for active local iteration.
+Run `make web-build && make web-check-css` before claiming Chrome compatibility
+work is complete. Use `make web-test` for unit/integration checks and
+`cd web && pnpm test:watch` only for active local iteration.
 
 Frontend SDK rules:
 
@@ -299,6 +319,8 @@ Common commands:
 make dev
 make test
 make verify
+make backend-verify
+make web-verify
 encore check
 make build-image IMAGE=sealos-storage-manager-viewer:dev
 ```

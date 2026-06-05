@@ -1,4 +1,7 @@
-kubeconfig.test.yaml
+kubeconfig.dev.yaml
+kubeconfig.management.yaml
+config/kubeconfig.*.yaml
+config/kubeconfig.*.yml
 *.kubeconfig
 *.kubeconfig.yaml
 *.kubeconfig.yml

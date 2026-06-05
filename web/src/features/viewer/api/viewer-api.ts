@@ -23,28 +23,11 @@ import type {
 import Client, { Local } from '@sealos-storage-manager/encore-client'
 
 import { env } from '@/config/env'
-import { normalizeViewerError, ViewerApiError } from '@/features/viewer/api/viewer-error'
-
-const kubeconfigStorageKey = 'sealos-storage-manager.kubeconfig'
+import { normalizeViewerError } from '@/features/viewer/api/viewer-error'
+import { getCachedAuthorizationHeader } from '@/services/sealos/sealos-authorization'
 
 export function readAuthorizationHeader() {
-	const configured = import.meta.env.VITE_VIEWER_AUTHORIZATION
-	if (configured) {
-		return configured
-	}
-	const devKubeconfig = import.meta.env.VITE_DEV_KUBECONFIG
-	if (devKubeconfig) {
-		return `Bearer ${encodeURIComponent(devKubeconfig)}`
-	}
-	const stored = globalThis.localStorage?.getItem(kubeconfigStorageKey)
-	if (stored) {
-		return stored.startsWith('Bearer ') ? stored : `Bearer ${encodeURIComponent(stored)}`
-	}
-	throw new ViewerApiError({
-		code: 'UNAUTHORIZED',
-		message: 'Kubeconfig authorization is not configured',
-		status: 401,
-	})
+	return getCachedAuthorizationHeader()
 }
 
 function apiTarget() {

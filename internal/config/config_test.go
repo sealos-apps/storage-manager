@@ -89,7 +89,7 @@ observability:
     export_timeout: 2s
 debug:
   enabled: true
-  management_kubeconfig_path: kubeconfig.management.yaml
+  management_kubeconfig_path: config/kubeconfig.management.yaml
   forced_namespace: ns-debug
 admin:
   allowed_user_ids:
@@ -111,7 +111,7 @@ admin:
 	if !cfg.Debug.Enabled {
 		t.Fatal("debug.enabled = false")
 	}
-	if cfg.Debug.ManagementKubeconfigPath != "kubeconfig.management.yaml" {
+	if cfg.Debug.ManagementKubeconfigPath != "config/kubeconfig.management.yaml" {
 		t.Fatalf("debug management kubeconfig path = %q", cfg.Debug.ManagementKubeconfigPath)
 	}
 	if cfg.Debug.ForcedNamespace != "ns-debug" {

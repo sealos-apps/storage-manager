@@ -18,6 +18,7 @@
 	},
 	"dependencies": {
 		"@base-ui/react": "^1.5.0",
+		"@labring/sealos-desktop-sdk": "^0.1.21",
 		"@monaco-editor/react": "4.7.0",
 		"@radix-ui/react-slot": "^1.2.4",
 		"@sealos-storage-manager/encore-client": "workspace:*",

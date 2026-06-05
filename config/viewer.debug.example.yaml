@@ -124,5 +124,5 @@ observability:
 
 debug:
   enabled: true
-  management_kubeconfig_path: kubeconfig.management.yaml
+  management_kubeconfig_path: config/kubeconfig.management.yaml
   forced_namespace: default

@@ -1,12 +1,14 @@
-# Sealos Storage Manager Viewer Backend
+# Sealos Storage Manager Viewer
 
-Encore.go backend for creating temporary File Browser viewer sessions over Kubernetes PVCs.
+Encore.go backend and Vite React frontend for creating temporary File Browser
+viewer sessions over Kubernetes PVCs.
 
 ## Local Files
 
 Do not commit local credentials or generated runtime config:
 
-- `kubeconfig.test.yaml`
+- `config/kubeconfig.dev.yaml`
+- `config/kubeconfig.management.yaml`
 - `config/viewer.yaml`
 - `config/viewer.debug.yaml`
 - `config/viewer.integration.yaml`
@@ -25,6 +27,16 @@ cp config/viewer.integration.example.yaml config/viewer.integration.yaml
 ```sh
 make fmt
 make verify
+```
+
+Top-level Makefile targets cover backend and frontend where both sides have a
+matching check. Use scoped targets when you only need one side:
+
+```sh
+make backend-verify
+make web-verify
+make backend-test
+make web-test
 ```
 
 Optional tools used by the full plan:
@@ -51,21 +63,43 @@ Cloud.
 make dev
 ```
 
-`make dev` wraps `encore run`, serves on `0.0.0.0:4000`, and reads business
-configuration from `config/viewer.yaml`.
+`make dev` starts the backend Encore server and the Vite frontend dev server in
+parallel. The backend serves on `0.0.0.0:4000` and reads business configuration
+from `config/viewer.yaml`. The frontend dev server receives:
+
+```sh
+VITE_API_BASE_URL="http://localhost:4000"
+VITE_DEV_KUBECONFIG="$(cat ../config/kubeconfig.dev.yaml)"
+```
+
+Override those defaults when needed:
+
+```sh
+make web-dev WEB_DEV_API_BASE_URL=http://localhost:4000 WEB_DEV_KUBECONFIG=../config/kubeconfig.dev.yaml
+```
+
+Use scoped dev targets when you only need one process:
+
+```sh
+make backend-dev
+make web-dev
+```
 
 Use the Makefile targets for local validation so tests run through Encore's
 code generation and runtime setup:
 
 ```sh
 make test
+make backend-test
+make web-test
 make test-race
 make test-integration
 ```
 
-`make test-race` also wraps `encore test -race`; Encore CLI v1.57.4 currently
+`make test` runs backend Encore tests and frontend Vitest tests. `make
+test-race` wraps backend `encore test -race`; Encore CLI v1.57.4 currently
 crashes in its race runtime on macOS arm64, so the default `make verify` gate
-uses `make test` instead.
+uses `make backend-test` instead.
 
 The backend config path is selected by the `CONFIG` environment variable. The
 Makefile sets it for local Encore commands:
@@ -75,9 +109,24 @@ make dev CONFIG=config/viewer.debug.yaml
 make test-integration INTEGRATION_CONFIG=config/viewer.integration.yaml
 ```
 
+Frontend commands can be reached through Makefile wrappers:
+
+```sh
+make web-install
+make web-generate-api
+make web-typecheck
+make web-build
+make web-check-css
+make web-e2e
+```
+
 Frontend `VITE_*` variables only affect the Vite workspace under `web/`.
 Self-hosted runtime variables referenced by `infra-config.json`, such as
 `PROMETHEUS_REMOTE_WRITE_URL`, stay separate from viewer business config.
+Keep local development kubeconfigs under `config/`: use
+`config/kubeconfig.dev.yaml` for frontend user authorization and
+`config/kubeconfig.management.yaml` for backend debug/integration management
+access.
 
 All public endpoints are typed Encore APIs so OpenAPI/client generation includes
 request and response schemas:

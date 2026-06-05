@@ -12,41 +12,48 @@ import {
 	viewerContextFixture,
 	viewerSessionFixture,
 } from '@/features/viewer/test/fakes'
+import {
+	initializeSealosAuthorization,
+	resetSealosAuthorizationForTest,
+} from '@/services/sealos/sealos-authorization'
 
 describe('viewer API adapter', () => {
 	afterEach(() => {
+		resetSealosAuthorizationForTest()
 		window.localStorage.clear()
 		vi.unstubAllEnvs()
 	})
 
-	it('reads configured authorization before local kubeconfig storage', () => {
-		vi.stubEnv('VITE_VIEWER_AUTHORIZATION', 'Bearer configured')
-		vi.stubEnv('VITE_DEV_KUBECONFIG', 'dev-kubeconfig')
-		window.localStorage.setItem('sealos-storage-manager.kubeconfig', 'stored')
-
-		expect(readAuthorizationHeader()).toBe('Bearer configured')
-	})
-
-	it('reads dev kubeconfig before local kubeconfig storage', () => {
+	it('reads authorization from the Sealos bootstrap cache', async () => {
+		vi.stubEnv('DEV', true)
 		vi.stubEnv('VITE_DEV_KUBECONFIG', 'apiVersion: v1\nclusters: []')
-		window.localStorage.setItem('sealos-storage-manager.kubeconfig', 'stored')
+		vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+		await initializeSealosAuthorization()
 
 		expect(readAuthorizationHeader()).toBe('Bearer apiVersion%3A%20v1%0Aclusters%3A%20%5B%5D')
 	})
 
-	it('encodes stored kubeconfig authorization for the backend auth contract', () => {
+	it('ignores legacy authorization sources after bootstrap', async () => {
+		vi.stubEnv('DEV', true)
+		vi.stubEnv('VITE_DEV_KUBECONFIG', 'apiVersion: v1\nclusters: []')
+		vi.stubEnv('VITE_VIEWER_AUTHORIZATION', 'Bearer configured')
 		window.localStorage.setItem('sealos-storage-manager.kubeconfig', 'apiVersion: v1\nclusters: []')
+		vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+		await initializeSealosAuthorization()
 
 		expect(readAuthorizationHeader()).toBe('Bearer apiVersion%3A%20v1%0Aclusters%3A%20%5B%5D')
 	})
 
-	it('throws a localized business error shape when authorization is missing', () => {
+	it('throws a localized business error shape when authorization is read before bootstrap', () => {
 		expect(() => readAuthorizationHeader()).toThrow(ViewerApiError)
-		expect(() => readAuthorizationHeader()).toThrow('Kubeconfig authorization is not configured')
+		expect(() => readAuthorizationHeader()).toThrow('Kubeconfig authorization has not been initialized')
 	})
 
 	it('unwraps Encore response envelopes through the generated client boundary', async () => {
-		window.localStorage.setItem('sealos-storage-manager.kubeconfig', 'test-kubeconfig')
+		vi.stubEnv('DEV', true)
+		vi.stubEnv('VITE_DEV_KUBECONFIG', 'test-kubeconfig')
+		vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+		await initializeSealosAuthorization()
 		const listPVCs = vi.fn().mockResolvedValue({
 			pvc_list: { items: [pvcFixture({ name: 'mysql-data' })] },
 		})
@@ -229,7 +236,10 @@ describe('viewer API adapter', () => {
 	})
 
 	it('normalizes Encore error detail codes to viewer business errors', async () => {
-		window.localStorage.setItem('sealos-storage-manager.kubeconfig', 'test-kubeconfig')
+		vi.stubEnv('DEV', true)
+		vi.stubEnv('VITE_DEV_KUBECONFIG', 'test-kubeconfig')
+		vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+		await initializeSealosAuthorization()
 		const api = createViewerApi({
 			viewer: {
 				ListPVCs: vi.fn().mockRejectedValue(new APIError(403, {
