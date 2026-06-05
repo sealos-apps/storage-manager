@@ -6,7 +6,6 @@ import { useTranslation } from 'react-i18next'
 import {
 	Combobox,
 	ComboboxContent,
-	ComboboxEmpty,
 	ComboboxInput,
 	ComboboxItem,
 	ComboboxList,
@@ -57,7 +56,6 @@ export function NamespaceFilter({
 								placeholder={isLoadingNamespaces ? t('common.loading') : t('viewer.filterNamespaces')}
 							/>
 							<ComboboxContent align="end">
-								<ComboboxEmpty>{t('common.empty')}</ComboboxEmpty>
 								<ComboboxList>
 									{namespaceNames.map(item => (
 										<ComboboxItem index={namespaceNames.indexOf(item)} key={item} value={item}>
