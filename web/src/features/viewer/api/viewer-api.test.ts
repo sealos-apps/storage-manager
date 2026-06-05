@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createViewerApi, readAuthorizationHeader } from '@/features/viewer/api/viewer-api'
 import { ViewerApiError } from '@/features/viewer/api/viewer-error'
 import {
+	adminNamespaceFixture,
 	pvcFixture,
 	storageClassDescribeFixture,
 	storageClassFixture,
@@ -53,7 +54,7 @@ describe('viewer API adapter', () => {
 			storage_class_list: { items: [storageClassFixture({ name: 'standard' })] },
 		})
 		const adminCapabilities = vi.fn().mockResolvedValue({
-			admin_capabilities: { can_manage_storage_classes: true },
+			admin_capabilities: { can_manage_pvcs: true, can_manage_storage_classes: true },
 		})
 		const adminCreateStorageClass = vi.fn().mockResolvedValue({
 			storage_class: storageClassFixture({ name: 'created' }),
@@ -66,6 +67,9 @@ describe('viewer API adapter', () => {
 		})
 		const adminGetStorageClassYAML = vi.fn().mockResolvedValue({
 			storage_class_yaml: storageClassYAMLFixture({ name: 'standard' }),
+		})
+		const adminListNamespaces = vi.fn().mockResolvedValue({
+			namespace_list: { items: [adminNamespaceFixture({ name: 'kube-system' })] },
 		})
 		const adminListStorageClasses = vi.fn().mockResolvedValue({
 			storage_class_list: { items: [storageClassFixture({ name: 'admin-standard' })] },
@@ -98,6 +102,7 @@ describe('viewer API adapter', () => {
 				AdminDeleteStorageClass: adminDeleteStorageClass,
 				AdminDescribeStorageClass: adminDescribeStorageClass,
 				AdminGetStorageClassYAML: adminGetStorageClassYAML,
+				AdminListNamespaces: adminListNamespaces,
 				AdminListStorageClasses: adminListStorageClasses,
 				AdminUpdateStorageClass: adminUpdateStorageClass,
 				AdminUpdateStorageClassPolicy: adminUpdateStorageClassPolicy,
@@ -124,7 +129,10 @@ describe('viewer API adapter', () => {
 		await expect(api.listStorageClasses()).resolves.toEqual([
 			expect.objectContaining({ name: 'standard' }),
 		])
-		await expect(api.adminCapabilities()).resolves.toEqual({ can_manage_storage_classes: true })
+		await expect(api.adminCapabilities()).resolves.toEqual({ can_manage_pvcs: true, can_manage_storage_classes: true })
+		await expect(api.adminListNamespaces()).resolves.toEqual([
+			expect.objectContaining({ name: 'kube-system' }),
+		])
 		await expect(api.adminListStorageClasses()).resolves.toEqual([
 			expect.objectContaining({ name: 'admin-standard' }),
 		])
@@ -168,6 +176,9 @@ describe('viewer API adapter', () => {
 			Authorization: 'Bearer test-kubeconfig',
 		})
 		expect(adminCapabilities).toHaveBeenCalledWith({
+			Authorization: 'Bearer test-kubeconfig',
+		})
+		expect(adminListNamespaces).toHaveBeenCalledWith({
 			Authorization: 'Bearer test-kubeconfig',
 		})
 		expect(adminListStorageClasses).toHaveBeenCalledWith({

@@ -10,6 +10,7 @@ export type Heartbeat = domain.Heartbeat
 export type StorageClass = domain.StorageClass
 export type StorageClassDescribe = session.StorageClassDescribe
 export type StorageClassYAML = session.StorageClassYAML
+export type AdminNamespace = domain.Namespace
 export type ViewerContext = viewer.ViewerContext
 
 export type ViewerMode = 'readonly' | 'readwrite' | string
@@ -72,6 +73,7 @@ export interface CreatePVCInput {
 }
 
 export interface AdminCapabilities {
+	can_manage_pvcs: boolean
 	can_manage_storage_classes: boolean
 }
 
@@ -106,6 +108,7 @@ export interface ViewerAPI {
 	adminDeleteStorageClass: (name: string) => Promise<StorageClass>
 	adminDescribeStorageClass: (name: string) => Promise<StorageClassDescribe>
 	adminGetStorageClassYAML: (name: string) => Promise<StorageClassYAML>
+	adminListNamespaces: () => Promise<AdminNamespace[]>
 	adminListStorageClasses: () => Promise<StorageClass[]>
 	adminUpdateStorageClassPolicy: (name: string, input: StorageClassPolicyInput) => Promise<StorageClass>
 	adminUpdateStorageClass: (name: string, input: StorageClassYAMLInput) => Promise<StorageClass>

@@ -1,5 +1,6 @@
 import type {
 	AdminCapabilities,
+	AdminNamespace,
 	CreatePVCInput,
 	CreateViewerSessionInput,
 	DeletePVCInput,
@@ -115,6 +116,18 @@ export function createViewerApi(client = new Client(apiTarget())): ViewerAPI {
 					Authorization: authorization(),
 				})
 				return response.storage_class_yaml
+			}
+			catch (error) {
+				throw normalizeViewerError(error)
+			}
+		},
+
+		async adminListNamespaces(): Promise<AdminNamespace[]> {
+			try {
+				const response = await client.viewer.AdminListNamespaces({
+					Authorization: authorization(),
+				})
+				return response.namespace_list.items
 			}
 			catch (error) {
 				throw normalizeViewerError(error)

@@ -5,6 +5,7 @@ import { createViewerSessionMutationOptions, heartbeatViewerSessionMutationOptio
 import { viewerKeys } from '@/features/viewer/api/viewer-query-keys'
 import {
 	adminCapabilitiesQueryOptions,
+	adminNamespaceListQueryOptions,
 	adminStorageClassDescribeQueryOptions,
 	adminStorageClassListQueryOptions,
 	adminStorageClassYAMLQueryOptions,
@@ -74,6 +75,7 @@ describe('viewer query options', () => {
 		const api = createFakeViewerAPI()
 
 		expect(adminCapabilitiesQueryOptions(api).queryKey).toEqual(viewerKeys.adminCapabilities())
+		expect(adminNamespaceListQueryOptions(api).queryKey).toEqual(viewerKeys.adminNamespaces())
 		expect(adminStorageClassListQueryOptions(api).queryKey).toEqual(viewerKeys.adminStorageClasses())
 		expect(adminStorageClassYAMLQueryOptions('standard', api).queryKey).toEqual(viewerKeys.adminStorageClassYAML('standard'))
 		expect(adminStorageClassDescribeQueryOptions('standard', api).queryKey).toEqual(viewerKeys.adminStorageClassDescribe('standard'))
@@ -83,7 +85,16 @@ describe('viewer query options', () => {
 			meta: undefined,
 			queryKey: viewerKeys.adminCapabilities(),
 			signal: new AbortController().signal,
-		})).resolves.toEqual({ can_manage_storage_classes: false })
+		})).resolves.toEqual({ can_manage_pvcs: false, can_manage_storage_classes: false })
+		await expect(adminNamespaceListQueryOptions(api).queryFn?.({
+			client: mutationContext.client,
+			meta: undefined,
+			queryKey: viewerKeys.adminNamespaces(),
+			signal: new AbortController().signal,
+		})).resolves.toEqual([
+			expect.objectContaining({ name: 'ns-admin' }),
+			expect.objectContaining({ name: 'kube-system' }),
+		])
 	})
 
 	it('polls viewer sessions only while creating', () => {

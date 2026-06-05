@@ -72,6 +72,7 @@ import {
 } from '@/features/viewer/api/viewer-mutations'
 import {
 	adminCapabilitiesQueryOptions,
+	adminNamespaceListQueryOptions,
 	adminStorageClassDescribeQueryOptions,
 	adminStorageClassListQueryOptions,
 	adminStorageClassYAMLQueryOptions,
@@ -177,11 +178,14 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 	const { i18n, t } = useTranslation()
 
 	const contextQuery = useQuery(viewerContextQueryOptions(api))
-	const effectiveNamespace = contextQuery.data?.namespace ?? ''
+	const adminCapabilitiesQuery = useQuery(adminCapabilitiesQueryOptions(api))
+	const canManagePVCs = adminCapabilitiesQuery.data?.can_manage_pvcs ?? false
+	const canManageStorageClasses = adminCapabilitiesQuery.data?.can_manage_storage_classes ?? false
+	const adminNamespacesQuery = useQuery(adminNamespaceListQueryOptions(api, canManagePVCs))
+	const effectiveNamespace = namespace || contextQuery.data?.namespace || ''
+	const adminNamespaces = adminNamespacesQuery.data ?? []
 	const pvcQuery = useQuery(pvcListQueryOptions(effectiveNamespace, api))
 	const storageClassesQuery = useQuery(storageClassListQueryOptions(api))
-	const adminCapabilitiesQuery = useQuery(adminCapabilitiesQueryOptions(api))
-	const canManageStorageClasses = adminCapabilitiesQuery.data?.can_manage_storage_classes ?? false
 	const adminStorageClassesQuery = useQuery(adminStorageClassListQueryOptions(api, canManageStorageClasses))
 	const pvcs = useMemo(() => pvcQuery.data ?? [], [pvcQuery.data])
 	const fileSession = useMemo<FileBrowserSession | null>(() => {
@@ -223,10 +227,28 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 	const deletePVC = useMutation(deletePVCMutationOptions(queryClient, api))
 
 	useEffect(() => {
-		if (contextQuery.data?.namespace && contextQuery.data.namespace !== namespace) {
+		if (contextQuery.data?.namespace && !namespace) {
 			viewerUIStore.actions.syncContextNamespace(contextQuery.data.namespace)
 		}
 	}, [contextQuery.data?.namespace, namespace])
+
+	function resetFileSessionState() {
+		setSelectedPVC(null)
+		setToken(null)
+		setViewerSession(null)
+		lastFileSessionRef.current = null
+		setViewerFlow(idleViewerFlowState)
+		setCurrentPath('/')
+		setLaunchKey(null)
+	}
+
+	function handleNamespaceChange(nextNamespace: string) {
+		if (nextNamespace === namespace) {
+			return
+		}
+		resetFileSessionState()
+		viewerUIStore.actions.setNamespace(nextNamespace)
+	}
 
 	function openFiles(pvc: PVC) {
 		setSelectedPVC(pvc)
@@ -340,7 +362,13 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 							</TabsList>
 						</Tabs>
 						<div className="flex flex-col gap-2 md:ml-auto md:flex-row md:items-center">
-							<NamespaceFilter />
+							<NamespaceFilter
+								canSelectNamespaces={canManagePVCs}
+								isLoadingNamespaces={adminNamespacesQuery.isLoading}
+								namespace={effectiveNamespace}
+								namespaces={adminNamespaces}
+								onNamespaceChange={handleNamespaceChange}
+							/>
 							<Button
 								aria-label={t('actions.refresh')}
 								disabled={!effectiveNamespace}

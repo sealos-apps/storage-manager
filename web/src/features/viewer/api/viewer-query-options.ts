@@ -45,6 +45,15 @@ export function adminCapabilitiesQueryOptions(api: ViewerAPI = viewerApi) {
 	})
 }
 
+export function adminNamespaceListQueryOptions(api: ViewerAPI = viewerApi, enabled = true) {
+	return queryOptions({
+		queryKey: viewerKeys.adminNamespaces(),
+		queryFn: () => api.adminListNamespaces(),
+		enabled,
+		staleTime: 60_000,
+	})
+}
+
 export function adminStorageClassListQueryOptions(api: ViewerAPI = viewerApi, enabled = true) {
 	return queryOptions({
 		queryKey: viewerKeys.adminStorageClasses(),

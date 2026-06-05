@@ -1,4 +1,5 @@
 import type {
+	AdminNamespace,
 	Heartbeat,
 	PodSession,
 	PVC,
@@ -37,6 +38,14 @@ export function viewerContextFixture(overrides: Partial<ViewerContext> = {}): Vi
 	return {
 		context_name: 'dev',
 		namespace: 'ns-admin',
+		...overrides,
+	}
+}
+
+export function adminNamespaceFixture(overrides: Partial<AdminNamespace> = {}): AdminNamespace {
+	return {
+		is_current_context: false,
+		name: 'kube-system',
 		...overrides,
 	}
 }
@@ -145,11 +154,18 @@ export function heartbeatFixture(overrides: Partial<Heartbeat> = {}): Heartbeat 
 
 export function createFakeViewerAPI(overrides: Partial<ViewerAPI> = {}): ViewerAPI {
 	return {
-		adminCapabilities: async () => ({ can_manage_storage_classes: false }),
+		adminCapabilities: async () => ({
+			can_manage_pvcs: false,
+			can_manage_storage_classes: false,
+		}),
 		adminCreateStorageClass: async () => storageClassFixture(),
 		adminDeleteStorageClass: async name => storageClassFixture({ name }),
 		adminDescribeStorageClass: async name => storageClassDescribeFixture({ name }),
 		adminGetStorageClassYAML: async name => storageClassYAMLFixture({ name }),
+		adminListNamespaces: async () => [
+			adminNamespaceFixture({ name: 'ns-admin', is_current_context: true }),
+			adminNamespaceFixture({ name: 'kube-system' }),
+		],
 		adminListStorageClasses: async () => [storageClassFixture()],
 		adminUpdateStorageClassPolicy: async (name, input) => storageClassFixture({
 			name,

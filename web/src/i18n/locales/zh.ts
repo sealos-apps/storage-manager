@@ -21,6 +21,7 @@ export const zh = {
 	},
 	common: {
 		all: '全部',
+		current: '当前',
 		default: '默认',
 		empty: '暂无数据',
 		error: '错误',
@@ -89,6 +90,7 @@ export const zh = {
 		accessModes: '访问模式',
 		activeSession: '当前会话',
 		capacity: '容量',
+		filterNamespaces: '筛选命名空间',
 		heartbeat: '心跳',
 		lastHeartbeat: '最后心跳',
 		mountedPods: '挂载 Pod',
@@ -106,6 +108,7 @@ export const zh = {
 		summarySupported: '支持 Viewer',
 		summaryTotal: 'PVC 总数',
 		summaryUnsupported: '不支持',
+		systemNamespace: '系统命名空间',
 		tokenExpires: 'Token 过期时间',
 		uploadGuardPodDescription: '仍有文件上传正在使用这个 Pod Session。请等待上传完成后再关闭 Pod Session。',
 		uploadGuardTitle: '上传进行中',

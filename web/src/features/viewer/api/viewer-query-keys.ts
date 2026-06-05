@@ -1,6 +1,7 @@
 export const viewerKeys = {
 	all: ['viewer'] as const,
 	adminCapabilities: () => [...viewerKeys.all, 'admin', 'capabilities'] as const,
+	adminNamespaces: () => [...viewerKeys.all, 'admin', 'namespaces'] as const,
 	adminStorageClassDescribe: (name: string) => [...viewerKeys.all, 'admin', 'storage-classes', name, 'describe'] as const,
 	adminStorageClassYAML: (name: string) => [...viewerKeys.all, 'admin', 'storage-classes', name, 'yaml'] as const,
 	adminStorageClasses: () => [...viewerKeys.all, 'admin', 'storage-classes'] as const,

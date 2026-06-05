@@ -21,6 +21,7 @@ export const en = {
 	},
 	common: {
 		all: 'All',
+		current: 'Current',
 		default: 'Default',
 		empty: 'No data',
 		error: 'Error',
@@ -89,6 +90,7 @@ export const en = {
 		accessModes: 'Access modes',
 		activeSession: 'Active session',
 		capacity: 'Capacity',
+		filterNamespaces: 'Filter namespaces',
 		heartbeat: 'Heartbeat',
 		lastHeartbeat: 'Last heartbeat',
 		mountedPods: 'Mounted pods',
@@ -106,6 +108,7 @@ export const en = {
 		summarySupported: 'Supported',
 		summaryTotal: 'Total PVCs',
 		summaryUnsupported: 'Unsupported',
+		systemNamespace: 'System namespace',
 		tokenExpires: 'Token expires',
 		uploadGuardPodDescription: 'A file upload is still using this pod session. Wait for the upload to finish before closing the pod session.',
 		uploadGuardTitle: 'Upload in progress',

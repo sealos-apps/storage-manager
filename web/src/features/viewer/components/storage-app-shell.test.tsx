@@ -37,7 +37,7 @@ describe('storageAppShell', () => {
 		viewerUIStore.actions.reset()
 	})
 
-	it('renders PVCs, filters them, launches File Browser, and shows real file manager state', async () => {
+	it('renders PVCs, launches File Browser, and shows real file manager state', async () => {
 		const user = userEvent.setup()
 		const listPVCs = vi.fn().mockResolvedValue([
 			pvcFixture({ name: 'mysql-data', namespace: 'ns-admin', uid: 'uid-1' }),
@@ -66,13 +66,79 @@ describe('storageAppShell', () => {
 		expect(listPVCs).toHaveBeenCalledWith({ namespace: 'ns-admin' })
 		expect(listPVCs).not.toHaveBeenCalledWith({ namespace: 'default' })
 
-		await user.type(screen.getByLabelText('Search'), 'mysql')
-		await waitFor(() => expect(screen.queryByText('logs')).not.toBeInTheDocument())
-		expect(screen.getByText('mysql-data')).toBeInTheDocument()
+		const browseButtons = await screen.findAllByRole('button', { name: /browse files/i })
+		const firstBrowseButton = browseButtons[0]
+		if (!firstBrowseButton) {
+			throw new Error('missing browse files button')
+		}
+		await user.click(firstBrowseButton)
+
+		await waitFor(() => expect(screen.getByRole('button', { name: /new folder/i })).toBeInTheDocument())
+	})
+
+	it('keeps namespace display static for ordinary users', async () => {
+		const api = createFakeViewerAPI({
+			adminCapabilities: vi.fn().mockResolvedValue({
+				can_manage_pvcs: false,
+				can_manage_storage_classes: false,
+			}),
+			listPVCs: vi.fn().mockResolvedValue([]),
+		})
+
+		renderWithProviders(<StorageAppShell api={api} />)
+
+		expect(await screen.findByText('ns-admin')).toBeInTheDocument()
+		expect(screen.queryByRole('combobox', { name: /system namespace/i })).not.toBeInTheDocument()
+	})
+
+	it('lets admins switch to system namespaces through existing PVC and session APIs', async () => {
+		const user = userEvent.setup()
+		const listPVCs = vi.fn()
+			.mockResolvedValueOnce([])
+			.mockResolvedValueOnce([
+				pvcFixture({ name: 'system-data', namespace: 'kube-system', uid: 'system-uid' }),
+			])
+		const createViewerSession = vi.fn().mockResolvedValue(viewerSessionFixture({
+			id: 'vs_system',
+			namespace: 'kube-system',
+			pvc_name: 'system-data',
+			status: 'ready',
+			token_ready: true,
+		}))
+		const api = createFakeViewerAPI({
+			adminCapabilities: vi.fn().mockResolvedValue({
+				can_manage_pvcs: true,
+				can_manage_storage_classes: false,
+			}),
+			adminListNamespaces: vi.fn().mockResolvedValue([
+				{ is_current_context: true, name: 'ns-admin' },
+				{ is_current_context: false, name: 'kube-system' },
+			]),
+			createViewerSession,
+			issueViewerToken: vi.fn().mockResolvedValue(viewerTokenFixture({
+				viewer_session_id: 'vs_system',
+				viewer_url: 'https://viewer.example.test',
+			})),
+			listPVCs,
+		})
+
+		renderWithProviders(<StorageAppShell api={api} />)
+
+		const namespaceCombobox = await screen.findByRole('combobox', { name: /system namespace/i })
+		await user.click(namespaceCombobox)
+		await user.type(namespaceCombobox, 'kube')
+		expect(screen.queryByRole('button', { name: /ns-admin/i })).not.toBeInTheDocument()
+		await user.click(await screen.findByText('kube-system'))
+
+		await waitFor(() => expect(listPVCs).toHaveBeenCalledWith({ namespace: 'kube-system' }))
+		expect(await screen.findByText('system-data')).toBeInTheDocument()
 
 		await user.click(screen.getByRole('button', { name: /browse files/i }))
 
-		await waitFor(() => expect(screen.getByRole('button', { name: /new folder/i })).toBeInTheDocument())
+		await waitFor(() => expect(createViewerSession).toHaveBeenCalledWith({
+			namespace: 'kube-system',
+			pvcName: 'system-data',
+		}))
 	})
 
 	it('creates PVCs through the real dialog and optimistic mutation path', async () => {
@@ -217,7 +283,10 @@ describe('storageAppShell', () => {
 			describe: 'Name: standard\nProvisioner: kubernetes.io/no-provisioner',
 		}))
 		const api = createFakeViewerAPI({
-			adminCapabilities: vi.fn().mockResolvedValue({ can_manage_storage_classes: true }),
+			adminCapabilities: vi.fn().mockResolvedValue({
+				can_manage_pvcs: false,
+				can_manage_storage_classes: true,
+			}),
 			adminDescribeStorageClass,
 			adminListStorageClasses: vi.fn().mockResolvedValue([
 				storageClassFixture({ name: 'standard' }),
@@ -251,7 +320,10 @@ describe('storageAppShell', () => {
 		}))
 		const adminUpdateStorageClass = vi.fn().mockResolvedValue(storageClassFixture({ name: 'standard' }))
 		const api = createFakeViewerAPI({
-			adminCapabilities: vi.fn().mockResolvedValue({ can_manage_storage_classes: true }),
+			adminCapabilities: vi.fn().mockResolvedValue({
+				can_manage_pvcs: false,
+				can_manage_storage_classes: true,
+			}),
 			adminCreateStorageClass,
 			adminDeleteStorageClass,
 			adminGetStorageClassYAML,
