@@ -38,10 +38,8 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v4
 
-      - name: Install Go tools
-        run: |
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Install Go security tools
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
       - name: Install web dependencies
         run: make web-install
@@ -57,8 +55,13 @@ jobs:
       - name: Verify frontend
         run: make web-verify
 
-      - name: Lint
-        run: make lint
+      - name: Lint backend
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+
+      - name: Lint frontend
+        run: make web-lint
 
       - name: Security scan
         run: make security
