@@ -20,6 +20,9 @@ spec:
         - name: backend
           image: {{ include "sealos-storage-manager.backendImage" . | quote }}
           imagePullPolicy: {{ .Values.backend.image.pullPolicy | quote }}
+          env:
+            - name: CONFIG
+              value: {{ printf "%s/viewer.yaml" .Values.backend.configMountPath | quote }}
           ports:
             - name: http
               containerPort: {{ .Values.backend.containerPort }}

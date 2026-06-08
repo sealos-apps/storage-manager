@@ -39,7 +39,12 @@ func TestIssueTokenCreatesOneTimeAuthRequestAndTokenRecord(t *testing.T) {
 	auth := NewAuthService(cfg, store, login, observability.MustNew(cfg.Observability, nil))
 	auth.now = fixedNow
 	viewer := &domain.ViewerSession{ID: "vs_1", Permission: domain.ModeReadWrite}
-	pod := &domain.PodSession{ID: "ps_1", ViewerURL: "http://viewer", Status: domain.PodStatusReady}
+	pod := &domain.PodSession{
+		ID:                "ps_1",
+		ViewerURL:         "https://viewer.example.test",
+		InternalViewerURL: "http://viewer-ps-1.default.svc.cluster.local:80",
+		Status:            domain.PodStatusReady,
+	}
 
 	token, err := auth.IssueToken(t.Context(), viewer, pod)
 	if err != nil {
@@ -47,6 +52,12 @@ func TestIssueTokenCreatesOneTimeAuthRequestAndTokenRecord(t *testing.T) {
 	}
 	if token.Token != "fb-token" || token.TokenType != "Bearer" {
 		t.Fatalf("token = %#v", token)
+	}
+	if token.ViewerURL != "https://viewer.example.test" {
+		t.Fatalf("token viewer URL = %q", token.ViewerURL)
+	}
+	if login.viewerURL != "http://viewer-ps-1.default.svc.cluster.local:80" {
+		t.Fatalf("login viewer URL = %q", login.viewerURL)
 	}
 	if login.username != "vs_1" {
 		t.Fatalf("username = %q", login.username)

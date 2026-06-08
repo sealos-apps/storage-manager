@@ -12,16 +12,22 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ .Values.backend.serviceAccount.name | quote }}
+  name: {{ include "sealos-storage-manager.backendClusterRoleName" . | quote }}
   labels:
     {{- include "sealos-storage-manager.labels" . | nindent 4 }}
 rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["persistentvolumeclaims", "pods", "pods/log", "events"]
     verbs: ["get", "list", "watch", "create", "delete", "patch", "update"]
   - apiGroups: [""]
     resources: ["services", "configmaps"]
     verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses"]
     verbs: ["get", "list", "watch", "create", "delete"]
@@ -32,13 +38,13 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ .Values.backend.serviceAccount.name | quote }}
+  name: {{ include "sealos-storage-manager.backendClusterRoleName" . | quote }}
   labels:
     {{- include "sealos-storage-manager.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ .Values.backend.serviceAccount.name | quote }}
+  name: {{ include "sealos-storage-manager.backendClusterRoleName" . | quote }}
 subjects:
   - kind: ServiceAccount
     name: {{ include "sealos-storage-manager.backendServiceAccountName" . | quote }}

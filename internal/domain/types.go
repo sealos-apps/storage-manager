@@ -25,24 +25,25 @@ const (
 )
 
 type PodSession struct {
-	ID             string    `json:"id"`
-	Namespace      string    `json:"namespace"`
-	PVCName        string    `json:"pvc_name"`
-	PVCUID         string    `json:"pvc_uid"`
-	AccessMode     string    `json:"access_mode"`
-	Mode           string    `json:"mode"`
-	PodName        string    `json:"pod_name"`
-	ServiceName    string    `json:"service_name"`
-	ViewerURL      string    `json:"viewer_url"`
-	RuntimeVersion string    `json:"runtime_version"`
-	Status         string    `json:"status"`
-	Reason         string    `json:"reason"`
-	NodeName       string    `json:"node_name"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	LastActiveAt   time.Time `json:"last_active_at"`
-	ExpiresAt      time.Time `json:"expires_at"`
-	AdminContext   bool      `json:"-"`
+	ID                string    `json:"id"`
+	Namespace         string    `json:"namespace"`
+	PVCName           string    `json:"pvc_name"`
+	PVCUID            string    `json:"pvc_uid"`
+	AccessMode        string    `json:"access_mode"`
+	Mode              string    `json:"mode"`
+	PodName           string    `json:"pod_name"`
+	ServiceName       string    `json:"service_name"`
+	ViewerURL         string    `json:"viewer_url"`
+	InternalViewerURL string    `json:"-"`
+	RuntimeVersion    string    `json:"runtime_version"`
+	Status            string    `json:"status"`
+	Reason            string    `json:"reason"`
+	NodeName          string    `json:"node_name"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
+	LastActiveAt      time.Time `json:"last_active_at"`
+	ExpiresAt         time.Time `json:"expires_at"`
+	AdminContext      bool      `json:"-"`
 }
 
 type ViewerSession struct {

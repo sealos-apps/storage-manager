@@ -32,6 +32,10 @@ func (s *PodService) viewerURL(id string) (string, error) {
 	return scheme + "://" + host, nil
 }
 
+func (s *PodService) internalViewerURL(namespace string, serviceName string) string {
+	return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", serviceName, namespace, s.cfg.Viewer.Service.Port)
+}
+
 func (s *PodService) viewerHost(id string) (string, error) {
 	tmpl, err := template.New("host").Parse(s.cfg.Viewer.Ingress.HostTemplate)
 	if err != nil {

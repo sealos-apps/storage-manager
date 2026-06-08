@@ -414,7 +414,7 @@ func TestDeployChartDerivesPublicHostsFromCloudDomain(t *testing.T) {
 		"--set", "web.publicHost=storage.cloud.sealos.test",
 		"--set", "backend.config.viewer.ingress.hostPrefix=pvc-viewer",
 	)
-	if !strings.Contains(viewerYAML, `backend_verify_url: "https://storage.cloud.sealos.test:7443/internal/filebrowser-hook/verify"`) {
+	if !strings.Contains(viewerYAML, `backend_verify_url: "http://viewer-backend.sealos-storage-manager.svc.cluster.local/internal/filebrowser-hook/verify"`) {
 		t.Fatalf("viewer.yaml missing derived backend verify URL:\n%s", viewerYAML)
 	}
 	if !strings.Contains(viewerYAML, `host_template: "pvc-viewer-{{ .PodSessionID }}.cloud.sealos.test"`) {
@@ -422,6 +422,17 @@ func TestDeployChartDerivesPublicHostsFromCloudDomain(t *testing.T) {
 	}
 	if strings.Contains(viewerYAML, "example.com") {
 		t.Fatalf("viewer.yaml contains placeholder domain:\n%s", viewerYAML)
+	}
+}
+
+func TestDeployChartAllowsBackendVerifyURLOverride(t *testing.T) {
+	t.Parallel()
+
+	viewerYAML := deployViewerYAML(t,
+		"--set", "backend.config.viewer.backendVerifyUrl=https://storage.cloud.sealos.test/internal/filebrowser-hook/verify",
+	)
+	if !strings.Contains(viewerYAML, `backend_verify_url: "https://storage.cloud.sealos.test/internal/filebrowser-hook/verify"`) {
+		t.Fatalf("viewer.yaml missing overridden backend verify URL:\n%s", viewerYAML)
 	}
 }
 
@@ -448,7 +459,7 @@ func TestDeployServiceAccountAllowsViewerPodCleanup(t *testing.T) {
 			}
 			break
 		}
-		if document.Kind == "ClusterRole" && document.Metadata.Name == "viewer-backend" {
+		if document.Kind == "ClusterRole" && document.Metadata.Name == "storage-manager-viewer-backend" {
 			clusterRole.Kind = document.Kind
 			clusterRole.Rules = document.Rules
 			break
@@ -491,7 +502,7 @@ func TestDeployStorageClassAdminManifest(t *testing.T) {
 			document.Metadata.Namespace == "sealos-storage-manager" {
 			foundSA = true
 		}
-		if document.Kind == "ClusterRole" && document.Metadata.Name == "storageclass-admin" {
+		if document.Kind == "ClusterRole" && document.Metadata.Name == "storage-manager-storageclass-admin" {
 			requireRule(t, document.Rules, "storage.k8s.io", "storageclasses", []string{"get", "list", "create", "update", "delete"})
 			foundStorageRole = true
 		}

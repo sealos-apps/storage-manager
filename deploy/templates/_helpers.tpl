@@ -41,6 +41,10 @@ app.kubernetes.io/instance: {{ .Release.Name | quote }}
 {{- .Values.backend.serviceAccount.name -}}
 {{- end -}}
 
+{{- define "sealos-storage-manager.backendClusterRoleName" -}}
+{{- printf "storage-manager-%s" .Values.backend.serviceAccount.name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
 {{- define "sealos-storage-manager.backendImage" -}}
 {{- printf "%s:%s" .Values.backend.image.repository (.Values.backend.image.tag | default .Chart.AppVersion) -}}
 {{- end -}}
@@ -88,5 +92,9 @@ app.kubernetes.io/instance: {{ .Release.Name | quote }}
 {{- end -}}
 
 {{- define "sealos-storage-manager.backendVerifyURL" -}}
-{{- include "sealos-storage-manager.webOrigin" . -}}/internal/filebrowser-hook/verify
+{{- if .Values.backend.config.viewer.backendVerifyUrl -}}
+{{- .Values.backend.config.viewer.backendVerifyUrl -}}
+{{- else -}}
+{{- include "sealos-storage-manager.backendURL" . -}}/internal/filebrowser-hook/verify
+{{- end -}}
 {{- end -}}

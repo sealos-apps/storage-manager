@@ -96,7 +96,11 @@ func (s *AuthService) IssueToken(
 		slog.String("pod_session_id", pod.ID),
 		slog.String("viewer_host", viewerHost(pod.ViewerURL)),
 	)
-	token, err := s.login.Login(loginCtx, pod.ViewerURL, viewer.ID, password)
+	loginURL := pod.InternalViewerURL
+	if loginURL == "" {
+		loginURL = pod.ViewerURL
+	}
+	token, err := s.login.Login(loginCtx, loginURL, viewer.ID, password)
 	finishLogin(err)
 	if err != nil {
 		s.recorder.ObserveFileBrowserLogin("error")

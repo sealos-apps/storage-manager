@@ -1,0 +1,22 @@
+{{- if .Values.desktopApp.create }}
+apiVersion: app.sealos.io/v1
+kind: App
+metadata:
+  name: {{ .Values.desktopApp.slug | quote }}
+  namespace: {{ .Values.desktopApp.namespace | quote }}
+  labels:
+    {{- include "sealos-storage-manager.labels" . | nindent 4 }}
+spec:
+  data:
+    desc: {{ .Values.desktopApp.desc | quote }}
+    url: {{ include "sealos-storage-manager.webOrigin" . | quote }}
+  displayType: {{ .Values.desktopApp.displayType | quote }}
+  i18n:
+    zh:
+      name: {{ .Values.desktopApp.i18n.zh.name | quote }}
+    zh-Hans:
+      name: {{ index .Values.desktopApp.i18n "zh-Hans" "name" | quote }}
+  icon: {{ printf "%s%s" (include "sealos-storage-manager.webOrigin" .) .Values.desktopApp.iconPath | quote }}
+  name: {{ .Values.desktopApp.name | quote }}
+  type: {{ .Values.desktopApp.type | quote }}
+{{- end }}

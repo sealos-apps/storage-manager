@@ -8,6 +8,7 @@ global:
   cloudPort: ""
   httpPort: ""
   disableHttps: false
+  certSecretName: wildcard-cert
 
 namespace:
   create: true
@@ -39,6 +40,7 @@ backend:
         - admin
       storageClassServiceAccountName: storageclass-admin
     viewer:
+      backendVerifyUrl: ""
       hookClientToken: replace-me
       filebrowser:
         image: filebrowser/filebrowser:v2.30.0
@@ -97,9 +99,33 @@ web:
   nginx:
     clientMaxBodySize: "0"
   publicHost: ""
+  ingress:
+    enabled: true
+    className: nginx
+    annotations: {}
+    path: /
+    pathType: Prefix
+    tls:
+      enabled: true
+      secretName: ""
 
 storageClassAdmin:
   create: true
   serviceAccountName: storageclass-admin
-  clusterRoleName: storageclass-admin
+  clusterRoleName: storage-manager-storageclass-admin
   roleName: viewer-backend-impersonate-storageclass-admin
+
+desktopApp:
+  create: false
+  namespace: app-system
+  slug: storage-manager
+  name: Storage Manager
+  desc: Storage Manager
+  displayType: normal
+  type: iframe
+  iconPath: /favicon.svg
+  i18n:
+    zh:
+      name: 存储管理
+    zh-Hans:
+      name: 存储管理
