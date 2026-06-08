@@ -105,7 +105,7 @@ jobs:
             PLATFORMS=linux/amd64
 
       - name: Scan backend image
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ghcr.io/${{ steps.meta.outputs.image_prefix }}-backend:sha-${{ steps.meta.outputs.short_sha }}
           format: sarif
@@ -120,7 +120,7 @@ jobs:
           category: trivy-backend
 
       - name: Scan web image
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ghcr.io/${{ steps.meta.outputs.image_prefix }}-web:sha-${{ steps.meta.outputs.short_sha }}
           format: sarif
