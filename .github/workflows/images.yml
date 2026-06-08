@@ -10,6 +10,9 @@ permissions:
   packages: write
   security-events: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -18,27 +21,37 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version-file: .go-version
           cache: true
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.12.3
-          run_install: false
 
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Enable PNPM
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.12.3 --activate
+
+      - name: Configure PNPM cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.local/share/pnpm/store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('web/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
 
       - name: Install Encore
         run: |
-          curl -L https://encore.dev/install.sh | bash
+          curl -L https://encore.dev/install.sh | bash -s -- "$(cat .encore-version)"
           echo "$HOME/.encore/bin" >> "$GITHUB_PATH"
 
       - name: Install Helm
-        uses: azure/setup-helm@v4
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      - name: Check tool versions
+        run: make check-go-version
 
       - name: Install web dependencies
         run: make web-install
