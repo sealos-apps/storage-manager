@@ -347,8 +347,11 @@ func TestCommittedHookScriptAcceptsSpacedJSON(t *testing.T) {
 		t.Fatalf("LoadFile(viewer.example.yaml) error = %v", err)
 	}
 	scriptPath := filepath.Join(t.TempDir(), "filebrowser-auth-hook.sh")
-	if err := os.WriteFile(scriptPath, []byte(cfg.Viewer.HookScript), 0o755); err != nil {
+	if err := os.WriteFile(scriptPath, []byte(cfg.Viewer.HookScript), 0o600); err != nil {
 		t.Fatalf("write hook script: %v", err)
+	}
+	if err := os.Chmod(scriptPath, 0o700); err != nil { //nolint:gosec // Test executes a temporary hook script.
+		t.Fatalf("chmod hook script: %v", err)
 	}
 	verify := responseServer(t, `{
   "filebrowser_hook_verification": {
@@ -381,26 +384,30 @@ func TestCommittedHookScriptAcceptsSpacedJSON(t *testing.T) {
 	}
 }
 
-func TestDeployConfigMapEmbedsValidViewerConfig(t *testing.T) {
+func TestDeployChartValuesEmbedValidViewerConfig(t *testing.T) {
 	t.Parallel()
 
 	root := repoRoot(t)
-	data, err := os.ReadFile(filepath.Join(root, "deploy", "configmap.yaml")) //nolint:gosec // Test reads a committed fixture.
+	data, err := os.ReadFile(filepath.Join(root, "deploy", "values.yaml")) //nolint:gosec // Test reads a committed fixture.
 	if err != nil {
-		t.Fatalf("read deploy configmap: %v", err)
+		t.Fatalf("read deploy values: %v", err)
 	}
-	var manifest struct {
-		Data map[string]string `yaml:"data"`
+	var values struct {
+		Backend struct {
+			Config struct {
+				ViewerYAML string `yaml:"viewerYaml"`
+			} `yaml:"config"`
+		} `yaml:"backend"`
 	}
-	if err := yaml.Unmarshal(data, &manifest); err != nil {
-		t.Fatalf("parse deploy configmap: %v", err)
+	if err := yaml.Unmarshal(data, &values); err != nil {
+		t.Fatalf("parse deploy values: %v", err)
 	}
-	viewerYAML := manifest.Data["viewer.yaml"]
+	viewerYAML := values.Backend.Config.ViewerYAML
 	if strings.TrimSpace(viewerYAML) == "" {
-		t.Fatal("deploy configmap missing viewer.yaml")
+		t.Fatal("deploy values missing backend.config.viewerYaml")
 	}
 	if _, err := Load([]byte(viewerYAML)); err != nil {
-		t.Fatalf("embedded viewer.yaml error = %v", err)
+		t.Fatalf("embedded deploy viewer.yaml error = %v", err)
 	}
 	for _, forbidden := range []string{
 		"namespace_allowlist",
@@ -416,11 +423,7 @@ func TestDeployConfigMapEmbedsValidViewerConfig(t *testing.T) {
 func TestDeployServiceAccountAllowsViewerPodCleanup(t *testing.T) {
 	t.Parallel()
 
-	root := repoRoot(t)
-	data, err := os.ReadFile(filepath.Join(root, "deploy", "service-account.yaml")) //nolint:gosec // Test reads a committed fixture.
-	if err != nil {
-		t.Fatalf("read deploy service account: %v", err)
-	}
+	data := renderDeployChart(t)
 	decoder := yaml.NewDecoder(strings.NewReader(string(data)))
 	var clusterRole struct {
 		Kind  string       `yaml:"kind"`
@@ -428,16 +431,19 @@ func TestDeployServiceAccountAllowsViewerPodCleanup(t *testing.T) {
 	}
 	for {
 		var document struct {
-			Kind  string       `yaml:"kind"`
+			Kind     string `yaml:"kind"`
+			Metadata struct {
+				Name string `yaml:"name"`
+			} `yaml:"metadata"`
 			Rules []deployRule `yaml:"rules"`
 		}
 		if err := decoder.Decode(&document); err != nil {
 			if err != io.EOF {
-				t.Fatalf("parse deploy service account: %v", err)
+				t.Fatalf("parse rendered deploy chart: %v", err)
 			}
 			break
 		}
-		if document.Kind == "ClusterRole" {
+		if document.Kind == "ClusterRole" && document.Metadata.Name == "viewer-backend" {
 			clusterRole.Kind = document.Kind
 			clusterRole.Rules = document.Rules
 			break
@@ -455,11 +461,7 @@ func TestDeployServiceAccountAllowsViewerPodCleanup(t *testing.T) {
 func TestDeployStorageClassAdminManifest(t *testing.T) {
 	t.Parallel()
 
-	root := repoRoot(t)
-	data, err := os.ReadFile(filepath.Join(root, "deploy", "storageclass-admin.yaml")) //nolint:gosec // Test reads a committed fixture.
-	if err != nil {
-		t.Fatalf("read deploy storageclass admin manifest: %v", err)
-	}
+	data := renderDeployChart(t)
 	decoder := yaml.NewDecoder(strings.NewReader(string(data)))
 	foundSA := false
 	foundStorageRole := false
@@ -496,6 +498,21 @@ func TestDeployStorageClassAdminManifest(t *testing.T) {
 	if !foundSA || !foundStorageRole || !foundImpersonateRole {
 		t.Fatalf("manifest found serviceAccount=%v storageRole=%v impersonateRole=%v", foundSA, foundStorageRole, foundImpersonateRole)
 	}
+}
+
+func renderDeployChart(t *testing.T) []byte {
+	t.Helper()
+
+	if _, err := exec.LookPath("helm"); err != nil {
+		t.Skipf("helm not installed: %v", err)
+	}
+	root := repoRoot(t)
+	cmd := exec.Command("helm", "template", "sealos-storage-manager", filepath.Join(root, "deploy"), "--namespace", "sealos-storage-manager") //nolint:gosec // Test renders committed chart path.
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("render deploy chart: %v\n%s", err, output)
+	}
+	return output
 }
 
 func requireRule(t *testing.T, rules []deployRule, apiGroup string, resource string, verbs []string) {
