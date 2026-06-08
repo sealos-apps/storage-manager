@@ -1,0 +1,6 @@
+apiVersion: v2
+name: sealos-storage-manager
+description: Temporary File Browser viewer sessions for Kubernetes PVCs.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

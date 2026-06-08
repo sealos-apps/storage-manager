@@ -1,0 +1,64 @@
+{{- if and .Values.rbac.create .Values.storageClassAdmin.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.storageClassAdmin.serviceAccountName | quote }}
+  namespace: {{ include "sealos-storage-manager.namespace" . | quote }}
+  labels:
+    {{- include "sealos-storage-manager.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Values.storageClassAdmin.clusterRoleName | quote }}
+  labels:
+    {{- include "sealos-storage-manager.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "create", "update", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Values.storageClassAdmin.clusterRoleName | quote }}
+  labels:
+    {{- include "sealos-storage-manager.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Values.storageClassAdmin.clusterRoleName | quote }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.storageClassAdmin.serviceAccountName | quote }}
+    namespace: {{ include "sealos-storage-manager.namespace" . | quote }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Values.storageClassAdmin.roleName | quote }}
+  namespace: {{ include "sealos-storage-manager.namespace" . | quote }}
+  labels:
+    {{- include "sealos-storage-manager.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    resourceNames: [{{ .Values.storageClassAdmin.serviceAccountName | quote }}]
+    verbs: ["impersonate"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Values.storageClassAdmin.roleName | quote }}
+  namespace: {{ include "sealos-storage-manager.namespace" . | quote }}
+  labels:
+    {{- include "sealos-storage-manager.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ .Values.storageClassAdmin.roleName | quote }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "sealos-storage-manager.backendServiceAccountName" . | quote }}
+    namespace: {{ include "sealos-storage-manager.namespace" . | quote }}
+{{- end }}

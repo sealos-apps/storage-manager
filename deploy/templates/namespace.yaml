@@ -1,0 +1,8 @@
+{{- if .Values.namespace.create }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ include "sealos-storage-manager.namespace" . | quote }}
+  labels:
+    {{- include "sealos-storage-manager.labels" . | nindent 4 }}
+{{- end }}

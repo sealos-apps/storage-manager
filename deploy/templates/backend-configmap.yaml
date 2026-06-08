@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.backend.configMapName | quote }}
+  namespace: {{ include "sealos-storage-manager.namespace" . | quote }}
+  labels:
+    {{- include "sealos-storage-manager.labels" . | nindent 4 }}
+data:
+  viewer.yaml: |
+{{ .Values.backend.config.viewerYaml | indent 4 }}

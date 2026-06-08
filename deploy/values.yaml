@@ -1,0 +1,172 @@
+nameOverride: ""
+fullnameOverride: ""
+
+namespace:
+  create: true
+  name: sealos-storage-manager
+
+rbac:
+  create: true
+
+backend:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/OWNER/REPO-backend
+    tag: latest
+    pullPolicy: IfNotPresent
+  serviceAccount:
+    create: true
+    name: viewer-backend
+  service:
+    name: viewer-backend
+    type: ClusterIP
+    port: 80
+    targetPort: http
+  containerPort: 8080
+  configMapName: viewer-backend-config
+  configMountPath: /app/config
+  config:
+    viewerYaml: |
+      admin:
+        # Sealos user IDs allowed to manage cluster StorageClasses. A value like
+        # "admin" matches the Kubernetes username
+        # "system:serviceaccount:user-system:admin" returned by `kubectl auth whoami`.
+        allowed_user_ids:
+          - admin
+        # ServiceAccount name in the same namespace as the backend deployment. The
+        # backend impersonates this account for StorageClass write operations.
+        storage_class_service_account_name: storageclass-admin
+
+      # Replace every example value before deploying.
+      viewer:
+        backend_verify_url: https://storage-manager.example.com/internal/filebrowser-hook/verify
+        hook_client_token: replace-me
+        hook_script: |
+          #!/bin/sh
+          set -eu
+
+          fail() {
+            echo "hook.action=block"
+            exit 0
+          }
+
+          case "${PASSWORD:-}" in
+            *.*) ;;
+            *) fail ;;
+          esac
+
+          case "${USERNAME:-}" in
+            vs_[A-Za-z0-9_-]*) ;;
+            *) fail ;;
+          esac
+
+          AUTH_REQUEST_ID="${PASSWORD%%.*}"
+          SECRET="${PASSWORD#*.}"
+          case "$AUTH_REQUEST_ID" in
+            ar_[A-Za-z0-9_-]*) ;;
+            *) fail ;;
+          esac
+          PASSWORD_HASH="$(printf "%s" "$SECRET" | sha256sum | awk '{print $1}')"
+
+          case "${POD_SESSION_ID:-}" in
+            ps_[A-Za-z0-9_-]*) ;;
+            *) fail ;;
+          esac
+
+          BODY="$(printf '{"pod_session_id":"%s","viewer_pod_name":"%s","username":"%s","auth_request_id":"%s","password_hash":"%s"}' \
+            "$POD_SESSION_ID" \
+            "$VIEWER_POD_NAME" \
+            "$USERNAME" \
+            "$AUTH_REQUEST_ID" \
+            "$PASSWORD_HASH")"
+
+          RESPONSE="$(curl -fsS --max-time 2 \
+            -H "Authorization: Bearer ${HOOK_CLIENT_TOKEN:-}" \
+            -H "Content-Type: application/json" \
+            -d "$BODY" \
+            "${BACKEND_VERIFY_URL:-}")" || fail
+
+          echo "$RESPONSE" | grep -q '"allow"[[:space:]]*:[[:space:]]*true' || fail
+
+          echo "hook.action=auth"
+          echo "user.scope=/"
+          echo "user.hideDotfiles=false"
+          echo "user.perm.admin=false"
+          echo "user.perm.execute=false"
+          echo "user.perm.share=false"
+          echo "user.perm.download=true"
+          if echo "$RESPONSE" | grep -q '"create"[[:space:]]*:[[:space:]]*true'; then
+            echo "user.perm.create=true"
+            echo "user.perm.rename=true"
+            echo "user.perm.modify=true"
+            echo "user.perm.delete=true"
+          else
+            echo "user.perm.create=false"
+            echo "user.perm.rename=false"
+            echo "user.perm.modify=false"
+            echo "user.perm.delete=false"
+          fi
+        filebrowser:
+          image: filebrowser/filebrowser:v2.30.0
+          binary_path: /filebrowser
+          port: 8080
+          token_ttl: 15m
+          login_timeout: 2s
+        pod:
+          service_account_name: ""
+          mount_path: /srv
+          database_path: /tmp/filebrowser.db
+          cpu_request: 50m
+          memory_request: 64Mi
+          cpu_limit: 500m
+          memory_limit: 512Mi
+        service:
+          type: ClusterIP
+          port: 80
+        ingress:
+          class_name: nginx
+          host_template: viewer-{{ .PodSessionID }}.example.com
+          tls_secret_name: ""
+
+      observability:
+        service_name: sealos-storage-manager-viewer
+        logs:
+          exporter: encore
+          level: info
+        traces:
+          exporter: none
+          endpoint: ""
+          sample_ratio: 1
+          batch_timeout: 5s
+          export_timeout: 5s
+
+      debug:
+        enabled: false
+        forced_namespace: ""
+
+web:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/OWNER/REPO-web
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    name: viewer-web
+    type: ClusterIP
+    port: 80
+    targetPort: http
+  containerPort: 8080
+  configMapName: viewer-web-config
+  runtimeConfig:
+    apiBaseUrl: /api
+    fileUploadTusThresholdBytes: 33554432
+    fileUploadTusChunkBytes: 8388608
+    fileUploadTusRetryCount: 5
+  nginx:
+    clientMaxBodySize: "0"
+
+storageClassAdmin:
+  create: true
+  serviceAccountName: storageclass-admin
+  clusterRoleName: storageclass-admin
+  roleName: viewer-backend-impersonate-storageclass-admin
