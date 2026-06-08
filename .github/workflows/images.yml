@@ -1,0 +1,135 @@
+name: images
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.3
+          run_install: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install Encore
+        run: |
+          curl -L https://encore.dev/install.sh | bash
+          echo "$HOME/.encore/bin" >> "$GITHUB_PATH"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install web dependencies
+        run: make web-install
+
+      - name: Verify source
+        run: make verify
+
+      - name: Verify deploy chart
+        run: make deploy-verify
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tags
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          owner="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          repo="$(basename "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          image_prefix="${owner}/${repo}"
+          short_sha="${GITHUB_SHA::12}"
+
+          tags=("sha-${short_sha}")
+          if [[ "${GITHUB_REF_TYPE}" == "branch" && "${GITHUB_REF_NAME}" == "main" ]]; then
+            tags+=("main")
+          fi
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            tags+=("${version}")
+            IFS='.' read -r major minor patch <<< "${version}"
+            if [[ -n "${major:-}" && -n "${minor:-}" ]]; then
+              tags+=("${major}.${minor}")
+            fi
+            if [[ -n "${major:-}" ]]; then
+              tags+=("${major}")
+            fi
+          fi
+
+          {
+            echo "image_prefix=${image_prefix}"
+            echo "short_sha=${short_sha}"
+            echo "tags<<EOF"
+            printf '%s\n' "${tags[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push images
+        shell: bash
+        run: |
+          set -euo pipefail
+          tags="$(tr '\n' ' ' <<< "${{ steps.meta.outputs.tags }}")"
+          make push-images \
+            REGISTRY=ghcr.io \
+            IMAGE_PREFIX="${{ steps.meta.outputs.image_prefix }}" \
+            TAGS="$tags" \
+            PLATFORMS=linux/amd64
+
+      - name: Scan backend image
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: ghcr.io/${{ steps.meta.outputs.image_prefix }}-backend:sha-${{ steps.meta.outputs.short_sha }}
+          format: sarif
+          output: trivy-backend.sarif
+          severity: CRITICAL,HIGH
+
+      - name: Upload backend scan
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: trivy-backend.sarif
+          category: trivy-backend
+
+      - name: Scan web image
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: ghcr.io/${{ steps.meta.outputs.image_prefix }}-web:sha-${{ steps.meta.outputs.short_sha }}
+          format: sarif
+          output: trivy-web.sarif
+          severity: CRITICAL,HIGH
+
+      - name: Upload web scan
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: trivy-web.sarif
+          category: trivy-web
