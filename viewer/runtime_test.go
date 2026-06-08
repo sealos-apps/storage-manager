@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nixieboluo/sealos-storage-manager/internal/config"
 	"github.com/nixieboluo/sealos-storage-manager/internal/observability"
@@ -163,6 +164,61 @@ func TestWrapKubernetesTransportInjectsTraceContext(t *testing.T) {
 
 	if traceparent == "" {
 		t.Fatal("traceparent header was not injected")
+	}
+}
+
+func TestNewRuntimeStartsCleanupLoopWithPurgeInterval(t *testing.T) {
+	dir := t.TempDir()
+	namespacePath := filepath.Join(dir, "namespace")
+	if err := os.WriteFile(namespacePath, []byte("backend-ns\n"), 0o600); err != nil {
+		t.Fatalf("write namespace: %v", err)
+	}
+	oldNamespacePath := serviceAccountNamespacePath
+	serviceAccountNamespacePath = namespacePath
+	t.Cleanup(func() {
+		serviceAccountNamespacePath = oldNamespacePath
+	})
+
+	kubeconfigPath := filepath.Join(dir, "management.kubeconfig.yaml")
+	if err := os.WriteFile(kubeconfigPath, []byte(testKubeconfig), 0o600); err != nil {
+		t.Fatalf("write kubeconfig: %v", err)
+	}
+
+	var gotInterval time.Duration
+	cancelCalled := false
+	oldStart := startRuntimeCleanupLoop
+	startRuntimeCleanupLoop = func(
+		_ context.Context,
+		interval time.Duration,
+		_ cleanupRunFunc,
+		_ cleanupErrorFunc,
+	) context.CancelFunc {
+		gotInterval = interval
+		return func() {
+			cancelCalled = true
+		}
+	}
+	t.Cleanup(func() {
+		startRuntimeCleanupLoop = oldStart
+	})
+
+	cfg := config.Default()
+	cfg.Cache.PurgeInterval = 17 * time.Second
+	cfg.Observability.Logs.Exporter = "discard"
+	cfg.Debug.Enabled = true
+	cfg.Debug.ManagementKubeconfigPath = kubeconfigPath
+	runtime, err := newRuntimeFromConfig(cfg)
+	if err != nil {
+		t.Fatalf("newRuntimeFromConfig() error = %v", err)
+	}
+	if gotInterval != cfg.Cache.PurgeInterval {
+		t.Fatalf("cleanup interval = %s, want %s", gotInterval, cfg.Cache.PurgeInterval)
+	}
+	if err := runtime.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown() error = %v", err)
+	}
+	if !cancelCalled {
+		t.Fatal("cleanup loop cancel was not called")
 	}
 }
 

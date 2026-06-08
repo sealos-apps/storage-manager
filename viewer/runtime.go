@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"encore.dev/cron"
 	"github.com/nixieboluo/sealos-storage-manager/internal/config"
 	"github.com/nixieboluo/sealos-storage-manager/internal/filebrowser"
 	"github.com/nixieboluo/sealos-storage-manager/internal/kube"
@@ -27,17 +26,13 @@ import (
 )
 
 var runtimeOnce sync.Once
-var runtimeCleanup *session.CleanupService
-var _ = cron.NewJob("viewer-cleanup", cron.JobConfig{
-	Title:    "Clean up idle File Browser viewer sessions",
-	Every:    1 * cron.Minute,
-	Endpoint: CleanupViewerState,
-})
+var startRuntimeCleanupLoop = startCleanupLoop
 
 type Runtime struct {
 	Handler  *Handler
 	cleanup  *session.CleanupService
 	recorder *observability.Recorder
+	cancel   context.CancelFunc
 }
 
 func NewRuntime(configPath string) (*Runtime, error) {
@@ -56,6 +51,9 @@ func (r *Runtime) Cleanup(ctx context.Context) error {
 }
 
 func (r *Runtime) Shutdown(ctx context.Context) error {
+	if r != nil && r.cancel != nil {
+		r.cancel()
+	}
 	if r == nil || r.recorder == nil {
 		return nil
 	}
@@ -70,7 +68,6 @@ func runtimeHandler() *Handler {
 			return
 		}
 		defaultHandler = runtime.Handler
-		runtimeCleanup = runtime.cleanup
 	})
 	if defaultHandler != nil {
 		return defaultHandler
@@ -125,6 +122,10 @@ func newRuntimeFromConfig(cfg config.Config) (*Runtime, error) {
 	viewers := session.NewViewerService(cfg, store, kubeClient, pods, auth, recorder)
 	storageClasses := session.NewStorageClassService(adminKubeClient, recorder)
 	cleanup := session.NewCleanupService(cfg, store, pods, recorder)
+	// This in-process scheduler assumes a single backend replica. If the backend
+	// becomes horizontally scaled, replace it with leader election or a Kubernetes
+	// CronJob so multiple replicas do not run cleanup concurrently.
+	cancelCleanup := startRuntimeCleanupLoop(context.Background(), cfg.Cache.PurgeInterval, cleanup.RunOnce, logCleanupError)
 	handler := NewHandler(
 		viewers,
 		pods,
@@ -140,6 +141,7 @@ func newRuntimeFromConfig(cfg config.Config) (*Runtime, error) {
 		Handler:  handler,
 		cleanup:  cleanup,
 		recorder: recorder,
+		cancel:   cancelCleanup,
 	}, nil
 }
 
@@ -233,21 +235,4 @@ func managementRESTConfig(cfg config.Config) (*rest.Config, error) {
 		return nil, fmt.Errorf("loading management kubeconfig: %w", err)
 	}
 	return restConfig, nil
-}
-
-//encore:api private
-func CleanupViewerState(ctx context.Context) error {
-	runtimeOnce.Do(func() {
-		runtime, err := NewRuntime("")
-		if err != nil {
-			slog.Error("viewer runtime unavailable", "error", err)
-			return
-		}
-		defaultHandler = runtime.Handler
-		runtimeCleanup = runtime.cleanup
-	})
-	if runtimeCleanup == nil {
-		return nil
-	}
-	return runtimeCleanup.RunOnce(ctx)
 }
