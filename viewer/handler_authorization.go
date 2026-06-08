@@ -15,13 +15,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-func requirePrincipalNamespace(namespace string, principal *authn.Principal) *apienv.Error {
-	if namespace == "" || namespace == principal.Namespace {
-		return nil
-	}
-	return apienv.NewError(403, apienv.CodePVCAccessDenied, "Namespace must match kubeconfig context namespace", nil)
-}
-
 func (h *Handler) resolvePVCOperationContext(
 	ctx context.Context,
 	principal *authn.Principal,

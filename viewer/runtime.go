@@ -182,7 +182,7 @@ func storageClassAdminUsername(namespace string, serviceAccountName string) stri
 var serviceAccountNamespacePath = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
 
 func backendNamespace() (string, error) {
-	body, err := os.ReadFile(serviceAccountNamespacePath) //nolint:gosec // Kubernetes service account namespace file is fixed.
+	body, err := os.ReadFile(serviceAccountNamespacePath)
 	if err != nil {
 		return "", fmt.Errorf("reading backend service account namespace: %w", err)
 	}
