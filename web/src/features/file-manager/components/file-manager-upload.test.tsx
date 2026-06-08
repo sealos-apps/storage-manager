@@ -52,7 +52,6 @@ describe('fileManagerUpload', () => {
 				currentPath="/"
 				onBackToVolumes={vi.fn()}
 				onPathChange={vi.fn()}
-				onReconnect={vi.fn()}
 				onRefreshSession={vi.fn()}
 				podSessionID="ps-1"
 				pvcName="data"

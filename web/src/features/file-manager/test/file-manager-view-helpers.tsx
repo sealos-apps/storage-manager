@@ -101,7 +101,6 @@ export function renderFileManager(
 			onBackToVolumes={vi.fn()}
 			onManualClose={options.onManualClose}
 			onPathChange={options.onPathChange ?? vi.fn()}
-			onReconnect={vi.fn()}
 			onRefreshSession={options.onRefreshSession ?? vi.fn()}
 			podSessionID={options.podSessionID}
 			pvcName="data"

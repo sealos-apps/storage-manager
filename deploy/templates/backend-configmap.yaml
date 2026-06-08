@@ -103,7 +103,7 @@ data:
         class_name: {{ .Values.backend.config.viewer.ingress.className | quote }}
         host_template: {{ include "sealos-storage-manager.viewerHostTemplate" . | quote }}
         public_scheme: {{ include "sealos-storage-manager.scheme" . | quote }}
-        tls_secret_name: {{ .Values.backend.config.viewer.ingress.tlsSecretName | quote }}
+        tls_secret_name: {{ include "sealos-storage-manager.viewerTLSSecretName" . | quote }}
 
     observability:
       service_name: {{ .Values.backend.config.observability.serviceName | quote }}

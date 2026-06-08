@@ -218,10 +218,6 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 		))
 	}, [])
 
-	const handleReconnect = useCallback((error?: unknown) => {
-		void recoverRef.current?.(error)
-	}, [])
-
 	const handleManualClose = useCallback((kind: ManualCloseKind) => {
 		registerManualCloseRef.current?.(kind)
 	}, [])
@@ -363,7 +359,6 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 											setCurrentPath(path)
 										}
 									}}
-									onReconnect={handleReconnect}
 									onRefreshSession={refreshActiveSession}
 									podSessionID={viewerSession?.pod_session_id ?? null}
 									pvcName={selectedPVC?.name}

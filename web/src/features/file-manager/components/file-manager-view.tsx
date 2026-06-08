@@ -13,7 +13,7 @@ import {
 	ArrowLeft,
 	RefreshCw,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -54,7 +54,6 @@ interface FileManagerViewProps {
 	onBackToVolumes: () => void
 	onManualClose?: (kind: ManualCloseKind) => void
 	onPathChange: (path: string) => void
-	onReconnect: (error?: unknown) => void
 	onRefreshSession: () => void
 	podSessionID?: string | null
 	pvcName?: string
@@ -102,7 +101,6 @@ export function FileManagerView({
 	onBackToVolumes,
 	onManualClose,
 	onPathChange,
-	onReconnect,
 	onRefreshSession,
 	podSessionID,
 	pvcName,
@@ -167,12 +165,6 @@ export function FileManagerView({
 	const operationsDisabled = !canUseFiles || fileQuery.isFetching || hasPendingBranches(branches)
 	const showOverlay = canShowFileList && (fileQuery.isFetching || sessionCapability.kind === 'viewer-reconnecting')
 	const visiblePath = fileQuery.data?.path ?? currentPath
-
-	useEffect(() => {
-		if (fileQuery.error) {
-			onReconnect(fileQuery.error)
-		}
-	}, [fileQuery.error, onReconnect])
 
 	const toggleFolder = useCallback((entry: FileEntry) => {
 		if (!session || operationsDisabled) {

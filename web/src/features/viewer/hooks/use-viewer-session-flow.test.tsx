@@ -184,6 +184,38 @@ describe('useViewerSessionFlow', () => {
 		expect(issueViewerToken).toHaveBeenCalledTimes(2)
 	})
 
+	it('does not recreate sessions when File Browser token issuance fails', async () => {
+		const createViewerSession = vi
+			.fn()
+			.mockResolvedValueOnce(viewerSessionFixture({ id: 'vs_1', status: 'ready', token_ready: true }))
+		const issueViewerToken = vi.fn().mockRejectedValue(new ViewerApiError({
+			code: 'FILEBROWSER_LOGIN_FAILED',
+			message: 'filebrowser login returned status 502',
+			status: 502,
+		}))
+		const api = createFakeViewerAPI({
+			createViewerSession,
+			issueViewerToken,
+		})
+
+		const { result } = renderHookWithProviders(() =>
+			useViewerSessionFlow({ api }),
+		)
+
+		await act(async () => {
+			await result.current.start({
+				namespace: 'default',
+				pvcName: 'data',
+				uid: 'uid',
+			})
+		})
+
+		await vi.waitFor(() => expect(result.current.status).toBe('failed'))
+		expect(result.current.error?.code).toBe('FILEBROWSER_LOGIN_FAILED')
+		expect(createViewerSession).toHaveBeenCalledTimes(1)
+		expect(issueViewerToken).toHaveBeenCalledTimes(1)
+	})
+
 	it('does not recover after a manual close is registered', async () => {
 		const createViewerSession = vi.fn().mockResolvedValue(viewerSessionFixture({ id: 'vs_1', status: 'creating' }))
 		const api = createFakeViewerAPI({ createViewerSession })

@@ -91,6 +91,14 @@ app.kubernetes.io/instance: {{ .Release.Name | quote }}
 {{- printf "%s-{{ .PodSessionID }}.%s" .Values.backend.config.viewer.ingress.hostPrefix .Values.global.cloudDomain -}}
 {{- end -}}
 
+{{- define "sealos-storage-manager.viewerTLSSecretName" -}}
+{{- if .Values.backend.config.viewer.ingress.tlsSecretName -}}
+{{- .Values.backend.config.viewer.ingress.tlsSecretName -}}
+{{- else if not (eq (toString .Values.global.disableHttps) "true") -}}
+{{- .Values.global.certSecretName -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "sealos-storage-manager.backendVerifyURL" -}}
 {{- if .Values.backend.config.viewer.backendVerifyUrl -}}
 {{- .Values.backend.config.viewer.backendVerifyUrl -}}

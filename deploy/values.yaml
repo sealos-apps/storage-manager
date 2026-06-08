@@ -62,8 +62,7 @@ backend:
       ingress:
         className: nginx
         hostPrefix: viewer
-        # Public viewer URLs follow global.disableHttps through the Helm
-        # template. TLS can terminate before the per-viewer Ingress.
+        # Empty uses global.certSecretName when global.disableHttps is false.
         tlsSecretName: ""
     observability:
       serviceName: sealos-storage-manager-viewer

@@ -310,7 +310,6 @@ describe('fileManagerView', () => {
 				currentPath="/"
 				onBackToVolumes={vi.fn()}
 				onPathChange={vi.fn()}
-				onReconnect={vi.fn()}
 				onRefreshSession={vi.fn()}
 				pvcName="data"
 				session={session}
@@ -326,7 +325,6 @@ describe('fileManagerView', () => {
 				currentPath="/docs"
 				onBackToVolumes={vi.fn()}
 				onPathChange={vi.fn()}
-				onReconnect={vi.fn()}
 				onRefreshSession={vi.fn()}
 				pvcName="data"
 				session={session}
@@ -359,7 +357,6 @@ describe('fileManagerView', () => {
 				currentPath="/"
 				onBackToVolumes={vi.fn()}
 				onPathChange={vi.fn()}
-				onReconnect={vi.fn()}
 				onRefreshSession={vi.fn()}
 				pvcName="data"
 				session={session}
@@ -377,7 +374,6 @@ describe('fileManagerView', () => {
 				currentPath="/"
 				onBackToVolumes={vi.fn()}
 				onPathChange={vi.fn()}
-				onReconnect={vi.fn()}
 				onRefreshSession={vi.fn()}
 				pvcName="data"
 				session={session}
@@ -411,6 +407,7 @@ describe('fileManagerView', () => {
 
 		expect(await screen.findByText(/file list unavailable/i)).toBeInTheDocument()
 		expect(screen.getByText('list failed')).toBeInTheDocument()
+		expect(list).toHaveBeenCalledTimes(1)
 
 		await user.click(screen.getByRole('button', { name: /^retry$/i }))
 

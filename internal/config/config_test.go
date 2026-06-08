@@ -439,6 +439,37 @@ func TestDeployChartDerivesPublicHostsFromCloudDomain(t *testing.T) {
 	}
 }
 
+func TestDeployChartEnablesViewerIngressTLSForHTTPS(t *testing.T) {
+	t.Parallel()
+
+	viewerYAML := deployViewerYAML(t,
+		"--set", "global.cloudDomain=192.168.12.38.nip.io",
+		"--set", "global.cloudPort=443",
+		"--set", "global.certSecretName=wildcard-cert",
+	)
+	if !strings.Contains(viewerYAML, `public_scheme: "https"`) {
+		t.Fatalf("viewer.yaml missing https public scheme:\n%s", viewerYAML)
+	}
+	if !strings.Contains(viewerYAML, `tls_secret_name: "wildcard-cert"`) {
+		t.Fatalf("viewer.yaml missing viewer ingress TLS secret:\n%s", viewerYAML)
+	}
+}
+
+func TestDeployChartLeavesViewerIngressTLSDisabledForHTTP(t *testing.T) {
+	t.Parallel()
+
+	viewerYAML := deployViewerYAML(t,
+		"--set", "global.disableHttps=true",
+		"--set", "global.certSecretName=wildcard-cert",
+	)
+	if !strings.Contains(viewerYAML, `public_scheme: "http"`) {
+		t.Fatalf("viewer.yaml missing http public scheme:\n%s", viewerYAML)
+	}
+	if !strings.Contains(viewerYAML, `tls_secret_name: ""`) {
+		t.Fatalf("viewer.yaml should not configure viewer ingress TLS for HTTP:\n%s", viewerYAML)
+	}
+}
+
 func TestDeployChartAllowsBackendVerifyURLOverride(t *testing.T) {
 	t.Parallel()
 
