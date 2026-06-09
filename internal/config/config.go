@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -58,6 +59,7 @@ type FileBrowserConfig struct {
 	Port         int32         `yaml:"port"`
 	TokenTTL     time.Duration `yaml:"token_ttl"`
 	LoginTimeout time.Duration `yaml:"login_timeout"`
+	LoginURLMode string        `yaml:"login_url_mode"`
 }
 
 type PodConfig struct {
@@ -153,10 +155,15 @@ func Load(data []byte) (Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parsing config yaml: %w", err)
 	}
+	cfg.Normalize()
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+func (cfg *Config) Normalize() {
+	cfg.Viewer.FileBrowser.LoginURLMode = strings.ToLower(strings.TrimSpace(cfg.Viewer.FileBrowser.LoginURLMode))
 }
 
 func Default() Config {
@@ -170,6 +177,9 @@ func Default() Config {
 		Viewer: ViewerConfig{
 			FileManagement: FileManagementConfig{
 				Enabled: true,
+			},
+			FileBrowser: FileBrowserConfig{
+				LoginURLMode: "internal",
 			},
 		},
 		Sessions: SessionsConfig{
@@ -241,6 +251,9 @@ func (cfg Config) Validate() error {
 	}
 	if cfg.Viewer.FileBrowser.LoginTimeout <= 0 {
 		problems = append(problems, "viewer.filebrowser.login_timeout must be positive")
+	}
+	if !slices.Contains([]string{"internal", "public"}, strings.TrimSpace(cfg.Viewer.FileBrowser.LoginURLMode)) {
+		problems = append(problems, "viewer.filebrowser.login_url_mode must be one of internal, public")
 	}
 	if strings.TrimSpace(cfg.Viewer.Pod.MountPath) == "" {
 		problems = append(problems, "viewer.pod.mount_path is required")

@@ -48,6 +48,7 @@ backend:
         port: 8080
         tokenTtl: 15m
         loginTimeout: 2s
+        loginUrlMode: internal
       fileManagement:
         enabled: true
       pod:

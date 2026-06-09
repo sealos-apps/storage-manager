@@ -96,10 +96,7 @@ func (s *AuthService) IssueToken(
 		slog.String("pod_session_id", pod.ID),
 		slog.String("viewer_host", viewerHost(pod.ViewerURL)),
 	)
-	loginURL := pod.InternalViewerURL
-	if loginURL == "" {
-		loginURL = pod.ViewerURL
-	}
+	loginURL := s.fileBrowserLoginURL(pod)
 	token, err := s.login.Login(loginCtx, loginURL, viewer.ID, password)
 	finishLogin(err)
 	if err != nil {
@@ -130,6 +127,16 @@ func (s *AuthService) IssueToken(
 		TokenType:       "Bearer",
 		ExpiresAt:       expiresAt,
 	}, nil
+}
+
+func (s *AuthService) fileBrowserLoginURL(pod *domain.PodSession) string {
+	if s.cfg.Viewer.FileBrowser.LoginURLMode == "public" {
+		return pod.ViewerURL
+	}
+	if pod.InternalViewerURL != "" {
+		return pod.InternalViewerURL
+	}
+	return pod.ViewerURL
 }
 
 func (s *AuthService) VerifyHook(input HookVerifyInput) domain.FileBrowserHookVerification {

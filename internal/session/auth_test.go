@@ -70,6 +70,31 @@ func TestIssueTokenCreatesOneTimeAuthRequestAndTokenRecord(t *testing.T) {
 	}
 }
 
+func TestIssueTokenUsesPublicViewerURLWhenConfigured(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	cfg.Viewer.FileBrowser.LoginURLMode = "public"
+	store := state.New(cfg.Cache)
+	login := &fakeLogin{token: "fb-token"}
+	auth := NewAuthService(cfg, store, login, observability.MustNew(cfg.Observability, nil))
+	auth.now = fixedNow
+	viewer := &domain.ViewerSession{ID: "vs_1", Permission: domain.ModeReadWrite}
+	pod := &domain.PodSession{
+		ID:                "ps_1",
+		ViewerURL:         "https://viewer.example.test",
+		InternalViewerURL: "http://viewer-ps-1.default.svc.cluster.local:80",
+		Status:            domain.PodStatusReady,
+	}
+
+	if _, err := auth.IssueToken(t.Context(), viewer, pod); err != nil {
+		t.Fatalf("IssueToken() error = %v", err)
+	}
+	if login.viewerURL != "https://viewer.example.test" {
+		t.Fatalf("login viewer URL = %q, want public URL", login.viewerURL)
+	}
+}
+
 func TestIssueTokenMapsFileBrowserLoginFailure(t *testing.T) {
 	t.Parallel()
 

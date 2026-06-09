@@ -72,6 +72,7 @@ viewer:
     port: 8080
     token_ttl: 15m
     login_timeout: 2s
+    login_url_mode: internal
   file_management:
     enabled: true
   pod:

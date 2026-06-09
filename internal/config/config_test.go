@@ -65,6 +65,7 @@ viewer:
     port: 8081
     token_ttl: 20m
     login_timeout: 3s
+    login_url_mode: public
   pod:
     mount_path: /data
     database_path: /tmp/fb.db
@@ -110,6 +111,9 @@ admin:
 	}
 	if cfg.Viewer.FileBrowser.TokenTTL != 20*time.Minute {
 		t.Fatalf("token ttl = %s", cfg.Viewer.FileBrowser.TokenTTL)
+	}
+	if cfg.Viewer.FileBrowser.LoginURLMode != "public" {
+		t.Fatalf("login url mode = %q", cfg.Viewer.FileBrowser.LoginURLMode)
 	}
 	if !cfg.Debug.Enabled {
 		t.Fatal("debug.enabled = false")
@@ -208,6 +212,16 @@ func TestLoadRejectsInvalidConfig(t *testing.T) {
 				"    host_template: viewer-{{ .PodSessionID }}.example.test\n    public_scheme: ftp\n",
 			),
 			want: "viewer.ingress.public_scheme",
+		},
+		{
+			name: "bad filebrowser login url mode",
+			body: replaceConfig(
+				t,
+				validConfigYAML,
+				"    login_timeout: 2s\n",
+				"    login_timeout: 2s\n    login_url_mode: external\n",
+			),
+			want: "viewer.filebrowser.login_url_mode",
 		},
 		{
 			name: "bad log exporter",
