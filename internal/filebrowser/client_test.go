@@ -2,6 +2,7 @@ package filebrowser
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -47,6 +48,47 @@ func TestLoginToken(t *testing.T) {
 				t.Fatalf("loginToken() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestLoginSendsCredentialsAsFileBrowserJSON(t *testing.T) {
+	t.Parallel()
+
+	var path string
+	var body []byte
+	client := &Client{httpClient: &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			path = req.URL.Path
+			data, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatalf("read request body: %v", err)
+			}
+			body = data
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{"token":"jwt-token"}`)),
+				Request:    req,
+			}, nil
+		}),
+	}}
+
+	token, err := client.Login(context.Background(), "http://filebrowser.example/", "viewer", "secret")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	if token != "jwt-token" {
+		t.Fatalf("token = %q", token)
+	}
+	if path != "/api/login" {
+		t.Fatalf("path = %q", path)
+	}
+	var request map[string]string
+	if err := json.Unmarshal(body, &request); err != nil {
+		t.Fatalf("decode request body: %v", err)
+	}
+	if request["username"] != "viewer" || request["password"] != "secret" {
+		t.Fatalf("request body = %#v", request)
 	}
 }
 

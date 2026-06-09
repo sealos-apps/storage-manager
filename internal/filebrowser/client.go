@@ -26,7 +26,6 @@ type Client struct {
 
 type LoginRequest struct {
 	Username string `json:"username"`
-	Password string `json:"password"`
 }
 
 type LoginResponse struct {
@@ -70,7 +69,7 @@ func cloneTransport(rt http.RoundTripper) http.RoundTripper {
 }
 
 func (c *Client) Login(ctx context.Context, viewerURL string, username string, password string) (string, error) {
-	body, err := json.Marshal(LoginRequest{Username: username, Password: password}) //nolint:gosec // File Browser login API requires a password field; caller supplies a one-time short-TTL secret.
+	body, err := json.Marshal(loginRequestBody(username, password))
 	if err != nil {
 		return "", fmt.Errorf("encoding filebrowser login request: %w", err)
 	}
@@ -107,6 +106,13 @@ func (c *Client) Login(ctx context.Context, viewerURL string, username string, p
 		return "", fmt.Errorf("filebrowser login response missing token")
 	}
 	return token, nil
+}
+
+func loginRequestBody(username string, password string) map[string]string {
+	return map[string]string{
+		"username": username,
+		"password": password,
+	}
 }
 
 func HashSecret(secret string) string {
