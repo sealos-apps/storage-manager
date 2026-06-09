@@ -106,6 +106,7 @@ type PVC struct {
 	CapacityBytes    int64            `json:"capacity_bytes"`
 	Capacity         string           `json:"capacity"`
 	AccessModes      []string         `json:"access_modes"`
+	StorageClassName string           `json:"storage_class_name"`
 	Mounted          bool             `json:"mounted"`
 	MountedPods      []MountedPod     `json:"mounted_pods"`
 	ViewerSupported  bool             `json:"viewer_supported"`
@@ -130,6 +131,9 @@ type StorageClass struct {
 	VisibleInCreate          bool     `json:"visible_in_create"`
 	AllowedAccessModes       []string `json:"allowed_access_modes"`
 	AnnotationStatus         string   `json:"annotation_status"`
+	ManagedByStorageManager  bool     `json:"managed_by_storage_manager"`
+	DeleteBlockedReason      string   `json:"delete_blocked_reason"`
+	InUsePVCCount            int      `json:"in_use_pvc_count"`
 }
 
 type PVCMountInfo struct {

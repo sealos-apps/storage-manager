@@ -88,6 +88,8 @@ data:
         port: {{ .Values.backend.config.viewer.filebrowser.port }}
         token_ttl: {{ .Values.backend.config.viewer.filebrowser.tokenTtl | quote }}
         login_timeout: {{ .Values.backend.config.viewer.filebrowser.loginTimeout | quote }}
+      file_management:
+        enabled: {{ .Values.backend.config.viewer.fileManagement.enabled }}
       pod:
         service_account_name: {{ .Values.backend.config.viewer.pod.serviceAccountName | quote }}
         mount_path: {{ .Values.backend.config.viewer.pod.mountPath | quote }}

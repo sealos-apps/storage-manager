@@ -1,5 +1,6 @@
 interface ImportMetaEnv {
 	readonly VITE_API_BASE_URL?: string
+	readonly VITE_DEV_DISABLE_SEALOS_DESKTOP_SDK?: string
 	readonly VITE_DEV_KUBECONFIG?: string
 }
 
@@ -9,6 +10,7 @@ interface ImportMeta {
 
 interface SealosStorageManagerRuntimeConfig {
 	readonly apiBaseUrl?: string
+	readonly forcedLanguage?: string
 	readonly fileUploadTusChunkBytes?: number | string
 	readonly fileUploadTusRetryCount?: number | string
 	readonly fileUploadTusThresholdBytes?: number | string

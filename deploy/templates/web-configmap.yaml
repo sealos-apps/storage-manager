@@ -9,6 +9,7 @@ data:
   runtime-config.js: |
     window.__SEALOS_STORAGE_MANAGER_CONFIG__ = {
       apiBaseUrl: {{ .Values.web.runtimeConfig.apiBaseUrl | quote }},
+      forcedLanguage: {{ .Values.web.runtimeConfig.forcedLanguage | quote }},
       fileUploadTusThresholdBytes: {{ .Values.web.runtimeConfig.fileUploadTusThresholdBytes }},
       fileUploadTusChunkBytes: {{ .Values.web.runtimeConfig.fileUploadTusChunkBytes }},
       fileUploadTusRetryCount: {{ .Values.web.runtimeConfig.fileUploadTusRetryCount }},

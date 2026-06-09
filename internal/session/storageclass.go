@@ -36,9 +36,18 @@ func (s *StorageClassService) ListStorageClasses(ctx context.Context, includeHid
 	if err != nil {
 		return nil, err
 	}
+	usage := map[string]int{}
+	if includeHidden {
+		usage, err = s.storageClassUsage(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
 	items = make([]domain.StorageClass, 0, len(storageClasses))
 	for _, storageClass := range storageClasses {
 		item := StorageClassToDomain(storageClass)
+		item.InUsePVCCount = usage[item.Name]
+		item.DeleteBlockedReason = storageClassDeleteBlockedReason(item)
 		if !includeHidden && !item.VisibleInCreate {
 			continue
 		}
@@ -78,6 +87,10 @@ func (s *StorageClassService) CreateStorageClass(ctx context.Context, body strin
 		return nil, err
 	}
 	clearStorageClassServerFields(storageClass)
+	if storageClass.Labels == nil {
+		storageClass.Labels = map[string]string{}
+	}
+	storageClass.Labels[ManagedByLabel] = ManagedByValue
 	created, err := s.kube.CreateStorageClass(ctx, storageClass)
 	if err != nil {
 		if apierrors.IsAlreadyExists(err) {
@@ -105,6 +118,19 @@ func (s *StorageClassService) UpdateStorageClass(
 	}
 	if storageClass.Name != name {
 		return nil, apienv.NewError(400, apienv.CodeValidationError, "StorageClass YAML metadata.name must match path name", nil)
+	}
+	current, err := s.kube.GetStorageClass(ctx, name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, apienv.NewError(404, apienv.CodeStorageClassNotFound, "StorageClass not found", nil)
+		}
+		return nil, err
+	}
+	if current.Labels[ManagedByLabel] == ManagedByValue {
+		if storageClass.Labels == nil {
+			storageClass.Labels = map[string]string{}
+		}
+		storageClass.Labels[ManagedByLabel] = ManagedByValue
 	}
 	updated, err := s.kube.UpdateStorageClass(ctx, storageClass)
 	if err != nil {
@@ -182,6 +208,23 @@ func (s *StorageClassService) DeleteStorageClass(ctx context.Context, name strin
 		return nil, err
 	}
 	deleted := StorageClassToDomain(*current)
+	pvcCount, err := s.countStorageClassPVCs(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	deleted.InUsePVCCount = pvcCount
+	deleted.DeleteBlockedReason = storageClassDeleteBlockedReason(deleted)
+	if !deleted.ManagedByStorageManager {
+		return nil, apienv.NewError(403, apienv.CodeStorageClassDeleteForbidden, "StorageClass was not created by this UI", map[string]any{
+			"storage_class": name,
+		})
+	}
+	if pvcCount > 0 {
+		return nil, apienv.NewError(409, apienv.CodeStorageClassInUse, "StorageClass is used by existing PVCs", map[string]any{
+			"storage_class": name,
+			"pvc_count":     pvcCount,
+		})
+	}
 	if err := s.kube.DeleteStorageClass(ctx, name); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, apienv.NewError(404, apienv.CodeStorageClassNotFound, "StorageClass not found", nil)
@@ -189,6 +232,43 @@ func (s *StorageClassService) DeleteStorageClass(ctx context.Context, name strin
 		return nil, err
 	}
 	return &deleted, nil
+}
+
+func (s *StorageClassService) storageClassUsage(ctx context.Context) (map[string]int, error) {
+	pvcs, err := s.kube.ListAllPVCs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	usage := map[string]int{}
+	for _, pvc := range pvcs {
+		if pvc.Spec.StorageClassName == nil {
+			continue
+		}
+		name := strings.TrimSpace(*pvc.Spec.StorageClassName)
+		if name == "" {
+			continue
+		}
+		usage[name]++
+	}
+	return usage, nil
+}
+
+func (s *StorageClassService) countStorageClassPVCs(ctx context.Context, name string) (int, error) {
+	usage, err := s.storageClassUsage(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return usage[name], nil
+}
+
+func storageClassDeleteBlockedReason(storageClass domain.StorageClass) string {
+	if !storageClass.ManagedByStorageManager {
+		return "not_managed"
+	}
+	if storageClass.InUsePVCCount > 0 {
+		return "in_use"
+	}
+	return ""
 }
 
 func (s *StorageClassService) DescribeStorageClass(

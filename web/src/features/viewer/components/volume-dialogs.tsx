@@ -18,7 +18,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Slider } from '@/components/ui/slider'
 import { translateViewerError } from '@/features/viewer/api/viewer-error'
 
 interface CreatePVCForm {
@@ -300,8 +299,31 @@ interface ExpandPVCDialogProps {
 export function ExpandPVCDialog({ mutation, onOpenChange, pvc }: ExpandPVCDialogProps) {
 	const { t } = useTranslation()
 	const currentGi = pvc ? Math.max(1, Math.ceil(pvc.capacity_bytes / 1024 / 1024 / 1024)) : 1
+	return (
+		<ExpandPVCDialogContent
+			currentGi={currentGi}
+			mutation={mutation}
+			onOpenChange={onOpenChange}
+			pvc={pvc}
+			key={pvc?.uid ?? 'closed'}
+			t={t}
+		/>
+	)
+}
+
+function ExpandPVCDialogContent({
+	currentGi,
+	mutation,
+	onOpenChange,
+	pvc,
+	t,
+}: ExpandPVCDialogProps & {
+	currentGi: number
+	t: ReturnType<typeof useTranslation>['t']
+}) {
 	const [nextGi, setNextGi] = useState(currentGi + 10)
-	const value = Math.max(nextGi, currentGi + 1)
+	const value = Number.isFinite(nextGi) ? Math.floor(nextGi) : 0
+	const capacityError = value > currentGi ? '' : t('volumes.capacityRequired')
 
 	return (
 		<Dialog
@@ -326,21 +348,17 @@ export function ExpandPVCDialog({ mutation, onOpenChange, pvc }: ExpandPVCDialog
 							Gi
 						</span>
 					</div>
-					<div className="flex justify-between gap-4 text-sm">
-						<span>{t('volumes.targetCapacity')}</span>
-						<span>
-							{value}
-							{' '}
-							Gi
-						</span>
-					</div>
-					<Slider
-						max={Math.max(currentGi + 500, 512)}
-						min={currentGi + 1}
-						onValueChange={values => setNextGi(values[0] ?? currentGi + 1)}
-						step={1}
-						value={[value]}
-					/>
+					<FormField error={capacityError} id="expand-capacity" label={t('volumes.targetCapacity')}>
+						<Input
+							aria-invalid={capacityError ? true : undefined}
+							id="expand-capacity"
+							min={currentGi + 1}
+							onChange={event => setNextGi(Number(event.target.value))}
+							step={1}
+							type="number"
+							value={Number.isFinite(nextGi) ? nextGi : ''}
+						/>
+					</FormField>
 					<p className="text-sm text-muted-foreground">{t('volumes.expandHint')}</p>
 				</div>
 				<DialogFooter>
@@ -348,7 +366,7 @@ export function ExpandPVCDialog({ mutation, onOpenChange, pvc }: ExpandPVCDialog
 						{t('actions.cancel')}
 					</Button>
 					<Button
-						disabled={!pvc || mutation.isPending}
+						disabled={!pvc || mutation.isPending || Boolean(capacityError)}
 						onClick={() => {
 							if (!pvc) {
 								return

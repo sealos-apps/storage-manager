@@ -76,6 +76,7 @@ func (s *ViewerService) ListPVCs(ctx context.Context, namespace string) (items [
 			CapacityBytes:    pvc.Spec.Resources.Requests.Storage().Value(),
 			Capacity:         pvc.Spec.Resources.Requests.Storage().String(),
 			AccessModes:      accessModes,
+			StorageClassName: pvcStorageClassName(&pvc),
 			Mounted:          mountInfo.Mounted,
 			MountedPods:      mountInfo.MountedPods,
 			ViewerSupported:  supported,
@@ -119,7 +120,7 @@ func (s *ViewerService) CreatePVC(ctx context.Context, input CreatePVCInput) (pv
 			Namespace: input.Namespace,
 			Name:      input.Name,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "sealos-storage-manager",
+				ManagedByLabel: ManagedByValue,
 			},
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
@@ -292,6 +293,7 @@ func (s *ViewerService) pvcToDomain(
 		CapacityBytes:    pvc.Spec.Resources.Requests.Storage().Value(),
 		Capacity:         pvc.Spec.Resources.Requests.Storage().String(),
 		AccessModes:      accessModes,
+		StorageClassName: pvcStorageClassName(pvc),
 		Mounted:          mountInfo.Mounted,
 		MountedPods:      mountInfo.MountedPods,
 		ViewerSupported:  supported,
@@ -299,6 +301,13 @@ func (s *ViewerService) pvcToDomain(
 		ViewerScheduling: kube.SchedulingForPVC(accessModes, mountInfo),
 		Reason:           reason,
 	}, nil
+}
+
+func pvcStorageClassName(pvc *corev1.PersistentVolumeClaim) string {
+	if pvc.Spec.StorageClassName == nil {
+		return ""
+	}
+	return strings.TrimSpace(*pvc.Spec.StorageClassName)
 }
 
 func primaryAccessMode(accessModes []string) string {

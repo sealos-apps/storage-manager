@@ -9,6 +9,9 @@ import (
 )
 
 const (
+	ManagedByLabel = "app.kubernetes.io/managed-by"
+	ManagedByValue = "sealos-storage-manager"
+
 	StorageClassVisibleAnnotation     = "storage-management.sealos.io/visible-in-create"
 	StorageClassAccessModesAnnotation = "storage-management.sealos.io/access-modes"
 

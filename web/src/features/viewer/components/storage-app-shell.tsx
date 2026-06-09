@@ -12,7 +12,7 @@ import {
 	Database,
 	FolderOpen,
 	HardDrive,
-	Languages,
+	Plus,
 	RefreshCw,
 	Settings,
 	Trash2,
@@ -54,6 +54,8 @@ import { CreatePVCDialog, DeletePVCDialog, ExpandPVCDialog } from '@/features/vi
 import { VolumesView } from '@/features/viewer/components/volumes-view'
 import { useViewerNamespace, useViewerView, viewerUIStore } from '@/features/viewer/stores/viewer-ui-store'
 import { deriveSessionCapability } from '@/features/viewer/utils/session-capability'
+import { getCachedSealosAuthorization } from '@/services/sealos/sealos-authorization'
+import { resolveSealosUserNamespace } from '@/services/sealos/sealos-session'
 
 interface StorageAppShellProps {
 	api?: ViewerAPI
@@ -99,14 +101,17 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 	const [deleteStorageClassName, setDeleteStorageClassName] = useState<string | null>(null)
 	const [expandPVC, setExpandPVC] = useState<PVC | null>(null)
 	const [deleteState, setDeleteState] = useState<DeletePVCState | null>(null)
-	const { i18n, t } = useTranslation()
+	const { t } = useTranslation()
 
 	const contextQuery = useQuery(viewerContextQueryOptions(api))
 	const adminCapabilitiesQuery = useQuery(adminCapabilitiesQueryOptions(api))
-	const canManagePVCs = adminCapabilitiesQuery.data?.can_manage_pvcs ?? false
-	const canManageStorageClasses = adminCapabilitiesQuery.data?.can_manage_storage_classes ?? false
-	const adminNamespacesQuery = useQuery(adminNamespaceListQueryOptions(api, canManagePVCs))
 	const effectiveNamespace = namespace || contextQuery.data?.namespace || ''
+	const sealosUserNamespace = resolveSealosUserNamespace(getCachedSealosAuthorization()?.session ?? null)
+	const adminContextMatchesUser = Boolean(contextQuery.data?.namespace && sealosUserNamespace === contextQuery.data.namespace)
+	const canManagePVCs = (adminCapabilitiesQuery.data?.can_manage_pvcs ?? false) && adminContextMatchesUser
+	const canManageStorageClasses = (adminCapabilitiesQuery.data?.can_manage_storage_classes ?? false) && adminContextMatchesUser
+	const fileManagementEnabled = adminCapabilitiesQuery.data?.file_management_enabled ?? true
+	const adminNamespacesQuery = useQuery(adminNamespaceListQueryOptions(api, canManagePVCs))
 	const adminNamespaces = adminNamespacesQuery.data ?? []
 	const pvcQuery = useQuery(pvcListQueryOptions(effectiveNamespace, api))
 	const storageClassesQuery = useQuery(storageClassListQueryOptions(api))
@@ -136,11 +141,15 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 		}),
 		[selectedPVC, token, viewerFlow, viewerSession],
 	)
-	const displayFileSession = fileSession ?? (
-		sessionCapability.canShowFileList ? lastFileSessionRef.current : null
-	)
+	const displayFileSession = (() => {
+		if (!fileManagementEnabled) {
+			return null
+		}
+		return fileSession ?? (sessionCapability.canShowFileList ? lastFileSessionRef.current : null)
+	})()
 	const showSessionNavigation = sessionCapability.canShowSessionNavigation
-	const showFileNavigation = sessionCapability.canShowFileList
+	const showFileNavigation = fileManagementEnabled && sessionCapability.canShowFileList
+	const showFileEntry = fileManagementEnabled && showSessionNavigation
 
 	const createPVC = useMutation(createPVCMutationOptions(queryClient, api))
 	const createStorageClassMutation = useMutation(adminCreateStorageClassMutationOptions(queryClient, api))
@@ -196,6 +205,17 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 		setLaunchKey(`${selectedPVC.uid}:${Date.now()}`)
 	}
 
+	function refreshAllStorageData() {
+		void Promise.allSettled([
+			contextQuery.refetch(),
+			adminCapabilitiesQuery.refetch(),
+			adminNamespacesQuery.refetch(),
+			pvcQuery.refetch(),
+			storageClassesQuery.refetch(),
+			adminStorageClassesQuery.refetch(),
+		])
+	}
+
 	const handleFlowChange = useCallback((flow: ViewerFlowSnapshot) => {
 		recoverRef.current = flow.recover
 		registerManualCloseRef.current = flow.registerManualClose
@@ -229,13 +249,54 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 	}, [fileSession])
 
 	useEffect(() => {
-		if (!showSessionNavigation && view === 'files') {
+		if ((!showSessionNavigation || !fileManagementEnabled) && view === 'files') {
 			viewerUIStore.actions.setView('volumes')
 		}
-		if (!showFileNavigation && view === 'trash') {
-			viewerUIStore.actions.setView(showSessionNavigation ? 'files' : 'volumes')
+		if ((!showFileNavigation || !fileManagementEnabled) && view === 'trash') {
+			viewerUIStore.actions.setView(showFileEntry ? 'files' : 'volumes')
 		}
-	}, [showFileNavigation, showSessionNavigation, view])
+		if (!canManageStorageClasses && view === 'storageClasses') {
+			viewerUIStore.actions.setView('volumes')
+		}
+	}, [canManageStorageClasses, fileManagementEnabled, showFileEntry, showFileNavigation, showSessionNavigation, view])
+
+	const pageActions = (
+		<div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:w-auto">
+			<NamespaceFilter
+				canSelectNamespaces={canManagePVCs}
+				isLoadingNamespaces={adminNamespacesQuery.isLoading}
+				namespace={effectiveNamespace}
+				namespaces={adminNamespaces}
+				onNamespaceChange={handleNamespaceChange}
+			/>
+			<Button
+				aria-label={t('actions.refresh')}
+				disabled={!effectiveNamespace}
+				onClick={refreshAllStorageData}
+				type="button"
+				variant="outline"
+			>
+				<RefreshCw data-icon="inline-start" />
+				{t('actions.refresh')}
+			</Button>
+			{view === 'storageClasses'
+				? (
+						<Button onClick={() => setStorageClassEditor({ mode: 'create' })} type="button">
+							<Plus data-icon="inline-start" />
+							{t('storageClasses.create')}
+						</Button>
+					)
+				: null}
+			{view === 'volumes'
+				? (
+						<Button disabled={!effectiveNamespace} onClick={() => setCreateOpen(true)} type="button">
+							<Plus data-icon="inline-start" />
+							{t('volumes.create')}
+						</Button>
+					)
+				: null}
+		</div>
+	)
 
 	return (
 		<main className="min-h-screen bg-muted/30 text-foreground">
@@ -252,65 +313,25 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 					</div>
 					<nav className="mt-8 flex flex-col gap-2">
 						<SidebarButton icon={<HardDrive />} label={t('nav.volumes')} value="volumes" view={view} />
-						{showSessionNavigation ? <SidebarButton icon={<FolderOpen />} label={t('nav.files')} value="files" view={view} /> : null}
+						{showFileEntry ? <SidebarButton icon={<FolderOpen />} label={t('nav.files')} value="files" view={view} /> : null}
 						{showFileNavigation ? <SidebarButton icon={<Trash2 />} label={t('nav.trash')} value="trash" view={view} /> : null}
 						{canManageStorageClasses ? <SidebarButton icon={<Settings />} label={t('nav.storageClasses')} value="storageClasses" view={view} /> : null}
 					</nav>
 				</aside>
 
 				<div className="flex min-w-0 flex-1 flex-col">
-					<header className="flex flex-col gap-4 border-b bg-background px-4 py-4 md:flex-row md:items-center md:justify-between">
-						<div className="flex min-w-0 items-center gap-3 lg:hidden">
-							<div className="flex size-10 items-center justify-center rounded-lg border bg-muted">
-								<Database />
-							</div>
-							<div className="min-w-0">
-								<h1 className="text-xl font-semibold">{t('app.name')}</h1>
-								<p className="text-sm text-muted-foreground">{t('app.subtitle')}</p>
-							</div>
-						</div>
+					<header className="border-b bg-background px-4 py-4 lg:hidden">
 						<Tabs
-							className="lg:hidden"
 							onValueChange={value => viewerUIStore.actions.setView(value as ViewerView)}
 							value={view}
 						>
 							<TabsList>
 								<TabsTrigger value="volumes">{t('nav.volumes')}</TabsTrigger>
-								{showSessionNavigation ? <TabsTrigger value="files">{t('nav.files')}</TabsTrigger> : null}
+								{showFileEntry ? <TabsTrigger value="files">{t('nav.files')}</TabsTrigger> : null}
 								{showFileNavigation ? <TabsTrigger value="trash">{t('nav.trash')}</TabsTrigger> : null}
 								{canManageStorageClasses ? <TabsTrigger value="storageClasses">{t('nav.storageClasses')}</TabsTrigger> : null}
 							</TabsList>
 						</Tabs>
-						<div className="flex flex-col gap-2 md:ml-auto md:flex-row md:items-center">
-							<NamespaceFilter
-								canSelectNamespaces={canManagePVCs}
-								isLoadingNamespaces={adminNamespacesQuery.isLoading}
-								namespace={effectiveNamespace}
-								namespaces={adminNamespaces}
-								onNamespaceChange={handleNamespaceChange}
-							/>
-							<Button
-								aria-label={t('actions.refresh')}
-								disabled={!effectiveNamespace}
-								onClick={() => void pvcQuery.refetch()}
-								size="icon"
-								variant="outline"
-							>
-								<RefreshCw />
-							</Button>
-							<Button
-								aria-label="Locale"
-								onClick={() => {
-									const next = i18n.language === 'zh' ? 'en' : 'zh'
-									void i18n.changeLanguage(next)
-									viewerUIStore.actions.setLocale(next)
-								}}
-								size="icon"
-								variant="outline"
-							>
-								<Languages />
-							</Button>
-						</div>
 					</header>
 
 					<div className="min-h-0 flex-1 px-4 py-4">
@@ -330,12 +351,11 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 						>
 							<TabsContent className="m-0 flex h-full flex-col gap-4" value="volumes">
 								<VolumesView
-									canCreate={Boolean(effectiveNamespace)}
-									createOpen={createOpen}
-									onCreateOpenChange={setCreateOpen}
+									actions={pageActions}
 									onDelete={pvc => setDeleteState({ pvc, confirmName: '' })}
 									onExpand={setExpandPVC}
 									onOpenFiles={openFiles}
+									fileManagementEnabled={fileManagementEnabled}
 									pvcQuery={pvcQuery}
 									pvcs={pvcs}
 									storageClasses={storageClassesQuery.data ?? []}
@@ -375,8 +395,8 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 							</TabsContent>
 							<TabsContent className="m-0 flex h-full min-h-0 flex-col" value="storageClasses">
 								<StorageClassAdminView
+									actions={pageActions}
 									deleteMutation={deleteStorageClassMutation}
-									onCreate={() => setStorageClassEditor({ mode: 'create' })}
 									onDelete={setDeleteStorageClassName}
 									onDescribe={setDescribeStorageClassName}
 									onEdit={name => setStorageClassEditor({ mode: 'edit', name })}

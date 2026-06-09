@@ -17,6 +17,10 @@ func (h *Handler) createViewerSession(
 	req *CreateViewerSessionRequest,
 ) (*ViewerSessionResponse, *apienv.Error) {
 	start := time.Now()
+	if apiErr := h.requireFileManagementEnabled(); apiErr != nil {
+		h.observe(ctx, http.MethodPost, "/viewer-sessions", apiErr.Status, start)
+		return nil, apiErr
+	}
 	principal, err := h.authenticateRequest(req)
 	if err != nil {
 		h.observe(ctx, http.MethodPost, "/viewer-sessions", err.Status, start)
@@ -86,6 +90,10 @@ func (h *Handler) getViewerSession(
 	req *AuthenticatedRequest,
 ) (*ViewerSessionResponse, *apienv.Error) {
 	start := time.Now()
+	if apiErr := h.requireFileManagementEnabled(); apiErr != nil {
+		h.observe(ctx, http.MethodGet, "/viewer-sessions/:id", apiErr.Status, start)
+		return nil, apiErr
+	}
 	principal, err := h.authenticateRequest(req)
 	if err != nil {
 		h.observe(ctx, http.MethodGet, "/viewer-sessions/:id", err.Status, start)
@@ -113,6 +121,10 @@ func (h *Handler) issueToken(
 	req *AuthenticatedRequest,
 ) (*ViewerTokenResponse, *apienv.Error) {
 	start := time.Now()
+	if apiErr := h.requireFileManagementEnabled(); apiErr != nil {
+		h.observe(ctx, http.MethodPost, "/viewer-sessions/:id/token", apiErr.Status, start)
+		return nil, apiErr
+	}
 	principal, err := h.authenticateRequest(req)
 	if err != nil {
 		h.observe(ctx, http.MethodPost, "/viewer-sessions/:id/token", err.Status, start)
@@ -144,6 +156,10 @@ func (h *Handler) heartbeat(
 	req *AuthenticatedRequest,
 ) (*HeartbeatResponse, *apienv.Error) {
 	start := time.Now()
+	if apiErr := h.requireFileManagementEnabled(); apiErr != nil {
+		h.observe(ctx, http.MethodPost, "/viewer-sessions/:id/heartbeat", apiErr.Status, start)
+		return nil, apiErr
+	}
 	principal, err := h.authenticateRequest(req)
 	if err != nil {
 		h.observe(ctx, http.MethodPost, "/viewer-sessions/:id/heartbeat", err.Status, start)
@@ -171,6 +187,10 @@ func (h *Handler) closeViewerSession(
 	req *AuthenticatedRequest,
 ) (*ViewerSessionResponse, *apienv.Error) {
 	start := time.Now()
+	if apiErr := h.requireFileManagementEnabled(); apiErr != nil {
+		h.observe(ctx, http.MethodDelete, "/viewer-sessions/:id", apiErr.Status, start)
+		return nil, apiErr
+	}
 	principal, err := h.authenticateRequest(req)
 	if err != nil {
 		h.observe(ctx, http.MethodDelete, "/viewer-sessions/:id", err.Status, start)
@@ -198,6 +218,10 @@ func (h *Handler) closePodSession(
 	req *AuthenticatedRequest,
 ) (*PodSessionResponse, *apienv.Error) {
 	start := time.Now()
+	if apiErr := h.requireFileManagementEnabled(); apiErr != nil {
+		h.observe(ctx, http.MethodDelete, "/pod-sessions/:id", apiErr.Status, start)
+		return nil, apiErr
+	}
 	principal, err := h.authenticateRequest(req)
 	if err != nil {
 		h.observe(ctx, http.MethodDelete, "/pod-sessions/:id", err.Status, start)
@@ -225,6 +249,10 @@ func (h *Handler) getPodSession(
 	req *AuthenticatedRequest,
 ) (*PodSessionResponse, *apienv.Error) {
 	start := time.Now()
+	if apiErr := h.requireFileManagementEnabled(); apiErr != nil {
+		h.observe(ctx, http.MethodGet, "/pod-sessions/:id", apiErr.Status, start)
+		return nil, apiErr
+	}
 	principal, err := h.authenticateRequest(req)
 	if err != nil {
 		h.observe(ctx, http.MethodGet, "/pod-sessions/:id", err.Status, start)
@@ -251,6 +279,10 @@ func (h *Handler) verifyFileBrowserHook(
 	req *VerifyFileBrowserHookRequest,
 ) (*FileBrowserHookVerificationResponse, *apienv.Error) {
 	start := time.Now()
+	if apiErr := h.requireFileManagementEnabled(); apiErr != nil {
+		h.observe(ctx, http.MethodPost, "/internal/filebrowser-hook/verify", apiErr.Status, start)
+		return nil, apiErr
+	}
 	ctx, finish := h.recorder.TraceOperation(ctx,
 		"filebrowser.verify_hook",
 		slog.String("pod_session_id", req.PodSessionID),
@@ -273,4 +305,11 @@ func (h *Handler) verifyFileBrowserHook(
 	)
 	h.observe(ctx, http.MethodPost, "/internal/filebrowser-hook/verify", http.StatusOK, start)
 	return &FileBrowserHookVerificationResponse{FileBrowserHookVerification: result}, nil
+}
+
+func (h *Handler) requireFileManagementEnabled() *apienv.Error {
+	if h.features.FileManagement.Enabled {
+		return nil
+	}
+	return apienv.NewError(403, apienv.CodeFileManagementDisabled, "File management is disabled", nil)
 }

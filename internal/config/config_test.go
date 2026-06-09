@@ -79,6 +79,8 @@ viewer:
     class_name: nginx
     host_template: viewer-{{ .PodSessionID }}.example.test
     public_scheme: https
+  file_management:
+    enabled: false
 observability:
   logs:
     level: debug
@@ -133,6 +135,9 @@ admin:
 	if cfg.Viewer.Ingress.PublicScheme != "https" {
 		t.Fatalf("public scheme = %q", cfg.Viewer.Ingress.PublicScheme)
 	}
+	if cfg.Viewer.FileManagement.Enabled {
+		t.Fatal("viewer.file_management.enabled = true")
+	}
 	if cfg.Observability.Traces.Endpoint != "http://otel-collector:4318/v1/traces" {
 		t.Fatalf("trace endpoint = %q", cfg.Observability.Traces.Endpoint)
 	}
@@ -151,6 +156,9 @@ func TestDefaultOmitsDeploymentValues(t *testing.T) {
 	t.Parallel()
 
 	cfg := Default()
+	if !cfg.Viewer.FileManagement.Enabled {
+		t.Fatal("viewer.file_management.enabled default = false")
+	}
 	if cfg.Viewer.BackendVerifyURL != "" ||
 		cfg.Viewer.HookClientToken != "" ||
 		cfg.Viewer.HookScript != "" ||

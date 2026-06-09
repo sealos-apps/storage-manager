@@ -29,3 +29,11 @@ if (!window.matchMedia) {
 			removeListener: () => undefined,
 		}) as MediaQueryList
 }
+
+if (!window.ResizeObserver) {
+	window.ResizeObserver = class ResizeObserver {
+		disconnect() {}
+		observe() {}
+		unobserve() {}
+	}
+}

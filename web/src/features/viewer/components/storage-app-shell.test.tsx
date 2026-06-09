@@ -32,6 +32,20 @@ vi.mock('@monaco-editor/react', () => ({
 	),
 }))
 
+vi.mock('@/services/sealos/sealos-authorization', async importOriginal => ({
+	...(await importOriginal<typeof import('@/services/sealos/sealos-authorization')>()),
+	getCachedSealosAuthorization: vi.fn(() => ({
+		authorizationHeader: 'Bearer test',
+		session: {
+			user: {
+				k8sUsername: 'ns-admin',
+				nsid: 'admin',
+			},
+		},
+		source: 'sdk',
+	})),
+}))
+
 describe('storageAppShell', () => {
 	beforeEach(() => {
 		viewerUIStore.actions.reset()
@@ -60,6 +74,8 @@ describe('storageAppShell', () => {
 
 		expect(await screen.findByText('mysql-data')).toBeInTheDocument()
 		expect(screen.getByText('logs')).toBeInTheDocument()
+		expect(screen.getByRole('columnheader', { name: /storage class/i })).toBeInTheDocument()
+		expect(screen.getAllByText('standard').length).toBeGreaterThan(0)
 		expect(screen.queryByRole('columnheader', { name: /capacity/i })).not.toBeInTheDocument()
 		expect(screen.queryByText('10Gi')).not.toBeInTheDocument()
 		expect(screen.getAllByText('ns-admin').length).toBeGreaterThan(0)
@@ -89,6 +105,55 @@ describe('storageAppShell', () => {
 
 		expect(await screen.findByText('ns-admin')).toBeInTheDocument()
 		expect(screen.queryByRole('combobox', { name: /system namespace/i })).not.toBeInTheDocument()
+		expect(screen.getByText('Namespace:')).toBeInTheDocument()
+	})
+
+	it('removes the in-app language switch and refreshes all storage queries from one action', async () => {
+		const user = userEvent.setup()
+		const adminCapabilities = vi.fn().mockResolvedValue({
+			can_manage_pvcs: true,
+			can_manage_storage_classes: true,
+			file_management_enabled: true,
+		})
+		const adminListNamespaces = vi.fn().mockResolvedValue([
+			{ is_current_context: true, name: 'ns-admin' },
+			{ is_current_context: false, name: 'kube-system' },
+		])
+		const adminListStorageClasses = vi.fn().mockResolvedValue([
+			storageClassFixture({ name: 'standard' }),
+		])
+		const listPVCs = vi.fn().mockResolvedValue([
+			pvcFixture({ name: 'data', namespace: 'ns-admin', uid: 'uid-data' }),
+		])
+		const listStorageClasses = vi.fn().mockResolvedValue([
+			storageClassFixture({ name: 'standard' }),
+		])
+		const getContext = vi.fn().mockResolvedValue({
+			context_name: 'dev',
+			namespace: 'ns-admin',
+		})
+		const api = createFakeViewerAPI({
+			adminCapabilities,
+			adminListNamespaces,
+			adminListStorageClasses,
+			getContext,
+			listPVCs,
+			listStorageClasses,
+		})
+
+		renderWithProviders(<StorageAppShell api={api} />)
+
+		expect(await screen.findByText('data')).toBeInTheDocument()
+		expect(screen.queryByRole('button', { name: 'Locale' })).not.toBeInTheDocument()
+
+		await user.click(screen.getByRole('button', { name: /^refresh$/i }))
+
+		await waitFor(() => expect(listPVCs).toHaveBeenCalledTimes(2))
+		expect(getContext).toHaveBeenCalledTimes(2)
+		expect(adminCapabilities).toHaveBeenCalledTimes(2)
+		expect(adminListNamespaces).toHaveBeenCalledTimes(2)
+		expect(listStorageClasses).toHaveBeenCalledTimes(2)
+		expect(adminListStorageClasses).toHaveBeenCalledTimes(2)
 	})
 
 	it('lets admins switch to system namespaces through existing PVC and session APIs', async () => {
@@ -141,6 +206,47 @@ describe('storageAppShell', () => {
 		}))
 	})
 
+	it('hides admin features when backend context is outside the Sealos user namespace', async () => {
+		const api = createFakeViewerAPI({
+			adminCapabilities: vi.fn().mockResolvedValue({
+				can_manage_pvcs: true,
+				can_manage_storage_classes: true,
+				file_management_enabled: true,
+			}),
+			getContext: vi.fn().mockResolvedValue({
+				context_name: 'dev',
+				namespace: 'kube-system',
+			}),
+			listPVCs: vi.fn().mockResolvedValue([]),
+		})
+
+		renderWithProviders(<StorageAppShell api={api} />)
+
+		expect(await screen.findByText('kube-system')).toBeInTheDocument()
+		expect(screen.queryByRole('combobox', { name: /system namespace/i })).not.toBeInTheDocument()
+		expect(screen.queryByRole('button', { name: 'StorageClasses' })).not.toBeInTheDocument()
+	})
+
+	it('hides file management when the backend feature flag is disabled', async () => {
+		const api = createFakeViewerAPI({
+			adminCapabilities: vi.fn().mockResolvedValue({
+				can_manage_pvcs: false,
+				can_manage_storage_classes: false,
+				file_management_enabled: false,
+			}),
+			listPVCs: vi.fn().mockResolvedValue([
+				pvcFixture({ name: 'data', namespace: 'ns-admin', uid: 'uid-data' }),
+			]),
+		})
+
+		renderWithProviders(<StorageAppShell api={api} />)
+
+		expect(await screen.findByText('data')).toBeInTheDocument()
+		expect(screen.queryByRole('button', { name: /browse files/i })).not.toBeInTheDocument()
+		expect(screen.queryByRole('button', { name: 'File management' })).not.toBeInTheDocument()
+		expect(screen.queryByRole('button', { name: 'Recycle bin' })).not.toBeInTheDocument()
+	})
+
 	it('creates PVCs through the real dialog and optimistic mutation path', async () => {
 		const user = userEvent.setup()
 		const createPVC = vi.fn().mockResolvedValue(pvcFixture({
@@ -172,6 +278,47 @@ describe('storageAppShell', () => {
 			accessModes: ['ReadWriteOnce'],
 			storageClassName: 'standard',
 		})))
+	})
+
+	it('expands PVCs through a target capacity input', async () => {
+		const user = userEvent.setup()
+		const expandPVC = vi.fn().mockResolvedValue(pvcFixture({
+			name: 'data',
+			namespace: 'ns-admin',
+			capacity: '20Gi',
+			capacity_bytes: 20 * 1024 * 1024 * 1024,
+		}))
+		const api = createFakeViewerAPI({
+			expandPVC,
+			listPVCs: vi.fn().mockResolvedValue([
+				pvcFixture({
+					name: 'data',
+					namespace: 'ns-admin',
+					uid: 'uid-data',
+					capacity: '10Gi',
+					capacity_bytes: 10 * 1024 * 1024 * 1024,
+				}),
+			]),
+		})
+
+		renderWithProviders(<StorageAppShell api={api} />)
+
+		await user.click(await screen.findByRole('button', { name: /more actions/i }))
+		await user.click(await screen.findByRole('menuitem', { name: /expand/i }))
+		const capacityInput = await screen.findByRole('spinbutton', { name: /target capacity/i })
+		await user.clear(capacityInput)
+		await user.type(capacityInput, '10')
+		expect(screen.getByRole('button', { name: /^expand pvc$/i })).toBeDisabled()
+		await user.clear(capacityInput)
+		await user.type(capacityInput, '20')
+		await user.click(screen.getByRole('button', { name: /^expand pvc$/i }))
+
+		await waitFor(() => expect(expandPVC).toHaveBeenCalledWith({
+			namespace: 'ns-admin',
+			name: 'data',
+			capacity: '20Gi',
+			capacityBytes: 20 * 1024 * 1024 * 1024,
+		}))
 	})
 
 	it('limits PVC access modes to the selected StorageClass policy', async () => {
@@ -286,6 +433,7 @@ describe('storageAppShell', () => {
 			adminCapabilities: vi.fn().mockResolvedValue({
 				can_manage_pvcs: false,
 				can_manage_storage_classes: true,
+				file_management_enabled: true,
 			}),
 			adminDescribeStorageClass,
 			adminListStorageClasses: vi.fn().mockResolvedValue([
@@ -323,6 +471,7 @@ describe('storageAppShell', () => {
 			adminCapabilities: vi.fn().mockResolvedValue({
 				can_manage_pvcs: false,
 				can_manage_storage_classes: true,
+				file_management_enabled: true,
 			}),
 			adminCreateStorageClass,
 			adminDeleteStorageClass,
@@ -346,6 +495,8 @@ describe('storageAppShell', () => {
 		expect(await screen.findByRole('columnheader', { name: 'Reclaim policy' })).toBeInTheDocument()
 		expect(screen.getByRole('columnheader', { name: 'Volume binding mode' })).toBeInTheDocument()
 		expect(screen.getByRole('columnheader', { name: 'Allow volume expansion' })).toBeInTheDocument()
+		expect(screen.getByRole('columnheader', { name: 'PVC usage' })).toBeInTheDocument()
+		expect(screen.queryAllByRole('button', { name: /^refresh$/i })).toHaveLength(1)
 		expect(await screen.findByText('Retain')).toBeInTheDocument()
 		expect(screen.getByText('WaitForFirstConsumer')).toBeInTheDocument()
 		expect(screen.getByText('Yes')).toBeInTheDocument()
@@ -382,6 +533,53 @@ describe('storageAppShell', () => {
 		await user.type(screen.getByLabelText('Type PVC name to confirm'), 'standard')
 		await user.click(screen.getByRole('button', { name: 'Delete' }))
 		await waitFor(() => expect(adminDeleteStorageClass).toHaveBeenCalledWith('standard'))
+	})
+
+	it('disables StorageClass deletion for external or in-use classes', async () => {
+		const user = userEvent.setup()
+		const adminDeleteStorageClass = vi.fn()
+		const api = createFakeViewerAPI({
+			adminCapabilities: vi.fn().mockResolvedValue({
+				can_manage_pvcs: false,
+				can_manage_storage_classes: true,
+				file_management_enabled: true,
+			}),
+			adminDeleteStorageClass,
+			adminListStorageClasses: vi.fn().mockResolvedValue([
+				storageClassFixture({
+					name: 'external',
+					delete_blocked_reason: 'not_managed',
+					managed_by_storage_manager: false,
+				}),
+				storageClassFixture({
+					name: 'in-use',
+					delete_blocked_reason: 'in_use',
+					in_use_pvc_count: 2,
+				}),
+				storageClassFixture({
+					name: 'managed',
+				}),
+			]),
+			listPVCs: vi.fn().mockResolvedValue([]),
+		})
+
+		renderWithProviders(<StorageAppShell api={api} />)
+
+		await user.click(await screen.findByRole('button', { name: 'StorageClasses' }))
+		const externalRow = screen.getByText('external').closest('tr')
+		const inUseRow = screen.getByText('in-use').closest('tr')
+		const managedRow = screen.getByText('managed').closest('tr')
+		if (!externalRow || !inUseRow || !managedRow) {
+			throw new Error('missing StorageClass row')
+		}
+		expect(within(externalRow).getByRole('button', { name: 'Delete' })).toBeDisabled()
+		expect(within(inUseRow).getByRole('button', { name: 'Delete' })).toBeDisabled()
+		expect(within(inUseRow).getByText('2')).toBeInTheDocument()
+		await user.click(within(managedRow).getByRole('button', { name: 'Delete' }))
+		await user.type(screen.getByLabelText('Type PVC name to confirm'), 'managed')
+		await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+		await waitFor(() => expect(adminDeleteStorageClass).toHaveBeenCalledWith('managed'))
 	})
 
 	it('stops restarting the viewer flow after token recovery is exhausted', async () => {

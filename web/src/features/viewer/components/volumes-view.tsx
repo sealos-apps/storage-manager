@@ -1,7 +1,8 @@
 import type { UseQueryResult } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
 import type { PVC, StorageClass } from '@/features/viewer/types/viewer'
 
-import { FolderOpen, HardDrive, MoreHorizontal, Plus } from 'lucide-react'
+import { FolderOpen, HardDrive, MoreHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
@@ -31,9 +32,8 @@ import { formatBytes } from '@/features/viewer/utils/format-capacity'
 import { canLaunchViewer } from '@/features/viewer/utils/viewer-status'
 
 interface VolumesViewProps {
-	canCreate: boolean
-	createOpen: boolean
-	onCreateOpenChange: (open: boolean) => void
+	actions: ReactNode
+	fileManagementEnabled: boolean
 	onDelete: (pvc: PVC) => void
 	onExpand: (pvc: PVC) => void
 	onOpenFiles: (pvc: PVC) => void
@@ -43,8 +43,8 @@ interface VolumesViewProps {
 }
 
 export function VolumesView({
-	canCreate,
-	onCreateOpenChange,
+	actions,
+	fileManagementEnabled,
 	onDelete,
 	onExpand,
 	onOpenFiles,
@@ -57,7 +57,7 @@ export function VolumesView({
 	const filteredPVCs = search
 		? pvcs.filter((pvc) => {
 				const mountedPodNames = pvc.mounted_pods.map(pod => pod.name).join(' ')
-				return `${pvc.namespace} ${pvc.name} ${mountedPodNames}`.toLowerCase().includes(search)
+				return `${pvc.namespace} ${pvc.name} ${pvc.storage_class_name} ${mountedPodNames}`.toLowerCase().includes(search)
 			})
 		: pvcs
 	const capacity = pvcs.reduce((total, pvc) => total + pvc.capacity_bytes, 0)
@@ -71,10 +71,7 @@ export function VolumesView({
 					<h2 className="text-xl font-semibold">{t('nav.volumes')}</h2>
 					<p className="text-sm text-muted-foreground">{t('viewer.pvcListDescription')}</p>
 				</div>
-				<Button disabled={!canCreate} onClick={() => onCreateOpenChange(true)}>
-					<Plus data-icon="inline-start" />
-					{t('volumes.create')}
-				</Button>
+				{actions}
 			</header>
 			<Separator />
 
@@ -100,6 +97,7 @@ export function VolumesView({
 									<TableRow>
 										<TableHead>{t('viewer.pvc')}</TableHead>
 										<TableHead>{t('status.label')}</TableHead>
+										<TableHead>{t('viewer.storageClass')}</TableHead>
 										<TableHead>{t('viewer.accessModes')}</TableHead>
 										<TableHead className="text-right">{t('files.columns.actions')}</TableHead>
 									</TableRow>
@@ -111,13 +109,14 @@ export function VolumesView({
 											onDelete={onDelete}
 											onExpand={onExpand}
 											onOpenFiles={onOpenFiles}
+											fileManagementEnabled={fileManagementEnabled}
 											pvc={pvc}
 										/>
 									))}
 									{filteredPVCs.length === 0
 										? (
 												<TableRow>
-													<TableCell className="py-12 text-center text-muted-foreground" colSpan={4}>
+													<TableCell className="py-12 text-center text-muted-foreground" colSpan={5}>
 														{storageClasses.length === 0 ? t('common.empty') : t('volumes.empty')}
 													</TableCell>
 												</TableRow>
@@ -142,13 +141,14 @@ function MetricCard({ label, value }: { label: string, value: string }) {
 }
 
 interface PVCRowProps {
+	fileManagementEnabled: boolean
 	onDelete: (pvc: PVC) => void
 	onExpand: (pvc: PVC) => void
 	onOpenFiles: (pvc: PVC) => void
 	pvc: PVC
 }
 
-function PVCRow({ onDelete, onExpand, onOpenFiles, pvc }: PVCRowProps) {
+function PVCRow({ fileManagementEnabled, onDelete, onExpand, onOpenFiles, pvc }: PVCRowProps) {
 	const { t } = useTranslation()
 	const mountedTarget = pvc.mounted_pods[0]
 	const canDelete = !pvc.mounted
@@ -177,6 +177,9 @@ function PVCRow({ onDelete, onExpand, onOpenFiles, pvc }: PVCRowProps) {
 				</div>
 			</TableCell>
 			<TableCell>
+				<span className="text-sm">{pvc.storage_class_name || '-'}</span>
+			</TableCell>
+			<TableCell>
 				<div className="flex flex-wrap gap-1">
 					{pvc.access_modes.map(mode => (
 						<Badge key={mode} variant="outline">{mode}</Badge>
@@ -185,14 +188,18 @@ function PVCRow({ onDelete, onExpand, onOpenFiles, pvc }: PVCRowProps) {
 			</TableCell>
 			<TableCell>
 				<div className="flex justify-end items-center gap-2">
-					<Button
-						disabled={!canLaunchViewer(pvc)}
-						onClick={() => onOpenFiles(pvc)}
-						size="sm"
-					>
-						<FolderOpen data-icon="inline-start" />
-						{t('files.browse')}
-					</Button>
+					{fileManagementEnabled
+						? (
+								<Button
+									disabled={!canLaunchViewer(pvc)}
+									onClick={() => onOpenFiles(pvc)}
+									size="sm"
+								>
+									<FolderOpen data-icon="inline-start" />
+									{t('files.browse')}
+								</Button>
+							)
+						: null}
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<Button aria-label={t('actions.more')} size="icon" variant="outline">

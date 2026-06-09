@@ -28,5 +28,6 @@ func StorageClassToDomain(storageClass storagev1.StorageClass) domain.StorageCla
 		VisibleInCreate:          status == storageClassAnnotationReady,
 		AllowedAccessModes:       allowedModes,
 		AnnotationStatus:         status,
+		ManagedByStorageManager:  storageClass.Labels[ManagedByLabel] == ManagedByValue,
 	}
 }

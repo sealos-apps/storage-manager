@@ -19,10 +19,19 @@ describe('vite environment guard', () => {
 		)
 	})
 
+	it('rejects production builds with the development Desktop SDK bypass env var', () => {
+		expect(() => assertNoDevOnlyEnvInBuild('build', {
+			devDisableSealosDesktopSDK: 'true',
+		})).toThrow(
+			'VITE_DEV_DISABLE_SEALOS_DESKTOP_SDK is development-only',
+		)
+	})
+
 	it('allows local dev with the development kubeconfig env var', () => {
 		expect(() => assertNoDevOnlyEnvInBuild('serve', {
 			apiBaseUrl: 'http://localhost:4000',
 			devKubeconfig: 'apiVersion: v1',
+			devDisableSealosDesktopSDK: 'true',
 		})).not.toThrow()
 	})
 

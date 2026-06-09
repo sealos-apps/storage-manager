@@ -43,6 +43,7 @@ func (h *Handler) adminCapabilities(
 		AdminCapabilities: AdminCapabilitySet{
 			CanManagePVCs:           canManage,
 			CanManageStorageClasses: canManage,
+			FileManagementEnabled:   h.features.FileManagement.Enabled,
 		},
 	}, nil
 }

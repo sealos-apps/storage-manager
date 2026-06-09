@@ -1,10 +1,16 @@
 import type { ReactNode } from 'react'
+import type { AppLocale } from '@/i18n'
 
+import { EVENT_NAME } from '@labring/sealos-desktop-sdk'
+import { sealosApp } from '@labring/sealos-desktop-sdk/app'
 import { useEffect, useState } from 'react'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { readDisableSealosDesktopSDK, readForcedLanguage } from '@/config/env'
+import { i18n } from '@/i18n'
 import { initializeSealosAuthorization } from '@/services/sealos/sealos-authorization'
+import { resolveSealosSessionLocale } from '@/services/sealos/sealos-session'
 
 interface AuthBootstrapProps {
 	children: ReactNode
@@ -20,9 +26,25 @@ export function AuthBootstrap({ children }: AuthBootstrapProps) {
 
 	useEffect(() => {
 		let mounted = true
+		let unsubscribeLanguage: (() => void) | undefined
 
 		initializeSealosAuthorization()
-			.then(() => {
+			.then(async (authorization) => {
+				const forcedLanguage = readForcedLanguage()
+				const disableSealosDesktopSDK = readDisableSealosDesktopSDK()
+				const sessionLocale = resolveSealosSessionLocale(authorization.session)
+				const locale = forcedLanguage || (disableSealosDesktopSDK ? sessionLocale : await resolveInitialDesktopLocale(sessionLocale))
+				if (locale) {
+					await i18n.changeLanguage(locale)
+				}
+				if (!forcedLanguage && !disableSealosDesktopSDK) {
+					unsubscribeLanguage = sealosApp.addAppEventListen(EVENT_NAME.CHANGE_I18N, (data: unknown) => {
+						const nextLocale = resolveDesktopLanguageEventLocale(data)
+						if (nextLocale && nextLocale !== i18n.language) {
+							void i18n.changeLanguage(nextLocale)
+						}
+					})
+				}
 				if (mounted) {
 					setState({ status: 'ready' })
 				}
@@ -38,6 +60,7 @@ export function AuthBootstrap({ children }: AuthBootstrapProps) {
 
 		return () => {
 			mounted = false
+			unsubscribeLanguage?.()
 		}
 	}, [])
 
@@ -69,4 +92,26 @@ export function AuthBootstrap({ children }: AuthBootstrapProps) {
 			</div>
 		</main>
 	)
+}
+
+async function resolveInitialDesktopLocale(fallback: AppLocale | null) {
+	try {
+		const language = await sealosApp.getLanguage()
+		return normalizeLocale(language.lng) ?? fallback
+	}
+	catch {
+		return fallback
+	}
+}
+
+function resolveDesktopLanguageEventLocale(data: unknown) {
+	if (typeof data !== 'object' || data === null) {
+		return null
+	}
+	const currentLanguage = (data as { currentLanguage?: unknown }).currentLanguage
+	return normalizeLocale(currentLanguage)
+}
+
+function normalizeLocale(value: unknown): AppLocale | null {
+	return value === 'en' || value === 'zh' ? value : null
 }

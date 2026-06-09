@@ -7,35 +7,38 @@ import (
 )
 
 const (
-	CodePVCAlreadyExists        Code = "PVC_ALREADY_EXISTS"
-	CodePVCNotFound             Code = "PVC_NOT_FOUND"
-	CodePVCAccessDenied         Code = "PVC_ACCESS_DENIED"
-	CodePVCInUse                Code = "PVC_IN_USE"
-	CodePVCCreateForbidden      Code = "PVC_CREATE_FORBIDDEN"
-	CodePVCDeleteForbidden      Code = "PVC_DELETE_FORBIDDEN"
-	CodePVCExpandForbidden      Code = "PVC_EXPAND_FORBIDDEN"
-	CodePVCExpandUnsupported    Code = "PVC_EXPAND_UNSUPPORTED"
-	CodePVCExpandNotIncreased   Code = "PVC_EXPAND_NOT_INCREASED"
-	CodeStorageClassNotFound    Code = "STORAGE_CLASS_NOT_FOUND"
-	CodeStorageClassNotVisible  Code = "STORAGE_CLASS_NOT_VISIBLE"
-	CodeStorageClassYAMLInvalid Code = "STORAGE_CLASS_YAML_INVALID"
-	CodeStorageClassConflict    Code = "STORAGE_CLASS_CONFLICT"
-	CodeAdminAccessDenied       Code = "ADMIN_ACCESS_DENIED"
-	CodeUnsupportedAccessMode   Code = "UNSUPPORTED_ACCESS_MODE"
-	CodePVCMountConflict        Code = "PVC_MOUNT_CONFLICT"
-	CodePVCMountPending         Code = "PVC_MOUNT_PENDING"
-	CodeViewerPodCreating       Code = "VIEWER_POD_CREATING"
-	CodeViewerPodFailed         Code = "VIEWER_POD_FAILED"
-	CodePodSessionNotFound      Code = "POD_SESSION_NOT_FOUND"
-	CodeViewerSessionNotFound   Code = "VIEWER_SESSION_NOT_FOUND"
-	CodeViewerSessionExpired    Code = "VIEWER_SESSION_EXPIRED"
-	CodeAuthRequestExpired      Code = "AUTH_REQUEST_EXPIRED"
-	CodeAuthRequestUsed         Code = "AUTH_REQUEST_USED"
-	CodeFileBrowserLoginFailed  Code = "FILEBROWSER_LOGIN_FAILED"
-	CodeHookVerifyFailed        Code = "HOOK_VERIFY_FAILED"
-	CodeUnauthorized            Code = "UNAUTHORIZED"
-	CodeValidationError         Code = "VALIDATION_ERROR"
-	CodeInternal                Code = "INTERNAL_ERROR"
+	CodePVCAlreadyExists            Code = "PVC_ALREADY_EXISTS"
+	CodePVCNotFound                 Code = "PVC_NOT_FOUND"
+	CodePVCAccessDenied             Code = "PVC_ACCESS_DENIED"
+	CodePVCInUse                    Code = "PVC_IN_USE"
+	CodePVCCreateForbidden          Code = "PVC_CREATE_FORBIDDEN"
+	CodePVCDeleteForbidden          Code = "PVC_DELETE_FORBIDDEN"
+	CodePVCExpandForbidden          Code = "PVC_EXPAND_FORBIDDEN"
+	CodePVCExpandUnsupported        Code = "PVC_EXPAND_UNSUPPORTED"
+	CodePVCExpandNotIncreased       Code = "PVC_EXPAND_NOT_INCREASED"
+	CodeStorageClassNotFound        Code = "STORAGE_CLASS_NOT_FOUND"
+	CodeStorageClassNotVisible      Code = "STORAGE_CLASS_NOT_VISIBLE"
+	CodeStorageClassYAMLInvalid     Code = "STORAGE_CLASS_YAML_INVALID"
+	CodeStorageClassConflict        Code = "STORAGE_CLASS_CONFLICT"
+	CodeStorageClassDeleteForbidden Code = "STORAGE_CLASS_DELETE_FORBIDDEN"
+	CodeStorageClassInUse           Code = "STORAGE_CLASS_IN_USE"
+	CodeAdminAccessDenied           Code = "ADMIN_ACCESS_DENIED"
+	CodeUnsupportedAccessMode       Code = "UNSUPPORTED_ACCESS_MODE"
+	CodePVCMountConflict            Code = "PVC_MOUNT_CONFLICT"
+	CodePVCMountPending             Code = "PVC_MOUNT_PENDING"
+	CodeViewerPodCreating           Code = "VIEWER_POD_CREATING"
+	CodeViewerPodFailed             Code = "VIEWER_POD_FAILED"
+	CodePodSessionNotFound          Code = "POD_SESSION_NOT_FOUND"
+	CodeViewerSessionNotFound       Code = "VIEWER_SESSION_NOT_FOUND"
+	CodeViewerSessionExpired        Code = "VIEWER_SESSION_EXPIRED"
+	CodeAuthRequestExpired          Code = "AUTH_REQUEST_EXPIRED"
+	CodeAuthRequestUsed             Code = "AUTH_REQUEST_USED"
+	CodeFileBrowserLoginFailed      Code = "FILEBROWSER_LOGIN_FAILED"
+	CodeFileManagementDisabled      Code = "FILE_MANAGEMENT_DISABLED"
+	CodeHookVerifyFailed            Code = "HOOK_VERIFY_FAILED"
+	CodeUnauthorized                Code = "UNAUTHORIZED"
+	CodeValidationError             Code = "VALIDATION_ERROR"
+	CodeInternal                    Code = "INTERNAL_ERROR"
 )
 
 type Code string
@@ -54,6 +57,8 @@ var AllCodes = [...]Code{
 	CodeStorageClassNotVisible,
 	CodeStorageClassYAMLInvalid,
 	CodeStorageClassConflict,
+	CodeStorageClassDeleteForbidden,
+	CodeStorageClassInUse,
 	CodeAdminAccessDenied,
 	CodeUnsupportedAccessMode,
 	CodePVCMountConflict,
@@ -66,6 +71,7 @@ var AllCodes = [...]Code{
 	CodeAuthRequestExpired,
 	CodeAuthRequestUsed,
 	CodeFileBrowserLoginFailed,
+	CodeFileManagementDisabled,
 	CodeHookVerifyFailed,
 	CodeUnauthorized,
 	CodeValidationError,

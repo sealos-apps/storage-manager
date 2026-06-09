@@ -364,6 +364,8 @@ function defaultStorageClassYAML() {
 kind: StorageClass
 metadata:
   name: example
+  labels:
+    app.kubernetes.io/managed-by: sealos-storage-manager
   annotations:
     storage-management.sealos.io/visible-in-create: "true"
     storage-management.sealos.io/access-modes: "ReadWriteOnce"

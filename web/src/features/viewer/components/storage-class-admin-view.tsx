@@ -1,7 +1,7 @@
 import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
 import type { StorageClass } from '@/features/viewer/types/viewer'
 
-import { Plus, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
@@ -15,12 +15,13 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { translateViewerError } from '@/features/viewer/api/viewer-error'
 import { ErrorCallout } from '@/features/viewer/components/error-callout'
 
 interface StorageClassAdminViewProps {
+	actions: ReactNode
 	deleteMutation: UseMutationResult<StorageClass, Error, string>
-	onCreate: () => void
 	onDelete: (name: string) => void
 	onDescribe: (name: string) => void
 	onEdit: (name: string) => void
@@ -29,7 +30,7 @@ interface StorageClassAdminViewProps {
 }
 
 export function StorageClassAdminView({
-	onCreate,
+	actions,
 	onDelete,
 	onDescribe,
 	onEdit,
@@ -46,16 +47,7 @@ export function StorageClassAdminView({
 					<h2 className="text-xl font-semibold">{t('storageClasses.title')}</h2>
 					<p className="text-sm text-muted-foreground">{t('storageClasses.description')}</p>
 				</div>
-				<div className="flex gap-2">
-					<Button onClick={() => void query.refetch()} type="button" variant="outline">
-						<RefreshCw data-icon="inline-start" />
-						{t('actions.refresh')}
-					</Button>
-					<Button onClick={onCreate} type="button">
-						<Plus data-icon="inline-start" />
-						{t('storageClasses.create')}
-					</Button>
-				</div>
+				{actions}
 			</header>
 			<Separator />
 			{query.error
@@ -75,6 +67,7 @@ export function StorageClassAdminView({
 							<TableHead>{t('storageClasses.volumeBindingMode')}</TableHead>
 							<TableHead>{t('storageClasses.allowVolumeExpansion')}</TableHead>
 							<TableHead>{t('storageClasses.visibility')}</TableHead>
+							<TableHead>{t('storageClasses.pvcUsage')}</TableHead>
 							<TableHead>{t('viewer.accessModes')}</TableHead>
 							<TableHead className="text-right">{t('files.columns.actions')}</TableHead>
 						</TableRow>
@@ -95,6 +88,7 @@ export function StorageClassAdminView({
 										{storageClass.annotation_status}
 									</Badge>
 								</TableCell>
+								<TableCell>{storageClass.in_use_pvc_count}</TableCell>
 								<TableCell>
 									<div className="flex flex-wrap gap-1">
 										{storageClass.allowed_access_modes.length > 0
@@ -113,9 +107,10 @@ export function StorageClassAdminView({
 										<Button onClick={() => onEditPolicy(storageClass)} size="sm" type="button" variant="outline">
 											{t('storageClasses.policy')}
 										</Button>
-										<Button onClick={() => onDelete(storageClass.name)} size="sm" type="button" variant="destructive">
-											{t('actions.delete')}
-										</Button>
+										<DeleteButton
+											onDelete={() => onDelete(storageClass.name)}
+											storageClass={storageClass}
+										/>
 									</div>
 								</TableCell>
 							</TableRow>
@@ -123,7 +118,7 @@ export function StorageClassAdminView({
 						{items.length === 0
 							? (
 									<TableRow>
-										<TableCell className="py-12 text-center text-muted-foreground" colSpan={8}>
+										<TableCell className="py-12 text-center text-muted-foreground" colSpan={9}>
 											{query.isLoading ? t('common.loading') : t('common.empty')}
 										</TableCell>
 									</TableRow>
@@ -134,4 +129,47 @@ export function StorageClassAdminView({
 			</div>
 		</section>
 	)
+}
+
+function DeleteButton({
+	onDelete,
+	storageClass,
+}: {
+	onDelete: () => void
+	storageClass: StorageClass
+}) {
+	const { t } = useTranslation()
+	const reason = storageClassDeleteBlockMessage(storageClass, t)
+	const button = (
+		<Button
+			disabled={Boolean(reason)}
+			onClick={onDelete}
+			size="sm"
+			type="button"
+			variant="destructive"
+		>
+			{t('actions.delete')}
+		</Button>
+	)
+	if (!reason) {
+		return button
+	}
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<span>{button}</span>
+			</TooltipTrigger>
+			<TooltipContent>{reason}</TooltipContent>
+		</Tooltip>
+	)
+}
+
+function storageClassDeleteBlockMessage(storageClass: StorageClass, t: ReturnType<typeof useTranslation>['t']) {
+	if (!storageClass.managed_by_storage_manager || storageClass.delete_blocked_reason === 'not_managed') {
+		return t('storageClasses.deleteBlockedNotManaged')
+	}
+	if (storageClass.in_use_pvc_count > 0 || storageClass.delete_blocked_reason === 'in_use') {
+		return t('storageClasses.deleteBlockedInUse', { count: storageClass.in_use_pvc_count })
+	}
+	return ''
 }

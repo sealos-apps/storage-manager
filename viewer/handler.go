@@ -77,6 +77,7 @@ type Handler struct {
 	authz          authorizer
 	adminAuthz     adminAuthorizer
 	debug          config.DebugConfig
+	features       config.FeatureConfig
 }
 
 type HandlerOption func(*Handler)
@@ -124,6 +125,12 @@ func WithDebugConfig(debug config.DebugConfig) HandlerOption {
 	}
 }
 
+func WithFeatureConfig(features config.FeatureConfig) HandlerOption {
+	return func(h *Handler) {
+		h.features = features
+	}
+}
+
 func WithStorageClassService(storageClasses storageClassService) HandlerOption {
 	return func(h *Handler) {
 		h.storageClasses = storageClasses
@@ -156,6 +163,7 @@ func NewHandler(
 		recorder:       recorder,
 		authz:          authz,
 		adminAuthz:     denyAdminAuthorizer{},
+		features:       config.Default().Features(),
 	}
 	for _, option := range options {
 		option(handler)

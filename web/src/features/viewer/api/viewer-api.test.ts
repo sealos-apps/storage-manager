@@ -118,7 +118,7 @@ describe('viewer API adapter', () => {
 			storage_class_list: { items: [storageClassFixture({ name: 'standard' })] },
 		})
 		const adminCapabilities = vi.fn().mockResolvedValue({
-			admin_capabilities: { can_manage_pvcs: true, can_manage_storage_classes: true },
+			admin_capabilities: { can_manage_pvcs: true, can_manage_storage_classes: true, file_management_enabled: true },
 		})
 		const adminCreateStorageClass = vi.fn().mockResolvedValue({
 			storage_class: storageClassFixture({ name: 'created' }),
@@ -193,7 +193,7 @@ describe('viewer API adapter', () => {
 		await expect(api.listStorageClasses()).resolves.toEqual([
 			expect.objectContaining({ name: 'standard' }),
 		])
-		await expect(api.adminCapabilities()).resolves.toEqual({ can_manage_pvcs: true, can_manage_storage_classes: true })
+		await expect(api.adminCapabilities()).resolves.toEqual({ can_manage_pvcs: true, can_manage_storage_classes: true, file_management_enabled: true })
 		await expect(api.adminListNamespaces()).resolves.toEqual([
 			expect.objectContaining({ name: 'kube-system' }),
 		])

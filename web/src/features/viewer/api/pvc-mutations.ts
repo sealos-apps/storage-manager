@@ -24,6 +24,7 @@ export function createPVCMutationOptions(
 				capacity_bytes: input.capacityBytes,
 				capacity: input.capacity,
 				access_modes: input.accessModes,
+				storage_class_name: input.storageClassName,
 				mounted: false,
 				mounted_pods: [],
 				viewer_supported: true,

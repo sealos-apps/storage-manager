@@ -34,13 +34,22 @@ type AdminConfig struct {
 }
 
 type ViewerConfig struct {
-	BackendVerifyURL string            `yaml:"backend_verify_url"`
-	HookClientToken  string            `yaml:"hook_client_token"`
-	HookScript       string            `yaml:"hook_script"`
-	FileBrowser      FileBrowserConfig `yaml:"filebrowser"`
-	Pod              PodConfig         `yaml:"pod"`
-	Service          ServiceConfig     `yaml:"service"`
-	Ingress          IngressConfig     `yaml:"ingress"`
+	BackendVerifyURL string               `yaml:"backend_verify_url"`
+	HookClientToken  string               `yaml:"hook_client_token"`
+	HookScript       string               `yaml:"hook_script"`
+	FileManagement   FileManagementConfig `yaml:"file_management"`
+	FileBrowser      FileBrowserConfig    `yaml:"filebrowser"`
+	Pod              PodConfig            `yaml:"pod"`
+	Service          ServiceConfig        `yaml:"service"`
+	Ingress          IngressConfig        `yaml:"ingress"`
+}
+
+type FileManagementConfig struct {
+	Enabled bool `yaml:"enabled"`
+}
+
+type FeatureConfig struct {
+	FileManagement FileManagementConfig
 }
 
 type FileBrowserConfig struct {
@@ -158,7 +167,11 @@ func Default() Config {
 		Admin: AdminConfig{
 			StorageClassServiceAccountName: "storageclass-admin",
 		},
-		Viewer: ViewerConfig{},
+		Viewer: ViewerConfig{
+			FileManagement: FileManagementConfig{
+				Enabled: true,
+			},
+		},
 		Sessions: SessionsConfig{
 			HeartbeatInterval:   30 * time.Second,
 			ViewerSessionTimout: 90 * time.Second,
@@ -323,6 +336,12 @@ func (cfg Config) Validate() error {
 	return nil
 }
 
+func (cfg Config) Features() FeatureConfig {
+	return FeatureConfig{
+		FileManagement: cfg.Viewer.FileManagement,
+	}
+}
+
 func normalizedTraceExporter(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
@@ -335,6 +354,7 @@ func (cfg Config) Redacted() map[string]any {
 			"backend_verify_url": cfg.Viewer.BackendVerifyURL,
 			"hook_client_token":  "redacted",
 			"hook_script":        "redacted",
+			"file_management":    cfg.Viewer.FileManagement,
 			"filebrowser":        cfg.Viewer.FileBrowser,
 			"pod":                cfg.Viewer.Pod,
 			"service":            cfg.Viewer.Service,

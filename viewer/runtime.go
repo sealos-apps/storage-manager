@@ -134,6 +134,7 @@ func newRuntimeFromConfig(cfg config.Config) (*Runtime, error) {
 		recorder,
 		nil,
 		WithDebugConfig(cfg.Debug),
+		WithFeatureConfig(cfg.Features()),
 		WithStorageClassService(storageClasses),
 		WithAdminAuthorizer(newKubernetesAdminAuthorizer(cfg.Admin, recorder)),
 	)

@@ -39,6 +39,39 @@ func TestHandlerAdminCapabilitiesReturnsFalseForNonAdmin(t *testing.T) {
 	if !strings.Contains(recorder.Body.String(), `"can_manage_storage_classes":false`) {
 		t.Fatalf("body = %s", recorder.Body.String())
 	}
+	if !strings.Contains(recorder.Body.String(), `"file_management_enabled":true`) {
+		t.Fatalf("body = %s", recorder.Body.String())
+	}
+}
+
+func TestHandlerAdminCapabilitiesReportsFileManagementDisabled(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(
+		&fakeViewerService{},
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+		WithAdminAuthorizer(allowAdminAuthorizer{}),
+		WithFeatureConfig(testDisabledFileManagement()),
+	)
+	req := httptest.NewRequest(http.MethodGet, "/admin/capabilities", nil)
+	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
+	recorder := httptest.NewRecorder()
+
+	handler.AdminCapabilities(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `"can_manage_storage_classes":true`) {
+		t.Fatalf("body = %s", recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `"file_management_enabled":false`) {
+		t.Fatalf("body = %s", recorder.Body.String())
+	}
 }
 
 func TestHandlerAdminListStorageClassesRequiresAdmin(t *testing.T) {

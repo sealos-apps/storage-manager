@@ -68,7 +68,7 @@ export function NamespaceFilter({
 						</Combobox>
 					)
 				: (
-						<div className="flex h-9 w-full items-center rounded-md border bg-muted px-3 text-sm md:w-48">
+						<div className="flex h-9 w-full items-center text-sm md:w-48">
 							<span className="truncate text-muted-foreground">
 								{t('common.namespace')}
 								:

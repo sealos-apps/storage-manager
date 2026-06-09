@@ -9,6 +9,7 @@ import (
 	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
 	"github.com/nixieboluo/sealos-storage-manager/internal/kube"
 	"github.com/nixieboluo/sealos-storage-manager/internal/observability"
+	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
@@ -98,6 +99,16 @@ provisioner: example.test/provisioner
 	if !created.VisibleInCreate || strings.Join(created.AllowedAccessModes, ",") != "ReadWriteOnce,ReadWriteMany" {
 		t.Fatalf("created = %#v", created)
 	}
+	if !created.ManagedByStorageManager {
+		t.Fatalf("created managed flag = false: %#v", created)
+	}
+	createdKube, err := clientset.StorageV1().StorageClasses().Get(t.Context(), "fast", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get created storageclass: %v", err)
+	}
+	if createdKube.Labels[ManagedByLabel] != ManagedByValue {
+		t.Fatalf("managed label = %#v", createdKube.Labels)
+	}
 	yamlResult, err := service.GetStorageClassYAML(t.Context(), "fast")
 	if err != nil {
 		t.Fatalf("GetStorageClassYAML() error = %v", err)
@@ -161,6 +172,113 @@ provisioner: example.test/provisioner
 	}
 	if deleted.Name != "fast" {
 		t.Fatalf("deleted = %#v", deleted)
+	}
+}
+
+func TestStorageClassServiceDeleteRequiresManagedLabel(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	service := NewStorageClassService(
+		kube.New(fake.NewSimpleClientset(&storagev1.StorageClass{
+			ObjectMeta:  metav1.ObjectMeta{Name: "external"},
+			Provisioner: "example.test/provisioner",
+		})),
+		observability.MustNew(cfg.Observability, nil),
+	)
+
+	_, err := service.DeleteStorageClass(t.Context(), "external")
+
+	var apiErr *apienv.Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("DeleteStorageClass() error = %T %v, want apienv.Error", err, err)
+	}
+	if apiErr.Code != apienv.CodeStorageClassDeleteForbidden {
+		t.Fatalf("code = %s, want %s", apiErr.Code, apienv.CodeStorageClassDeleteForbidden)
+	}
+}
+
+func TestStorageClassServiceDeleteRejectsStorageClassInUseByAnyPVC(t *testing.T) {
+	t.Parallel()
+
+	storageClassName := "fast"
+	cfg := testConfig()
+	service := NewStorageClassService(
+		kube.New(fake.NewSimpleClientset(
+			&storagev1.StorageClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: storageClassName,
+					Labels: map[string]string{
+						ManagedByLabel: ManagedByValue,
+					},
+				},
+				Provisioner: "example.test/provisioner",
+			},
+			&corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "other",
+					Name:      "data",
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					StorageClassName: &storageClassName,
+				},
+			},
+		)),
+		observability.MustNew(cfg.Observability, nil),
+	)
+
+	_, err := service.DeleteStorageClass(t.Context(), storageClassName)
+
+	var apiErr *apienv.Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("DeleteStorageClass() error = %T %v, want apienv.Error", err, err)
+	}
+	if apiErr.Code != apienv.CodeStorageClassInUse {
+		t.Fatalf("code = %s, want %s", apiErr.Code, apienv.CodeStorageClassInUse)
+	}
+	if apiErr.Details["pvc_count"] != 1 {
+		t.Fatalf("details = %#v", apiErr.Details)
+	}
+}
+
+func TestStorageClassServiceAdminListIncludesDeleteMetadata(t *testing.T) {
+	t.Parallel()
+
+	storageClassName := "fast"
+	cfg := testConfig()
+	service := NewStorageClassService(
+		kube.New(fake.NewSimpleClientset(
+			&storagev1.StorageClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: storageClassName,
+					Labels: map[string]string{
+						ManagedByLabel: ManagedByValue,
+					},
+				},
+				Provisioner: "example.test/provisioner",
+			},
+			&corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "other",
+					Name:      "data",
+				},
+				Spec: corev1.PersistentVolumeClaimSpec{
+					StorageClassName: &storageClassName,
+				},
+			},
+		)),
+		observability.MustNew(cfg.Observability, nil),
+	)
+
+	items, err := service.ListStorageClasses(t.Context(), true)
+	if err != nil {
+		t.Fatalf("ListStorageClasses() error = %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items = %#v", items)
+	}
+	if !items[0].ManagedByStorageManager || items[0].InUsePVCCount != 1 || items[0].DeleteBlockedReason != "in_use" {
+		t.Fatalf("item = %#v", items[0])
 	}
 }
 

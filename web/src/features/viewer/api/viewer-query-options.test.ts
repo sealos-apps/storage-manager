@@ -85,7 +85,7 @@ describe('viewer query options', () => {
 			meta: undefined,
 			queryKey: viewerKeys.adminCapabilities(),
 			signal: new AbortController().signal,
-		})).resolves.toEqual({ can_manage_pvcs: false, can_manage_storage_classes: false })
+		})).resolves.toEqual({ can_manage_pvcs: false, can_manage_storage_classes: false, file_management_enabled: true })
 		await expect(adminNamespaceListQueryOptions(api).queryFn?.({
 			client: mutationContext.client,
 			meta: undefined,

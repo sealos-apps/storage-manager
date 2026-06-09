@@ -22,6 +22,7 @@ export function pvcFixture(overrides: Partial<PVC> = {}): PVC {
 		name: 'data',
 		namespace: 'default',
 		reason: '',
+		storage_class_name: 'standard',
 		uid: 'pvc-uid',
 		viewer_mode: 'readwrite',
 		viewer_scheduling: {
@@ -56,7 +57,10 @@ export function storageClassFixture(overrides: Partial<StorageClass> = {}): Stor
 		allowed_access_modes: ['ReadWriteOnce'],
 		annotation_status: 'ready',
 		creation_timestamp: '2026-05-14T10:00:00Z',
+		delete_blocked_reason: '',
+		in_use_pvc_count: 0,
 		is_default: true,
+		managed_by_storage_manager: true,
 		name: 'standard',
 		provisioner: 'kubernetes.io/no-provisioner',
 		reclaim_policy: 'Delete',
@@ -157,6 +161,7 @@ export function createFakeViewerAPI(overrides: Partial<ViewerAPI> = {}): ViewerA
 		adminCapabilities: async () => ({
 			can_manage_pvcs: false,
 			can_manage_storage_classes: false,
+			file_management_enabled: true,
 		}),
 		adminCreateStorageClass: async () => storageClassFixture(),
 		adminDeleteStorageClass: async name => storageClassFixture({ name }),

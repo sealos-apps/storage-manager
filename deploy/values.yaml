@@ -48,6 +48,8 @@ backend:
         port: 8080
         tokenTtl: 15m
         loginTimeout: 2s
+      fileManagement:
+        enabled: true
       pod:
         serviceAccountName: ""
         mountPath: /srv
@@ -94,6 +96,7 @@ web:
   configMapName: viewer-web-config
   runtimeConfig:
     apiBaseUrl: /api
+    forcedLanguage: ""
     fileUploadTusThresholdBytes: 33554432
     fileUploadTusChunkBytes: 8388608
     fileUploadTusRetryCount: 5

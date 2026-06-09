@@ -64,6 +64,101 @@ func TestHandlerIssueTokenNoStore(t *testing.T) {
 	}
 }
 
+func TestHandlerFileManagementDisabledBlocksSessionEndpoints(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(
+		&fakeViewerService{
+			created: &domain.ViewerSession{
+				ID:           "vs_1",
+				PodSessionID: "ps_1",
+				Namespace:    "ns",
+				PVCName:      "data",
+			},
+			heartbeat: &domain.Heartbeat{ViewerSessionID: "vs_1"},
+			podSession: &domain.PodSession{
+				ID:        "ps_1",
+				Namespace: "ns",
+				PVCName:   "data",
+			},
+			token: &domain.ViewerToken{ViewerSessionID: "vs_1"},
+		},
+		fakePodService{
+			closed: &domain.PodSession{ID: "ps_1"},
+		},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+		WithFeatureConfig(testDisabledFileManagement()),
+	)
+	tests := []struct {
+		name   string
+		req    *http.Request
+		handle func(*Handler, http.ResponseWriter, *http.Request)
+	}{
+		{
+			name:   "create viewer session",
+			req:    httptest.NewRequest(http.MethodPost, "/viewer-sessions", strings.NewReader(`{"namespace":"ns","pvc_name":"data"}`)),
+			handle: (*Handler).CreateViewerSession,
+		},
+		{
+			name:   "get viewer session",
+			req:    httptest.NewRequest(http.MethodGet, "/viewer-sessions/vs_1", nil),
+			handle: (*Handler).GetViewerSession,
+		},
+		{
+			name:   "issue token",
+			req:    httptest.NewRequest(http.MethodPost, "/viewer-sessions/vs_1/token", nil),
+			handle: (*Handler).IssueToken,
+		},
+		{
+			name:   "heartbeat",
+			req:    httptest.NewRequest(http.MethodPost, "/viewer-sessions/vs_1/heartbeat", nil),
+			handle: (*Handler).Heartbeat,
+		},
+		{
+			name:   "close viewer",
+			req:    httptest.NewRequest(http.MethodDelete, "/viewer-sessions/vs_1", nil),
+			handle: (*Handler).CloseViewerSession,
+		},
+		{
+			name:   "get pod",
+			req:    httptest.NewRequest(http.MethodGet, "/pod-sessions/ps_1", nil),
+			handle: (*Handler).GetPodSession,
+		},
+		{
+			name:   "close pod",
+			req:    httptest.NewRequest(http.MethodDelete, "/pod-sessions/ps_1", nil),
+			handle: (*Handler).ClosePodSession,
+		},
+		{
+			name: "verify hook",
+			req: httptest.NewRequest(
+				http.MethodPost,
+				"/internal/filebrowser-hook/verify",
+				strings.NewReader(`{"pod_session_id":"ps_1","viewer_pod_name":"viewer","username":"vs_1","auth_request_id":"ar_1","password_hash":"hash"}`),
+			),
+			handle: (*Handler).VerifyFileBrowserHook,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
+			recorder := httptest.NewRecorder()
+
+			tt.handle(handler, recorder, tt.req)
+
+			if recorder.Code != http.StatusForbidden {
+				t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+			}
+			if !strings.Contains(recorder.Body.String(), string(apienv.CodeFileManagementDisabled)) {
+				t.Fatalf("body = %s", recorder.Body.String())
+			}
+		})
+	}
+}
+
 func TestHandlerIssueTokenAuthorizesFromViewerSessionPVC(t *testing.T) {
 	t.Parallel()
 

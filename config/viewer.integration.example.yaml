@@ -72,6 +72,8 @@ viewer:
     port: 8080
     token_ttl: 15m
     login_timeout: 2s
+  file_management:
+    enabled: true
   pod:
     service_account_name: ""
     mount_path: /srv

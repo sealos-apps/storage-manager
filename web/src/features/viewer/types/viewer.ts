@@ -41,6 +41,8 @@ export const backendViewerErrorCodes = [
 	'STORAGE_CLASS_NOT_VISIBLE',
 	'STORAGE_CLASS_YAML_INVALID',
 	'STORAGE_CLASS_CONFLICT',
+	'STORAGE_CLASS_DELETE_FORBIDDEN',
+	'STORAGE_CLASS_IN_USE',
 	'ADMIN_ACCESS_DENIED',
 	'VIEWER_POD_CREATING',
 	'VIEWER_POD_FAILED',
@@ -50,6 +52,7 @@ export const backendViewerErrorCodes = [
 	'AUTH_REQUEST_EXPIRED',
 	'AUTH_REQUEST_USED',
 	'FILEBROWSER_LOGIN_FAILED',
+	'FILE_MANAGEMENT_DISABLED',
 	'HOOK_VERIFY_FAILED',
 	'UNAUTHORIZED',
 	'VALIDATION_ERROR',
@@ -75,6 +78,7 @@ export interface CreatePVCInput {
 export interface AdminCapabilities {
 	can_manage_pvcs: boolean
 	can_manage_storage_classes: boolean
+	file_management_enabled: boolean
 }
 
 export interface StorageClassYAMLInput {

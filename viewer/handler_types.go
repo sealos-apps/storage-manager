@@ -86,6 +86,7 @@ type ListStorageClassesResponse struct {
 type AdminCapabilitySet struct {
 	CanManagePVCs           bool `json:"can_manage_pvcs"`
 	CanManageStorageClasses bool `json:"can_manage_storage_classes"`
+	FileManagementEnabled   bool `json:"file_management_enabled"`
 }
 
 type AdminCapabilitiesResponse struct {

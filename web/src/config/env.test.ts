@@ -21,6 +21,7 @@ describe('frontend environment parsing', () => {
 		vi.stubEnv('VITE_API_BASE_URL', 'https://build.example.com/api')
 		window.__SEALOS_STORAGE_MANAGER_CONFIG__ = {
 			apiBaseUrl: '/runtime-api',
+			forcedLanguage: 'zh',
 			fileUploadTusChunkBytes: 256,
 			fileUploadTusRetryCount: '3',
 			fileUploadTusThresholdBytes: '2048',
@@ -29,6 +30,7 @@ describe('frontend environment parsing', () => {
 		const { env } = await import('@/config/env')
 
 		expect(env.apiBaseUrl).toBe('/runtime-api')
+		expect(env.forcedLanguage).toBe('zh')
 		expect(env.fileUploadTusThresholdBytes).toBe(2048)
 		expect(env.fileUploadTusChunkBytes).toBe(256)
 		expect(env.fileUploadTusRetryCount).toBe(3)
@@ -37,13 +39,35 @@ describe('frontend environment parsing', () => {
 	it('uses Vite API base URL before runtime config in dev mode', async () => {
 		vi.stubEnv('DEV', true)
 		vi.stubEnv('VITE_API_BASE_URL', 'http://localhost:4000')
+		vi.stubEnv('VITE_DEV_DISABLE_SEALOS_DESKTOP_SDK', 'true')
 		window.__SEALOS_STORAGE_MANAGER_CONFIG__ = {
 			apiBaseUrl: '/api',
+			forcedLanguage: 'zh',
 		}
 
 		const { env } = await import('@/config/env')
 
 		expect(env.apiBaseUrl).toBe('http://localhost:4000')
+		expect(env.disableSealosDesktopSDK).toBe(true)
+	})
+
+	it('ignores the Desktop SDK bypass env var outside dev mode', async () => {
+		vi.stubEnv('DEV', false)
+		vi.stubEnv('VITE_DEV_DISABLE_SEALOS_DESKTOP_SDK', 'true')
+
+		const { env } = await import('@/config/env')
+
+		expect(env.disableSealosDesktopSDK).toBe(false)
+	})
+
+	it('accepts only supported forced language values', async () => {
+		window.__SEALOS_STORAGE_MANAGER_CONFIG__ = {
+			forcedLanguage: 'fr',
+		}
+
+		const { env } = await import('@/config/env')
+
+		expect(env.forcedLanguage).toBe('')
 	})
 
 	it('uses Vite env vars when runtime config is absent', async () => {

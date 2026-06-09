@@ -58,6 +58,16 @@ func (c observedClient) ListPVCs(ctx context.Context, namespace string) ([]corev
 	return pvcs, err
 }
 
+func (c observedClient) ListAllPVCs(ctx context.Context) ([]corev1.PersistentVolumeClaim, error) {
+	var pvcs []corev1.PersistentVolumeClaim
+	err := c.observe(ctx, "list", "persistentvolumeclaims", "", "", func(ctx context.Context) error {
+		var err error
+		pvcs, err = c.next.ListAllPVCs(ctx)
+		return err
+	})
+	return pvcs, err
+}
+
 func (c observedClient) CreatePVC(
 	ctx context.Context,
 	pvc *corev1.PersistentVolumeClaim,

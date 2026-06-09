@@ -59,7 +59,7 @@ backend-dev: check-go-version
 	$(ENCORE_ENV) CONFIG=$(CONFIG) $(ENCORE) run --listen 0.0.0.0:4000 --browser=never
 
 web-dev:
-	cd $(WEB_DIR) && $(ENCORE_ENV) VITE_API_BASE_URL="$(WEB_DEV_API_BASE_URL)" VITE_DEV_KUBECONFIG="$$(cat $(WEB_DEV_KUBECONFIG))" $(PNPM) dev
+	cd $(WEB_DIR) && $(ENCORE_ENV) VITE_API_BASE_URL="$(WEB_DEV_API_BASE_URL)" VITE_DEV_DISABLE_SEALOS_DESKTOP_SDK=true VITE_DEV_KUBECONFIG="$$(cat $(WEB_DEV_KUBECONFIG))" $(PNPM) dev
 
 fmt: backend-fmt web-fmt
 

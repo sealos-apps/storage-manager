@@ -209,6 +209,12 @@ func (f fakeAuthService) VerifyHook(_ session.HookVerifyInput) domain.FileBrowse
 	return f.result
 }
 
+func testDisabledFileManagement() config.FeatureConfig {
+	cfg := config.Default()
+	cfg.Viewer.FileManagement.Enabled = false
+	return cfg.Features()
+}
+
 type allowAuthorizer struct{}
 
 var clientsetFactoryMu sync.Mutex
