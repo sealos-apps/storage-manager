@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { translateViewerError } from '@/features/viewer/api/viewer-error'
+import { formatViewerErrorToast } from '@/features/viewer/api/viewer-error'
 import { adminStorageClassDescribeQueryOptions, adminStorageClassYAMLQueryOptions } from '@/features/viewer/api/viewer-query-options'
 
 const MonacoEditor = lazy(() => import('@monaco-editor/react'))
@@ -67,7 +67,7 @@ export function StorageClassEditorDialog({
 					toast.success(t('storageClasses.saved'))
 					onOpenChange(null)
 				},
-				onError: error => toast.error(translateViewerError(error, t)),
+				onError: error => showViewerErrorToast(error, t),
 			})
 			return
 		}
@@ -76,7 +76,7 @@ export function StorageClassEditorDialog({
 				toast.success(t('storageClasses.saved'))
 				onOpenChange(null)
 			},
-			onError: error => toast.error(translateViewerError(error, t)),
+			onError: error => showViewerErrorToast(error, t),
 		})
 	}
 
@@ -229,7 +229,7 @@ export function StorageClassPolicyDialog({
 				toast.success(t('storageClasses.policySaved'))
 				onOpenChange(null)
 			},
-			onError: error => toast.error(translateViewerError(error, t)),
+			onError: error => showViewerErrorToast(error, t),
 		})
 	}
 
@@ -323,7 +323,7 @@ export function DeleteStorageClassDialog({
 									toast.success(t('storageClasses.deleted'))
 									onOpenChange(null)
 								},
-								onError: error => toast.error(translateViewerError(error, t)),
+								onError: error => showViewerErrorToast(error, t),
 							})
 						}}
 						type="button"
@@ -374,4 +374,9 @@ reclaimPolicy: Delete
 volumeBindingMode: Immediate
 allowVolumeExpansion: true
 `
+}
+
+function showViewerErrorToast(error: unknown, t: ReturnType<typeof useTranslation>['t']) {
+	const formatted = formatViewerErrorToast(error, t)
+	toast.error(formatted.message, { description: formatted.description })
 }

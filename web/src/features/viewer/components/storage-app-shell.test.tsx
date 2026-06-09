@@ -327,7 +327,10 @@ describe('storageAppShell', () => {
 		await user.click(await screen.findByRole('button', { name: /create pvc/i }))
 		await user.type(screen.getByLabelText('Name'), 'cache-data')
 		const capacityInput = screen.getByLabelText('Capacity')
+		expect(screen.getByText('Gi')).toBeInTheDocument()
 		await user.clear(capacityInput)
+		expect(capacityInput).toHaveValue('')
+		expect(screen.getByRole('button', { name: /^create$/i })).toBeDisabled()
 		await user.type(capacityInput, '5')
 		await user.click(screen.getByRole('button', { name: /^create$/i }))
 
@@ -366,7 +369,11 @@ describe('storageAppShell', () => {
 
 		await user.click(await screen.findByRole('button', { name: /more actions/i }))
 		await user.click(await screen.findByRole('menuitem', { name: /expand/i }))
-		const capacityInput = await screen.findByRole('spinbutton', { name: /target capacity/i })
+		const capacityInput = await screen.findByLabelText(/target capacity/i)
+		expect(screen.getAllByText('Gi').length).toBeGreaterThan(0)
+		await user.clear(capacityInput)
+		expect(capacityInput).toHaveValue('')
+		expect(screen.getByRole('button', { name: /^expand pvc$/i })).toBeDisabled()
 		await user.clear(capacityInput)
 		await user.type(capacityInput, '10')
 		expect(screen.getByRole('button', { name: /^expand pvc$/i })).toBeDisabled()
@@ -380,6 +387,35 @@ describe('storageAppShell', () => {
 			capacity: '20Gi',
 			capacityBytes: 20 * 1024 * 1024 * 1024,
 		}))
+	})
+
+	it('shows backend details in PVC mutation error toasts', async () => {
+		const user = userEvent.setup()
+		const detail = 'persistentvolumeclaims "cache-data" is forbidden: exceeded quota: quota-ns-admin'
+		const createPVC = vi.fn().mockRejectedValue(new ViewerApiError({
+			code: 'PVC_CREATE_FORBIDDEN',
+			details: {
+				message: detail,
+			},
+			message: detail,
+			status: 403,
+		}))
+		const api = createFakeViewerAPI({
+			createPVC,
+			listPVCs: vi.fn().mockResolvedValue([]),
+		})
+
+		renderWithProviders(<StorageAppShell api={api} />)
+
+		await user.click(await screen.findByRole('button', { name: /create pvc/i }))
+		await user.type(screen.getByLabelText('Name'), 'cache-data')
+		const capacityInput = screen.getByLabelText('Capacity')
+		await user.clear(capacityInput)
+		await user.type(capacityInput, '5')
+		await user.click(screen.getByRole('button', { name: /^create$/i }))
+
+		expect(await screen.findByText('You do not have permission to create PVCs in this namespace.')).toBeInTheDocument()
+		expect(await screen.findByText(detail)).toBeInTheDocument()
 	})
 
 	it('limits PVC access modes to the selected StorageClass policy', async () => {

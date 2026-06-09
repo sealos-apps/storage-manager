@@ -2,6 +2,7 @@ import { APIError, ErrCode } from '@sealos-storage-manager/encore-client'
 import { describe, expect, it } from 'vitest'
 
 import {
+	formatViewerErrorToast,
 	normalizeViewerError,
 	translateViewerError,
 	ViewerApiError,
@@ -60,6 +61,63 @@ describe('viewer errors', () => {
 
 		expect(translated).toContain('The viewer pod failed to start.')
 		expect(translated).toContain('exceeded quota')
+	})
+
+	it('formats toast errors with localized summary and backend details', () => {
+		const instance = createI18nInstance('en')
+		const message = 'persistentvolumeclaims "cache-data" is forbidden: exceeded quota: quota-ns-admin, requested: requests.storage=20Gi, used: requests.storage=90Gi, limited: requests.storage=100Gi'
+
+		const formatted = formatViewerErrorToast(
+			new APIError(403, {
+				code: ErrCode.PermissionDenied,
+				details: {
+					code: 'PVC_CREATE_FORBIDDEN',
+					message,
+				},
+				message: 'pvc create forbidden',
+			}),
+			instance.t,
+		)
+
+		expect(formatted.message).toBe('You do not have permission to create PVCs in this namespace.')
+		expect(formatted.description).toBe(message)
+	})
+
+	it('formats structured backend details when no detail message is available', () => {
+		const instance = createI18nInstance('en')
+
+		const formatted = formatViewerErrorToast(
+			new ViewerApiError({
+				code: 'STORAGE_CLASS_IN_USE',
+				details: {
+					pvc_count: 2,
+					storage_class: 'standard',
+				},
+				message: 'StorageClass is in use',
+				status: 409,
+			}),
+			instance.t,
+		)
+
+		expect(formatted.message).toBe('This StorageClass is used by existing PVCs and cannot be deleted.')
+		expect(formatted.description).toContain('pvc_count: 2')
+		expect(formatted.description).toContain('storage_class: standard')
+	})
+
+	it('omits duplicate toast descriptions when localized copy already includes the detail', () => {
+		const instance = createI18nInstance('en')
+		const formatted = formatViewerErrorToast(
+			new ViewerApiError({
+				code: 'VIEWER_POD_FAILED',
+				details: {},
+				message: 'ImagePullBackOff',
+				status: 500,
+			}),
+			instance.t,
+		)
+
+		expect(formatted.message).toBe('The viewer pod failed to start. Reason: ImagePullBackOff')
+		expect(formatted.description).toBeUndefined()
 	})
 
 	it('uses pod session copy for pod session loss', () => {

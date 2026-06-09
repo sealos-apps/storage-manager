@@ -16,19 +16,27 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import {
+	InputGroup,
+	InputGroupAddon,
+	InputGroupInput,
+	InputGroupText,
+} from '@/components/ui/input-group'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { translateViewerError } from '@/features/viewer/api/viewer-error'
+import { formatViewerErrorToast } from '@/features/viewer/api/viewer-error'
 
 interface CreatePVCForm {
-	capacityGi: number
+	capacityGi: string
 	name: string
 }
 
 const defaultCreatePVCForm: CreatePVCForm = {
-	capacityGi: 10,
+	capacityGi: '10',
 	name: '',
 }
+
+const bytesPerGi = 1024 * 1024 * 1024
 
 interface CreatePVCVariables {
 	accessModes: string[]
@@ -92,14 +100,18 @@ export function CreatePVCDialog({
 			...defaultCreatePVCForm,
 		},
 		onSubmit: ({ value }) => {
+			const capacityGi = parseCapacityGi(value.capacityGi)
 			if (!activeStorageClassName || !activeAccessMode) {
+				return
+			}
+			if (capacityGi === null) {
 				return
 			}
 			mutation.mutate({
 				namespace,
 				name: value.name.trim(),
-				capacity: `${value.capacityGi}Gi`,
-				capacityBytes: value.capacityGi * 1024 * 1024 * 1024,
+				capacity: `${capacityGi}Gi`,
+				capacityBytes: capacityGi * bytesPerGi,
 				accessModes: [activeAccessMode],
 				storageClassName: activeStorageClassName,
 			}, {
@@ -111,7 +123,10 @@ export function CreatePVCDialog({
 					setSelection({ accessMode: '', storageClassName: '' })
 					onOpenChange(false)
 				},
-				onError: error => toast.error(translateViewerError(error, t)),
+				onError: (error) => {
+					const formatted = formatViewerErrorToast(error, t)
+					toast.error(formatted.message, { description: formatted.description })
+				},
 			})
 		},
 	})
@@ -164,23 +179,27 @@ export function CreatePVCDialog({
 					<form.Field
 						name="capacityGi"
 						validators={{
-							onChange: ({ value }) => value > 0 ? undefined : t('volumes.capacityRequired'),
+							onBlur: ({ value }) => parseCapacityGi(value) !== null ? undefined : t('volumes.capacityRequired'),
 						}}
 					>
 						{field => (
 							<FormField
-								error={field.state.meta.errorMap.onChange}
+								error={field.state.meta.errorMap.onBlur}
 								id="pvc-capacity"
 								label={t('viewer.capacity')}
 							>
-								<Input
-									aria-invalid={field.state.meta.errorMap.onChange ? true : undefined}
+								<CapacityGiInput
+									aria-invalid={field.state.meta.errorMap.onBlur ? true : undefined}
 									id="pvc-capacity"
-									min={1}
 									name={field.name}
-									onBlur={field.handleBlur}
-									onChange={event => field.handleChange(Number(event.target.value))}
-									type="number"
+									onBlur={() => {
+										const normalized = normalizeCapacityGi(field.state.value)
+										if (normalized !== field.state.value) {
+											field.handleChange(normalized)
+										}
+										field.handleBlur()
+									}}
+									onChange={event => field.handleChange(event.target.value)}
 									value={field.state.value}
 								/>
 							</FormField>
@@ -251,7 +270,7 @@ export function CreatePVCDialog({
 										|| !canSubmit
 										|| !namespace
 										|| values.name.trim().length === 0
-										|| values.capacityGi <= 0
+										|| parseCapacityGi(values.capacityGi) === null
 										|| activeStorageClassName.length === 0
 										|| activeAccessMode.length === 0
 									}
@@ -321,9 +340,9 @@ function ExpandPVCDialogContent({
 	currentGi: number
 	t: ReturnType<typeof useTranslation>['t']
 }) {
-	const [nextGi, setNextGi] = useState(currentGi + 10)
-	const value = Number.isFinite(nextGi) ? Math.floor(nextGi) : 0
-	const capacityError = value > currentGi ? '' : t('volumes.capacityRequired')
+	const [nextGiInput, setNextGiInput] = useState(String(currentGi + 10))
+	const value = parseCapacityGi(nextGiInput)
+	const capacityError = value !== null && value > currentGi ? '' : t('volumes.capacityRequired')
 
 	return (
 		<Dialog
@@ -349,14 +368,12 @@ function ExpandPVCDialogContent({
 						</span>
 					</div>
 					<FormField error={capacityError} id="expand-capacity" label={t('volumes.targetCapacity')}>
-						<Input
+						<CapacityGiInput
 							aria-invalid={capacityError ? true : undefined}
 							id="expand-capacity"
-							min={currentGi + 1}
-							onChange={event => setNextGi(Number(event.target.value))}
-							step={1}
-							type="number"
-							value={Number.isFinite(nextGi) ? nextGi : ''}
+							onBlur={() => setNextGiInput(normalizeCapacityGi(nextGiInput))}
+							onChange={event => setNextGiInput(event.target.value)}
+							value={nextGiInput}
 						/>
 					</FormField>
 					<p className="text-sm text-muted-foreground">{t('volumes.expandHint')}</p>
@@ -371,17 +388,23 @@ function ExpandPVCDialogContent({
 							if (!pvc) {
 								return
 							}
+							if (value === null) {
+								return
+							}
 							mutation.mutate({
 								namespace: pvc.namespace,
 								name: pvc.name,
 								capacity: `${value}Gi`,
-								capacityBytes: value * 1024 * 1024 * 1024,
+								capacityBytes: value * bytesPerGi,
 							}, {
 								onSuccess: () => {
 									toast.success(t('volumes.expanded'))
 									onOpenChange(null)
 								},
-								onError: error => toast.error(translateViewerError(error, t)),
+								onError: (error) => {
+									const formatted = formatViewerErrorToast(error, t)
+									toast.error(formatted.message, { description: formatted.description })
+								},
 							})
 						}}
 					>
@@ -447,7 +470,10 @@ export function DeletePVCDialog({
 									onSuccess()
 									onOpenChange(null)
 								},
-								onError: error => toast.error(translateViewerError(error, t)),
+								onError: (error) => {
+									const formatted = formatViewerErrorToast(error, t)
+									toast.error(formatted.message, { description: formatted.description })
+								},
 							})
 						}}
 						variant="destructive"
@@ -457,5 +483,37 @@ export function DeletePVCDialog({
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>
+	)
+}
+
+function parseCapacityGi(value: string) {
+	const trimmed = value.trim()
+	if (!/^\d+$/.test(trimmed)) {
+		return null
+	}
+	const parsed = Number(trimmed)
+	return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null
+}
+
+function normalizeCapacityGi(value: string) {
+	const parsed = parseCapacityGi(value)
+	return parsed === null ? value : String(parsed)
+}
+
+function CapacityGiInput({
+	className,
+	...props
+}: React.ComponentProps<typeof InputGroupInput>) {
+	return (
+		<InputGroup className={className}>
+			<InputGroupInput
+				inputMode="numeric"
+				pattern="[0-9]*"
+				{...props}
+			/>
+			<InputGroupAddon align="inline-end">
+				<InputGroupText>Gi</InputGroupText>
+			</InputGroupAddon>
+		</InputGroup>
 	)
 }

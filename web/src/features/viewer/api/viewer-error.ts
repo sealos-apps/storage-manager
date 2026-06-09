@@ -41,8 +41,10 @@ export const viewerErrorMessageKeys = {
 
 interface EncoreErrorDetails {
 	Code?: string
+	Details?: Record<string, unknown>
 	message?: string
 	code?: string
+	details?: Record<string, unknown>
 	Message?: string
 }
 
@@ -76,6 +78,64 @@ function detailMessage(details: unknown): string | undefined {
 	}
 	const typed = details as EncoreErrorDetails
 	return typed.Message ?? typed.message
+}
+
+function nestedDetails(details: unknown): Record<string, unknown> | undefined {
+	if (!details || typeof details !== 'object') {
+		return undefined
+	}
+	const typed = details as EncoreErrorDetails
+	return typed.Details ?? typed.details
+}
+
+function stringifyDetailValue(value: unknown): string {
+	if (typeof value === 'string') {
+		return value
+	}
+	if (typeof value === 'number' || typeof value === 'boolean') {
+		return String(value)
+	}
+	if (value === null) {
+		return 'null'
+	}
+	if (Array.isArray(value)) {
+		return value.map(item => stringifyDetailValue(item)).join(', ')
+	}
+	if (typeof value === 'object') {
+		try {
+			return JSON.stringify(value)
+		}
+		catch {
+			return String(value)
+		}
+	}
+	return String(value)
+}
+
+function detailsDescription(details: Record<string, unknown> | undefined) {
+	if (!details) {
+		return undefined
+	}
+	const lines = Object.entries(details)
+		.filter(([key, value]) =>
+			!['Code', 'code', 'Details', 'details', 'Message', 'message'].includes(key)
+			&& value !== undefined,
+		)
+		.map(([key, value]) => `${key}: ${stringifyDetailValue(value)}`)
+	return lines.length > 0 ? lines.join('\n') : undefined
+}
+
+function viewerErrorDetailDescription(apiError: ViewerApiError) {
+	const directMessage = detailMessage(apiError.details)
+	if (directMessage) {
+		return directMessage
+	}
+	const nested = nestedDetails(apiError.details)
+	const nestedMessage = detailMessage(nested)
+	if (nestedMessage) {
+		return nestedMessage
+	}
+	return detailsDescription(nested) ?? detailsDescription(apiError.details) ?? apiError.message
 }
 
 export function isViewerErrorCode(code: string): code is ViewerErrorCode {
@@ -139,4 +199,20 @@ export function translateViewerError(error: unknown, t: TFunction) {
 		return localized
 	}
 	return `${localized}\n${apiError.message}`
+}
+
+export function formatViewerErrorToast(error: unknown, t: TFunction) {
+	const apiError = normalizeViewerError(error)
+	const message = t(viewerErrorMessageKey(apiError.code), {
+		defaultValue: t('errors.generic'),
+		reason: apiError.message,
+	})
+	const description = viewerErrorDetailDescription(apiError)
+
+	return {
+		message,
+		description: description && !message.includes(description)
+			? description
+			: undefined,
+	}
 }
