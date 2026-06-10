@@ -39,6 +39,15 @@ func (h *Handler) resolvePVCOperationContext(
 		}, nil
 	}
 	adminResult, adminErr := h.checkAdmin(ctx, principal)
+	if adminErr == nil && adminResult.Allowed && isAdminAllowedNamespace(adminResult, namespace) {
+		return &operationContext{
+			kubeService:      h.viewers,
+			mode:             operationModeUser,
+			namespace:        namespace,
+			namespaceAllowed: true,
+			principal:        principal,
+		}, nil
+	}
 	ownNamespaceAllowed := adminErr == nil && isAdminInOwnNamespace(principal, adminResult)
 	if adminErr != nil || !ownNamespaceAllowed {
 		h.recordAudit(ctx, auditDecision{
@@ -141,6 +150,12 @@ func isAdminInOwnNamespace(principal *authn.Principal, result AdminAuthorization
 	}
 	return strings.TrimSpace(principal.Namespace) != "" &&
 		strings.TrimSpace(principal.Namespace) == strings.TrimSpace(result.AllowedNamespace)
+}
+
+func isAdminAllowedNamespace(result AdminAuthorizationResult, namespace string) bool {
+	return result.Allowed &&
+		strings.TrimSpace(namespace) != "" &&
+		strings.TrimSpace(namespace) == strings.TrimSpace(result.AllowedNamespace)
 }
 
 func allowedAdminNamespaces(namespaces []corev1.Namespace, currentNamespace string) []domain.Namespace {

@@ -79,6 +79,7 @@ export interface AdminCapabilities {
 	can_manage_pvcs: boolean
 	can_manage_storage_classes: boolean
 	file_management_enabled: boolean
+	user_namespace: string
 }
 
 export interface StorageClassYAMLInput {

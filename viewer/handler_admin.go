@@ -3,6 +3,7 @@ package viewer
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/nixieboluo/sealos-storage-manager/internal/apienv"
@@ -25,6 +26,12 @@ func (h *Handler) adminCapabilities(
 	adminResult, adminErr := h.checkAdmin(ctx, principal)
 	namespaceAllowed := adminErr == nil && isAdminInOwnNamespace(principal, adminResult)
 	canManage := adminErr == nil && adminResult.Allowed && namespaceAllowed
+	userNamespace := principal.Namespace
+	if adminErr == nil && adminResult.Allowed {
+		if allowedNamespace := strings.TrimSpace(adminResult.AllowedNamespace); allowedNamespace != "" {
+			userNamespace = allowedNamespace
+		}
+	}
 	h.recordAudit(ctx, auditDecision{
 		adminAllowed:       canManage,
 		authorizationKind:  "kubeconfig",
@@ -45,6 +52,7 @@ func (h *Handler) adminCapabilities(
 			CanManagePVCs:           canManage,
 			CanManageStorageClasses: canManage,
 			FileManagementEnabled:   h.features.FileManagement.Enabled,
+			UserNamespace:           userNamespace,
 		},
 	}, nil
 }

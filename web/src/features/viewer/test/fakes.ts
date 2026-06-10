@@ -162,6 +162,7 @@ export function createFakeViewerAPI(overrides: Partial<ViewerAPI> = {}): ViewerA
 			can_manage_pvcs: false,
 			can_manage_storage_classes: false,
 			file_management_enabled: true,
+			user_namespace: 'ns-admin',
 		}),
 		adminCreateStorageClass: async () => storageClassFixture(),
 		adminDeleteStorageClass: async name => storageClassFixture({ name }),

@@ -42,6 +42,9 @@ func TestHandlerAdminCapabilitiesReturnsFalseForNonAdmin(t *testing.T) {
 	if !strings.Contains(recorder.Body.String(), `"file_management_enabled":true`) {
 		t.Fatalf("body = %s", recorder.Body.String())
 	}
+	if !strings.Contains(recorder.Body.String(), `"user_namespace":"ns-admin"`) {
+		t.Fatalf("body = %s", recorder.Body.String())
+	}
 }
 
 func TestHandlerAdminCapabilitiesReportsFileManagementDisabled(t *testing.T) {
@@ -110,6 +113,9 @@ func TestHandlerAdminCapabilitiesRequireOwnNamespaceContext(t *testing.T) {
 				t.Fatalf("body = %s", recorder.Body.String())
 			}
 			if !strings.Contains(recorder.Body.String(), `"can_manage_storage_classes":false`) {
+				t.Fatalf("body = %s", recorder.Body.String())
+			}
+			if !strings.Contains(recorder.Body.String(), `"user_namespace":"ns-admin"`) {
 				t.Fatalf("body = %s", recorder.Body.String())
 			}
 		})
@@ -498,6 +504,34 @@ func TestHandlerAdminImplicitPVCRequiresOwnNamespaceContext(t *testing.T) {
 				t.Fatalf("body = %s", recorder.Body.String())
 			}
 		})
+	}
+}
+
+func TestHandlerAdminCanListOwnNamespaceFromSystemContext(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(
+		&fakeViewerService{
+			pvcs: []domain.PVC{{Namespace: "ns-admin", Name: "data", MountedPods: []domain.MountedPod{}}},
+		},
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+		WithAdminAuthorizer(allowAdminAuthorizer{}),
+	)
+	req := httptest.NewRequest(http.MethodGet, "/pvcs?namespace=ns-admin", nil)
+	req.Header.Set("Authorization", url.QueryEscape(testSystemNamespaceKubeconfig))
+	recorder := httptest.NewRecorder()
+
+	handler.ListPVCs(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `"namespace":"ns-admin"`) {
+		t.Fatalf("body = %s", recorder.Body.String())
 	}
 }
 

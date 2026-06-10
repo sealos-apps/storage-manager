@@ -85,7 +85,12 @@ describe('viewer query options', () => {
 			meta: undefined,
 			queryKey: viewerKeys.adminCapabilities(),
 			signal: new AbortController().signal,
-		})).resolves.toEqual({ can_manage_pvcs: false, can_manage_storage_classes: false, file_management_enabled: true })
+		})).resolves.toEqual({
+			can_manage_pvcs: false,
+			can_manage_storage_classes: false,
+			file_management_enabled: true,
+			user_namespace: 'ns-admin',
+		})
 		await expect(adminNamespaceListQueryOptions(api).queryFn?.({
 			client: mutationContext.client,
 			meta: undefined,
@@ -95,6 +100,11 @@ describe('viewer query options', () => {
 			expect.objectContaining({ name: 'ns-admin' }),
 			expect.objectContaining({ name: 'kube-system' }),
 		])
+	})
+
+	it('disables admin list queries when capability gates are false', () => {
+		expect(adminNamespaceListQueryOptions(createFakeViewerAPI(), false).enabled).toBe(false)
+		expect(adminStorageClassListQueryOptions(createFakeViewerAPI(), false).enabled).toBe(false)
 	})
 
 	it('polls viewer sessions only while creating', () => {
