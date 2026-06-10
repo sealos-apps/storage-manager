@@ -27,9 +27,6 @@ func (h *Handler) resolvePVCOperationContext(
 		namespace = principal.Namespace
 	}
 	if namespace == principal.Namespace {
-		if apiErr := h.denyAdminOutsideOwnNamespace(ctx, principal, namespace, route, pvcName); apiErr != nil {
-			return nil, apiErr
-		}
 		return &operationContext{
 			kubeService:      h.viewers,
 			mode:             operationModeUser,
@@ -39,15 +36,6 @@ func (h *Handler) resolvePVCOperationContext(
 		}, nil
 	}
 	adminResult, adminErr := h.checkAdmin(ctx, principal)
-	if adminErr == nil && adminResult.Allowed && isAdminAllowedNamespace(adminResult, namespace) {
-		return &operationContext{
-			kubeService:      h.viewers,
-			mode:             operationModeUser,
-			namespace:        namespace,
-			namespaceAllowed: true,
-			principal:        principal,
-		}, nil
-	}
 	ownNamespaceAllowed := adminErr == nil && isAdminInOwnNamespace(principal, adminResult)
 	if adminErr != nil || !ownNamespaceAllowed {
 		h.recordAudit(ctx, auditDecision{
@@ -104,39 +92,6 @@ func (h *Handler) resolvePVCOperationContext(
 	}, nil
 }
 
-func (h *Handler) denyAdminOutsideOwnNamespace(
-	ctx context.Context,
-	principal *authn.Principal,
-	namespace string,
-	route string,
-	pvcName string,
-) *apienv.Error {
-	adminResult, adminErr := h.checkAdmin(ctx, principal)
-	if adminErr != nil || !adminResult.Allowed {
-		return nil
-	}
-	if isAdminInOwnNamespace(principal, adminResult) {
-		return nil
-	}
-	h.recordAudit(ctx, auditDecision{
-		adminAllowed:       true,
-		authorizationKind:  "kubeconfig",
-		decision:           "deny",
-		denyReason:         "namespace_not_allowed",
-		executionKind:      "management_service_account",
-		identityMethod:     "kubeconfig_context+self_subject_review",
-		implicitElevation:  false,
-		kubernetesUsername: adminResult.KubernetesUsername,
-		mode:               operationModeAdmin,
-		namespace:          namespace,
-		namespaceAllowed:   false,
-		principal:          principal,
-		pvcName:            pvcName,
-		route:              route,
-	})
-	return apienv.NewError(403, apienv.CodeAdminAccessDenied, "Admin access denied", nil)
-}
-
 func (h *Handler) checkAdmin(ctx context.Context, principal *authn.Principal) (AdminAuthorizationResult, error) {
 	if h.adminAuthz == nil {
 		return AdminAuthorizationResult{Reason: "not_configured"}, errors.New("admin access denied")
@@ -150,12 +105,6 @@ func isAdminInOwnNamespace(principal *authn.Principal, result AdminAuthorization
 	}
 	return strings.TrimSpace(principal.Namespace) != "" &&
 		strings.TrimSpace(principal.Namespace) == strings.TrimSpace(result.AllowedNamespace)
-}
-
-func isAdminAllowedNamespace(result AdminAuthorizationResult, namespace string) bool {
-	return result.Allowed &&
-		strings.TrimSpace(namespace) != "" &&
-		strings.TrimSpace(namespace) == strings.TrimSpace(result.AllowedNamespace)
 }
 
 func allowedAdminNamespaces(namespaces []corev1.Namespace, currentNamespace string) []domain.Namespace {

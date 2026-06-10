@@ -79,6 +79,10 @@ const idleViewerFlowState: ViewerFlowState = {
 	status: 'idle',
 }
 
+function isSealosUserNamespace(namespace: string) {
+	return namespace.trim().startsWith('ns-')
+}
+
 export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 	const namespace = useViewerNamespace()
 	const view = useViewerView()
@@ -105,11 +109,15 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 	const adminCapabilitiesQuery = useQuery(adminCapabilitiesQueryOptions(api))
 	const authorization = getCachedSealosAuthorization()
 	const sealosUserNamespace = resolveSealosUserNamespace(authorization?.session ?? null)
-	const ownNamespace = adminCapabilitiesQuery.data?.user_namespace || sealosUserNamespace || contextQuery.data?.namespace || ''
+	const contextNamespace = contextQuery.data?.namespace ?? ''
+	const ownNamespace = adminCapabilitiesQuery.data?.user_namespace || sealosUserNamespace || contextNamespace
+	const fallbackNamespace = contextQuery.data
+		? (isSealosUserNamespace(contextNamespace) ? contextNamespace : ownNamespace)
+		: ''
 	const canSelectAdminNamespace = adminCapabilitiesQuery.data?.can_manage_pvcs ?? false
 	const canManageStorageClasses = adminCapabilitiesQuery.data?.can_manage_storage_classes ?? false
 	const pvcCreationEnabled = adminCapabilitiesQuery.data?.pvc_creation_enabled ?? true
-	const effectiveNamespace = canSelectAdminNamespace ? (namespace || ownNamespace) : ownNamespace
+	const effectiveNamespace = canSelectAdminNamespace ? (namespace || ownNamespace) : fallbackNamespace
 	const fileManagementEnabled = adminCapabilitiesQuery.data?.file_management_enabled ?? true
 	const adminNamespacesQuery = useQuery(adminNamespaceListQueryOptions(api, canSelectAdminNamespace))
 	const adminNamespaces = adminNamespacesQuery.data ?? []
@@ -159,13 +167,14 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 	const deletePVC = useMutation(deletePVCMutationOptions(queryClient, api))
 
 	useEffect(() => {
-		if (!ownNamespace) {
+		const syncNamespace = canSelectAdminNamespace ? ownNamespace : fallbackNamespace
+		if (!syncNamespace) {
 			return
 		}
 		if (!canSelectAdminNamespace || !namespace) {
-			viewerUIStore.actions.syncContextNamespace(ownNamespace)
+			viewerUIStore.actions.syncContextNamespace(syncNamespace)
 		}
-	}, [canSelectAdminNamespace, namespace, ownNamespace])
+	}, [canSelectAdminNamespace, fallbackNamespace, namespace, ownNamespace])
 
 	function resetFileSessionState() {
 		setSelectedPVC(null)

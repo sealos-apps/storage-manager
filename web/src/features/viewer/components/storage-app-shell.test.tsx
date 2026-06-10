@@ -219,6 +219,38 @@ describe('storageAppShell', () => {
 		expect(adminListStorageClasses).not.toHaveBeenCalled()
 	})
 
+	it('uses the current joined namespace when admin capabilities are disabled there', async () => {
+		const adminListNamespaces = vi.fn().mockResolvedValue([])
+		const adminListStorageClasses = vi.fn().mockResolvedValue([])
+		const listPVCs = vi.fn().mockResolvedValue([
+			pvcFixture({ name: 'joined-data', namespace: 'ns-joined', uid: 'uid-joined' }),
+		])
+		const api = createFakeViewerAPI({
+			adminCapabilities: vi.fn().mockResolvedValue({
+				can_manage_pvcs: false,
+				can_manage_storage_classes: false,
+				file_management_enabled: true,
+				user_namespace: 'ns-admin',
+			}),
+			adminListNamespaces,
+			adminListStorageClasses,
+			getContext: vi.fn().mockResolvedValue({
+				context_name: 'joined',
+				namespace: 'ns-joined',
+			}),
+			listPVCs,
+		})
+
+		renderWithProviders(<StorageAppShell api={api} />)
+
+		expect(await screen.findByText('joined-data')).toBeInTheDocument()
+		expect(screen.getAllByText('ns-joined').length).toBeGreaterThan(0)
+		expect(listPVCs).toHaveBeenCalledWith({ namespace: 'ns-joined' })
+		expect(listPVCs).not.toHaveBeenCalledWith({ namespace: 'ns-admin' })
+		expect(adminListNamespaces).not.toHaveBeenCalled()
+		expect(adminListStorageClasses).not.toHaveBeenCalled()
+	})
+
 	it('removes the in-app language switch and refreshes all storage queries from one action', async () => {
 		const user = userEvent.setup()
 		const adminCapabilities = vi.fn().mockResolvedValue({

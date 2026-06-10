@@ -475,7 +475,6 @@ func TestHandlerAdminImplicitPVCRequiresOwnNamespaceContext(t *testing.T) {
 		name       string
 		kubeconfig string
 	}{
-		{name: "system namespace", kubeconfig: testSystemNamespaceKubeconfig},
 		{name: "other user namespace", kubeconfig: testOtherUserNamespaceKubeconfig},
 	}
 	for _, tt := range tests {
@@ -511,12 +510,38 @@ func TestHandlerAdminImplicitPVCRequiresOwnNamespaceContext(t *testing.T) {
 	}
 }
 
-func TestHandlerAdminCanListOwnNamespaceFromSystemContext(t *testing.T) {
+func TestHandlerAdminCurrentContextPVCUsesUserAuthorization(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(
+		&fakeViewerService{},
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		denyAuthorizer{},
+		WithAdminAuthorizer(allowAdminAuthorizer{}),
+	)
+	req := httptest.NewRequest(http.MethodGet, "/pvcs?namespace=kube-system", nil)
+	req.Header.Set("Authorization", url.QueryEscape(testSystemNamespaceKubeconfig))
+	recorder := httptest.NewRecorder()
+
+	handler.ListPVCs(recorder, req)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), string(apienv.CodePVCAccessDenied)) {
+		t.Fatalf("body = %s", recorder.Body.String())
+	}
+}
+
+func TestHandlerAdminCanListJoinedNamespaceFromJoinedContext(t *testing.T) {
 	t.Parallel()
 
 	handler := NewHandler(
 		&fakeViewerService{
-			pvcs: []domain.PVC{{Namespace: "ns-admin", Name: "data", MountedPods: []domain.MountedPod{}}},
+			pvcs: []domain.PVC{{Namespace: "ns-rm68q0bp", Name: "joined-data", MountedPods: []domain.MountedPod{}}},
 		},
 		fakePodService{},
 		fakeAuthService{},
@@ -525,8 +550,8 @@ func TestHandlerAdminCanListOwnNamespaceFromSystemContext(t *testing.T) {
 		allowAuthorizer{},
 		WithAdminAuthorizer(allowAdminAuthorizer{}),
 	)
-	req := httptest.NewRequest(http.MethodGet, "/pvcs?namespace=ns-admin", nil)
-	req.Header.Set("Authorization", url.QueryEscape(testSystemNamespaceKubeconfig))
+	req := httptest.NewRequest(http.MethodGet, "/pvcs?namespace=ns-rm68q0bp", nil)
+	req.Header.Set("Authorization", url.QueryEscape(testOtherUserNamespaceKubeconfig))
 	recorder := httptest.NewRecorder()
 
 	handler.ListPVCs(recorder, req)
@@ -534,7 +559,7 @@ func TestHandlerAdminCanListOwnNamespaceFromSystemContext(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
 	}
-	if !strings.Contains(recorder.Body.String(), `"namespace":"ns-admin"`) {
+	if !strings.Contains(recorder.Body.String(), `"namespace":"ns-rm68q0bp"`) {
 		t.Fatalf("body = %s", recorder.Body.String())
 	}
 }
