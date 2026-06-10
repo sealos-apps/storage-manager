@@ -3,9 +3,9 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ .Values.web.service.name | quote }}
-  namespace: {{ include "sealos-storage-manager.namespace" . | quote }}
+  namespace: {{ include "storage-manager.namespace" . | quote }}
   labels:
-    {{- include "sealos-storage-manager.labels" . | nindent 4 }}
+    {{- include "storage-manager.labels" . | nindent 4 }}
   annotations:
     kubernetes.io/ingress.class: {{ .Values.web.ingress.className | quote }}
     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
@@ -17,7 +17,7 @@ spec:
   ingressClassName: {{ .Values.web.ingress.className | quote }}
   {{- end }}
   rules:
-    - host: {{ include "sealos-storage-manager.webHost" . | quote }}
+    - host: {{ include "storage-manager.webHost" . | quote }}
       http:
         paths:
           - path: {{ .Values.web.ingress.path | quote }}
@@ -27,10 +27,10 @@ spec:
                 name: {{ .Values.web.service.name | quote }}
                 port:
                   number: {{ .Values.web.service.port }}
-  {{- if and .Values.web.ingress.tls.enabled (not (eq (toString .Values.disableHttps) "true")) }}
+  {{- if and .Values.web.ingress.tls.enabled (not (eq (toString (default false .Values.disableHttps)) "true")) }}
   tls:
     - hosts:
-        - {{ include "sealos-storage-manager.webHost" . | quote }}
-      secretName: {{ default .Values.certSecretName .Values.web.ingress.tls.secretName | quote }}
+        - {{ include "storage-manager.webHost" . | quote }}
+      secretName: {{ default (default "wildcard-cert" .Values.certSecretName) .Values.web.ingress.tls.secretName | quote }}
   {{- end }}
 {{- end }}

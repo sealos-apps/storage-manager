@@ -117,7 +117,7 @@ cache:
   reconcile_interval: 45s
 
 observability:
-  service_name: sealos-storage-manager-viewer
+  service_name: storage-manager-viewer
   logs:
     exporter: encore
     level: info

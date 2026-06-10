@@ -11,12 +11,12 @@ ENCORE_GO ?= $(ENCORE_GO_ROOT)/bin/go
 ENCORE_ENV := ENCORE_GOROOT="$(ENCORE_GO_ROOT)" PATH="$(GO_BIN_DIR):$(PATH)"
 PNPM ?= pnpm
 HELM ?= helm
-CHART_DIR ?= deploy/charts/sealos-storage-manager
+CHART_DIR ?= deploy/charts/storage-manager
 CONFIG ?= config/viewer.debug.yaml
 INTEGRATION_CONFIG ?= config/viewer.integration.yaml
-IMAGE ?= sealos-storage-manager-viewer:dev
+IMAGE ?= storage-manager-viewer:dev
 REGISTRY ?=
-IMAGE_PREFIX ?= sealos-storage-manager
+IMAGE_PREFIX ?= storage-manager
 TAG ?= dev
 TAGS ?= $(TAG)
 PLATFORMS ?= linux/amd64
@@ -145,7 +145,7 @@ chart-lint:
 	$(HELM) lint $(CHART_DIR)
 
 chart-template:
-	$(HELM) template sealos-storage-manager $(CHART_DIR) --namespace sealos-storage-manager >/dev/null
+	$(HELM) template storage-manager $(CHART_DIR) --namespace storage-manager >/dev/null
 
 chart-package:
 	mkdir -p dist/charts

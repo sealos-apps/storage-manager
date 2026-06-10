@@ -74,11 +74,11 @@ append_app_values() {
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-RELEASE_NAME=${RELEASE_NAME:-"sealos-storage-manager"}
-RELEASE_NAMESPACE=${RELEASE_NAMESPACE:-"sealos-storage-manager"}
-CHART_PATH=${CHART_PATH:-"${SCRIPT_DIR}/charts/sealos-storage-manager"}
-PACKAGED_APP_VALUES_FILE=${PACKAGED_APP_VALUES_FILE:-"${CHART_PATH}/sealos-storage-manager-values.yaml"}
-APP_VALUES_DIR=${APP_VALUES_DIR:-"/root/.sealos/cloud/values/apps/sealos-storage-manager"}
+RELEASE_NAME=${RELEASE_NAME:-"storage-manager"}
+RELEASE_NAMESPACE=${RELEASE_NAMESPACE:-"storage-manager"}
+CHART_PATH=${CHART_PATH:-"${SCRIPT_DIR}/charts/storage-manager"}
+PACKAGED_APP_VALUES_FILE=${PACKAGED_APP_VALUES_FILE:-"${CHART_PATH}/storage-manager-values.yaml"}
+APP_VALUES_DIR=${APP_VALUES_DIR:-"/root/.sealos/cloud/values/apps/storage-manager"}
 SEALOS_SYSTEM_NS=${SEALOS_SYSTEM_NS:-"sealos-system"}
 SEALOS_CONFIG_CM=${SEALOS_CONFIG_CM:-"sealos-config"}
 SEALOS_GLOBAL_VALUES_FILE=${SEALOS_GLOBAL_VALUES_FILE:-"/root/.sealos/cloud/values/global.yaml"}

@@ -209,7 +209,7 @@ func Default() Config {
 			ReconcileInterval:        45 * time.Second,
 		},
 		Observability: ObservabilityConfig{
-			ServiceName: "sealos-storage-manager-viewer",
+			ServiceName: "storage-manager-viewer",
 			Logs: LogsConfig{
 				Exporter: "encore",
 				Level:    "info",

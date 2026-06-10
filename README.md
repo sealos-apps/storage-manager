@@ -159,7 +159,7 @@ offline development, or enable the OTLP HTTP exporter in `viewer.yaml`:
 
 ```yaml
 observability:
-  service_name: sealos-storage-manager-viewer
+  service_name: storage-manager-viewer
   logs:
     exporter: encore
     level: info
@@ -187,13 +187,13 @@ make build-images TAG=dev
 
 This creates:
 
-- `sealos-storage-manager-backend:dev`
-- `sealos-storage-manager-web:dev`
+- `storage-manager-backend:dev`
+- `storage-manager-web:dev`
 
 Push both images to a registry:
 
 ```sh
-make push-images REGISTRY=ghcr.io IMAGE_PREFIX=owner/sealos-storage-manager TAG=dev
+make push-images REGISTRY=ghcr.io IMAGE_PREFIX=owner/storage-manager TAG=dev
 ```
 
 The legacy backend-only image target remains available when needed:
@@ -204,31 +204,17 @@ make build-image IMAGE=registry.example.com/viewer-backend:dev
 
 ## Helm Deployment
 
-`deploy/charts/sealos-storage-manager/` is the Helm chart for self-hosted
+`deploy/charts/storage-manager/` is the Helm chart for self-hosted
 deployment. Validate it before shipping changes:
 
 ```sh
 make deploy-verify
 ```
 
-Install or upgrade the chart:
-
-```sh
-helm upgrade --install sealos-storage-manager deploy/charts/sealos-storage-manager \
-  --namespace sealos-storage-manager \
-  --create-namespace \
-  --set cloudDomain=cloud.example.org \
-  --set backend.image.repository=ghcr.io/owner/sealos-storage-manager-backend \
-  --set backend.image.tag=dev \
-  --set web.image.repository=ghcr.io/owner/sealos-storage-manager-web \
-  --set web.image.tag=dev
-```
-
-Set `cloudDomain` from the cluster public domain. In Sealos-managed installs,
-the deploy entrypoint reads it from
-`/root/.sealos/cloud/values/global.yaml` at `global.http.domain`, falling back
-to `cloudDomain` in `sealos-system/sealos-config`. Optional `cloudPort`,
-`httpPort`, and `disableHttps` values control generated public URLs.
+In Sealos-managed installs, `deploy/entrypoint.sh` injects global HTTP/TLS
+settings into Helm from `/root/.sealos/cloud/values/global.yaml` and
+`sealos-system/sealos-config`. The chart defaults intentionally omit those
+global values.
 
 The chart derives:
 
@@ -257,9 +243,9 @@ origin as the web app and lets the frontend service own the public rewrite.
   entrypoint.
 - `entrypoint.sh`, which sources `/root/.sealos/cloud/scripts/tools.sh`, reads
   global HTTP/TLS settings, loads packaged values plus all
-  `/root/.sealos/cloud/values/apps/sealos-storage-manager/*-values.yaml`
+  `/root/.sealos/cloud/values/apps/storage-manager/*-values.yaml`
   overrides, and runs `helm upgrade -i`.
-- `charts/sealos-storage-manager/sealos-storage-manager-values.yaml`, the
+- `charts/storage-manager/storage-manager-values.yaml`, the
   packaged defaults used by Sealos app installs.
 
 The `images` workflow publishes:
@@ -270,5 +256,5 @@ The `images` workflow publishes:
 
 For each cluster image build, the workflow caches runtime images with
 `sealos registry save --registry-dir=registry_<arch> --arch <arch> .`, saves
-`sealos-storage-manager-cluster-<tag>-<arch>.tar.gz`, generates an md5 file,
+`storage-manager-cluster-<tag>-<arch>.tar.gz`, generates an md5 file,
 and uploads both artifacts to OSS.

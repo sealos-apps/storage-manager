@@ -2,22 +2,22 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ .Values.web.service.name | quote }}
-  namespace: {{ include "sealos-storage-manager.namespace" . | quote }}
+  namespace: {{ include "storage-manager.namespace" . | quote }}
   labels:
-    {{- include "sealos-storage-manager.labels" . | nindent 4 }}
+    {{- include "storage-manager.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.web.replicaCount }}
   selector:
     matchLabels:
-      {{- include "sealos-storage-manager.webSelectorLabels" . | nindent 6 }}
+      {{- include "storage-manager.webSelectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "sealos-storage-manager.webSelectorLabels" . | nindent 8 }}
+        {{- include "storage-manager.webSelectorLabels" . | nindent 8 }}
     spec:
       containers:
         - name: web
-          image: {{ include "sealos-storage-manager.webImage" . | quote }}
+          image: {{ include "storage-manager.webImage" . | quote }}
           imagePullPolicy: {{ .Values.web.image.pullPolicy | quote }}
           ports:
             - name: http

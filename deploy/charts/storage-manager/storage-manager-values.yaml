@@ -1,17 +1,9 @@
 nameOverride: ""
 fullnameOverride: ""
 
-# Public cluster domain and HTTP settings. Sealos deployments set these from
-# /root/.sealos/cloud/values/global.yaml and sealos-system/sealos-config.
-cloudDomain: 127.0.0.1.nip.io
-cloudPort: ""
-httpPort: ""
-disableHttps: false
-certSecretName: wildcard-cert
-
 namespace:
   create: true
-  name: sealos-storage-manager
+  name: storage-manager
 
 rbac:
   create: true
@@ -66,10 +58,10 @@ backend:
       ingress:
         className: nginx
         hostPrefix: viewer
-        # Empty uses certSecretName when disableHttps is false.
+        # Empty uses the injected certSecretName when disableHttps is false.
         tlsSecretName: ""
     observability:
-      serviceName: sealos-storage-manager-viewer
+      serviceName: storage-manager-viewer
       logs:
         exporter: encore
         level: info

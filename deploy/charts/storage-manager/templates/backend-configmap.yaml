@@ -2,9 +2,9 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ .Values.backend.configMapName | quote }}
-  namespace: {{ include "sealos-storage-manager.namespace" . | quote }}
+  namespace: {{ include "storage-manager.namespace" . | quote }}
   labels:
-    {{- include "sealos-storage-manager.labels" . | nindent 4 }}
+    {{- include "storage-manager.labels" . | nindent 4 }}
 data:
   viewer.yaml: |
     admin:
@@ -15,7 +15,7 @@ data:
       storage_class_service_account_name: {{ .Values.backend.config.admin.storageClassServiceAccountName | quote }}
 
     viewer:
-      backend_verify_url: {{ include "sealos-storage-manager.backendVerifyURL" . | quote }}
+      backend_verify_url: {{ include "storage-manager.backendVerifyURL" . | quote }}
       hook_client_token: {{ .Values.backend.config.viewer.hookClientToken | quote }}
       hook_script: |
         #!/bin/sh
@@ -106,9 +106,9 @@ data:
         port: {{ .Values.backend.config.viewer.service.port }}
       ingress:
         class_name: {{ .Values.backend.config.viewer.ingress.className | quote }}
-        host_template: {{ include "sealos-storage-manager.viewerHostTemplate" . | quote }}
-        public_scheme: {{ include "sealos-storage-manager.scheme" . | quote }}
-        tls_secret_name: {{ include "sealos-storage-manager.viewerTLSSecretName" . | quote }}
+        host_template: {{ include "storage-manager.viewerHostTemplate" . | quote }}
+        public_scheme: {{ include "storage-manager.scheme" . | quote }}
+        tls_secret_name: {{ include "storage-manager.viewerTLSSecretName" . | quote }}
 
     observability:
       service_name: {{ .Values.backend.config.observability.serviceName | quote }}

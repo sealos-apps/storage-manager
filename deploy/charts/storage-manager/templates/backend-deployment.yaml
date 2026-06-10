@@ -2,23 +2,23 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ .Values.backend.service.name | quote }}
-  namespace: {{ include "sealos-storage-manager.namespace" . | quote }}
+  namespace: {{ include "storage-manager.namespace" . | quote }}
   labels:
-    {{- include "sealos-storage-manager.labels" . | nindent 4 }}
+    {{- include "storage-manager.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.backend.replicaCount }}
   selector:
     matchLabels:
-      {{- include "sealos-storage-manager.backendSelectorLabels" . | nindent 6 }}
+      {{- include "storage-manager.backendSelectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "sealos-storage-manager.backendSelectorLabels" . | nindent 8 }}
+        {{- include "storage-manager.backendSelectorLabels" . | nindent 8 }}
     spec:
-      serviceAccountName: {{ include "sealos-storage-manager.backendServiceAccountName" . | quote }}
+      serviceAccountName: {{ include "storage-manager.backendServiceAccountName" . | quote }}
       containers:
         - name: backend
-          image: {{ include "sealos-storage-manager.backendImage" . | quote }}
+          image: {{ include "storage-manager.backendImage" . | quote }}
           imagePullPolicy: {{ .Values.backend.image.pullPolicy | quote }}
           env:
             - name: CONFIG

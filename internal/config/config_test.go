@@ -455,7 +455,7 @@ func TestDeployChartValuesEmbedValidViewerConfig(t *testing.T) {
 func TestDeployChartHasPackagedAppValues(t *testing.T) {
 	t.Parallel()
 
-	valuesPath := filepath.Join(repoRoot(t), "deploy", "charts", "sealos-storage-manager", "sealos-storage-manager-values.yaml")
+	valuesPath := filepath.Join(repoRoot(t), "deploy", "charts", "storage-manager", "storage-manager-values.yaml")
 	if _, err := os.Stat(valuesPath); err != nil {
 		t.Fatalf("packaged app values missing: %v", err)
 	}
@@ -470,7 +470,7 @@ func TestDeployChartDerivesPublicHostsFromCloudDomain(t *testing.T) {
 		"--set", "web.publicHost=storage.cloud.sealos.test",
 		"--set", "backend.config.viewer.ingress.hostPrefix=pvc-viewer",
 	)
-	if !strings.Contains(viewerYAML, `backend_verify_url: "http://viewer-backend.sealos-storage-manager.svc.cluster.local/internal/filebrowser-hook/verify"`) {
+	if !strings.Contains(viewerYAML, `backend_verify_url: "http://viewer-backend.storage-manager.svc.cluster.local/internal/filebrowser-hook/verify"`) {
 		t.Fatalf("viewer.yaml missing derived backend verify URL:\n%s", viewerYAML)
 	}
 	if !strings.Contains(viewerYAML, `host_template: "pvc-viewer-{{ .PodSessionID }}.cloud.sealos.test"`) {
@@ -602,7 +602,7 @@ func TestDeployStorageClassAdminManifest(t *testing.T) {
 		}
 		if document.Kind == "ServiceAccount" &&
 			document.Metadata.Name == "storageclass-admin" &&
-			document.Metadata.Namespace == "sealos-storage-manager" {
+			document.Metadata.Namespace == "storage-manager" {
 			foundSA = true
 		}
 		if document.Kind == "ClusterRole" && document.Metadata.Name == "storage-manager-storageclass-admin" {
@@ -633,8 +633,8 @@ func renderDeployChartWithArgs(t *testing.T, args ...string) []byte {
 	}
 	root := repoRoot(t)
 	helmArgs := make([]string, 0, 5+len(args))
-	chartDir := filepath.Join(root, "deploy", "charts", "sealos-storage-manager")
-	helmArgs = append(helmArgs, "template", "sealos-storage-manager", chartDir, "--namespace", "sealos-storage-manager")
+	chartDir := filepath.Join(root, "deploy", "charts", "storage-manager")
+	helmArgs = append(helmArgs, "template", "storage-manager", chartDir, "--namespace", "storage-manager")
 	helmArgs = append(helmArgs, args...)
 	cmd := exec.Command("helm", helmArgs...) //nolint:gosec // Test renders committed chart path.
 	output, err := cmd.CombinedOutput()

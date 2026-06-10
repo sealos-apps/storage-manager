@@ -4,7 +4,7 @@ set -eu
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 
 REGISTRY="${REGISTRY:-}"
-IMAGE_PREFIX="${IMAGE_PREFIX:-sealos-storage-manager}"
+IMAGE_PREFIX="${IMAGE_PREFIX:-storage-manager}"
 TAGS="${TAGS:-${TAG:-dev}}"
 PLATFORMS="${PLATFORMS:-linux/amd64}"
 PUSH="${PUSH:-false}"
