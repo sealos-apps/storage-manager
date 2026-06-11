@@ -2,6 +2,7 @@ import type { FileBrowserResource } from '@sealos-storage-manager/filebrowser-cl
 import type { QueryClient } from '@tanstack/react-query'
 import type { ComponentProps } from 'react'
 import type { FileBrowserSession } from '@/features/file-manager/types/file-manager'
+import type { PVC } from '@/features/viewer/types/viewer'
 
 import { vi } from 'vitest'
 
@@ -67,7 +68,9 @@ export interface RenderFileManagerOptions {
 	onManualClose?: ComponentProps<typeof FileManagerView>['onManualClose']
 	onPathChange?: (path: string) => void
 	onRefreshSession?: () => void
+	onRefreshStorageData?: () => void
 	podSessionID?: string | null
+	pvc?: PVC | null
 	queryClient?: QueryClient
 	sessionCapability?: ComponentProps<typeof FileManagerView>['sessionCapability']
 	viewerSession?: ComponentProps<typeof FileManagerView>['viewerSession']
@@ -102,7 +105,9 @@ export function renderFileManager(
 			onManualClose={options.onManualClose}
 			onPathChange={options.onPathChange ?? vi.fn()}
 			onRefreshSession={options.onRefreshSession ?? vi.fn()}
+			onRefreshStorageData={options.onRefreshStorageData ?? vi.fn()}
 			podSessionID={options.podSessionID}
+			pvc={options.pvc ?? pvcFixture()}
 			pvcName="data"
 			session={session}
 			sessionCapability={capability}

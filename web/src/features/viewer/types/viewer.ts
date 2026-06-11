@@ -1,7 +1,12 @@
 import type { domain, session, viewer } from '@sealos-storage-manager/encore-client'
 
 export type MountedPod = domain.MountedPod
-export type PVC = domain.PVC
+export type PVCVolumeStats = Omit<domain.PVCVolumeStats, 'sample_time'> & {
+	sample_time?: string
+}
+export type PVC = Omit<domain.PVC, 'volume_stats'> & {
+	volume_stats?: PVCVolumeStats
+}
 export type PodSession = domain.PodSession
 export type ViewerScheduling = domain.ViewerScheduling
 export type ViewerSession = domain.ViewerSession

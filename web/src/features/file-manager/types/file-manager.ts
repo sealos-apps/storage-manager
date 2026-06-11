@@ -1,4 +1,4 @@
-import type { FileBrowserClient, FileBrowserResource, FileBrowserUsage } from '@sealos-storage-manager/filebrowser-client'
+import type { FileBrowserClient, FileBrowserResource } from '@sealos-storage-manager/filebrowser-client'
 
 export type FileEntryType = 'directory' | 'file'
 
@@ -46,5 +46,3 @@ export interface FileListResult {
 	entries: FileEntry[]
 	path: string
 }
-
-export type FileUsage = FileBrowserUsage

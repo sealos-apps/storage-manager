@@ -1,4 +1,4 @@
-import type { FileBrowserSession, FileListResult, FileUsage, RecycleEntry } from '@/features/file-manager/types/file-manager'
+import type { FileBrowserSession, FileListResult, RecycleEntry } from '@/features/file-manager/types/file-manager'
 
 import type { FileSortState } from '@/features/file-manager/utils/file-tree'
 
@@ -29,21 +29,6 @@ export function fileListQueryOptions(
 		},
 		enabled: session !== null && enabled,
 		placeholderData: keepPreviousData,
-		staleTime: 5_000,
-	})
-}
-
-export function fileUsageQueryOptions(session: FileBrowserSession | null, enabled = true) {
-	return queryOptions({
-		queryKey: fileManagerKeys.usage(session?.pvcKey ?? 'inactive'),
-		queryFn: ({ signal }): Promise<FileUsage> => {
-			if (!session) {
-				throw new Error('File Browser session is not ready')
-			}
-			return session.client.usage('/', signal)
-		},
-		enabled: session !== null && enabled,
-		retry: false,
 		staleTime: 5_000,
 	})
 }

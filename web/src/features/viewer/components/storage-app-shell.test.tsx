@@ -794,6 +794,93 @@ describe('storageAppShell', () => {
 		await waitFor(() => expect(adminDeleteStorageClass).toHaveBeenCalledWith('managed'))
 	})
 
+	it('shows PVC usage states from backend volume metrics in the second column', async () => {
+		const user = userEvent.setup()
+		const api = createFakeViewerAPI({
+			listPVCs: vi.fn().mockResolvedValue([
+				pvcFixture({
+					name: 'ready-data',
+					uid: 'uid-ready-data',
+					capacity: '10Gi',
+					capacity_bytes: 10 * 1024 * 1024 * 1024,
+					volume_stats: {
+						available_bytes: 7 * 1024 * 1024 * 1024,
+						metric_capacity_bytes: 10 * 1024 * 1024 * 1024,
+						sample_time: '2026-06-10T09:46:12Z',
+						source: 'victoria-metrics',
+						status: 'ready',
+						used_bytes: 3 * 1024 * 1024 * 1024,
+					},
+				}),
+				pvcFixture({
+					name: 'missing-data',
+					uid: 'uid-missing-data',
+					volume_stats: undefined,
+				}),
+				pvcFixture({
+					name: 'mismatch-data',
+					uid: 'uid-mismatch-data',
+					capacity: '1Gi',
+					capacity_bytes: 1024 * 1024 * 1024,
+					mounted: true,
+					mounted_pods: [{
+						name: 're-irldxgfr-minio-0',
+						namespace: 'ns-admin',
+						node_name: 'sealos-gpu-node0',
+						phase: 'Running',
+						read_only: false,
+					}],
+					volume_stats: {
+						available_bytes: 90 * 1024 * 1024 * 1024,
+						metric_capacity_bytes: 418 * 1024 * 1024 * 1024,
+						sample_time: undefined,
+						source: 'victoria-metrics',
+						status: 'mismatched',
+						used_bytes: 307 * 1024 * 1024 * 1024,
+					},
+				}),
+			]),
+		})
+
+		renderWithProviders(<StorageAppShell api={api} />)
+
+		expect(await screen.findByRole('columnheader', { name: 'Usage' })).toBeInTheDocument()
+		expect(await screen.findByText('30%')).toBeInTheDocument()
+		expect(screen.getByText('3 GiB / 10 GiB')).toBeInTheDocument()
+		expect(screen.queryByText('Free 7 GiB')).not.toBeInTheDocument()
+		expect(screen.getByRole('progressbar', { name: 'ready-data PVC usage' }).querySelector('[data-slot="progress-indicator"]')).toHaveStyle({
+			transform: 'translateX(-70%)',
+		})
+		expect(screen.getByText('Not collected')).toBeInTheDocument()
+		expect(screen.getByText('307 GiB / 418 GiB')).toBeInTheDocument()
+		expect(screen.getByText('73%')).toBeInTheDocument()
+		expect(screen.getByRole('progressbar', { name: 'mismatch-data PVC usage' }).querySelector('[data-slot="progress-indicator"]')).toHaveStyle({
+			transform: 'translateX(-27%)',
+		})
+		expect(screen.queryByText('307 GiB / 1 GiB')).not.toBeInTheDocument()
+		expect(screen.queryByText('Free 90 GiB')).not.toBeInTheDocument()
+		expect(screen.queryByText('Metrics mismatch')).not.toBeInTheDocument()
+		expect(screen.queryByText('Reported FS 418 GiB')).not.toBeInTheDocument()
+		expect(screen.queryByText('default')).not.toBeInTheDocument()
+
+		const mismatchButton = screen.getByRole('button', { name: 'mismatch-data metrics mismatch' })
+		await user.hover(mismatchButton)
+		expect(await screen.findAllByText('Metrics mismatch')).not.toHaveLength(0)
+		expect(screen.getAllByText('PVC request 1 GiB')).not.toHaveLength(0)
+		expect(screen.queryByText(/re-irldxgfr-minio-0 · ns-admin/)).not.toBeInTheDocument()
+		await user.unhover(mismatchButton)
+		const readyProgress = screen.getByRole('progressbar', { name: 'ready-data PVC usage' })
+		expect(readyProgress).toHaveAttribute('title', 'Free 7 GiB')
+		const mismatchRow = screen.getByText('mismatch-data').closest('tr')
+		if (!mismatchRow) {
+			throw new Error('missing mismatch-data row')
+		}
+		expect(mismatchRow).toHaveClass('h-16')
+		const mountedButton = within(mismatchRow).getByRole('button', { name: 'Mounted' })
+		expect(mountedButton).toHaveAttribute('title', 're-irldxgfr-minio-0')
+		await user.hover(mountedButton)
+	})
+
 	it('stops restarting the viewer flow after token recovery is exhausted', async () => {
 		const user = userEvent.setup()
 		const createViewerSession = vi

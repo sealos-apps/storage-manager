@@ -31,6 +31,7 @@ export function pvcFixture(overrides: Partial<PVC> = {}): PVC {
 			requires_node: false,
 		},
 		viewer_supported: true,
+		volume_stats: undefined,
 		...overrides,
 	}
 }

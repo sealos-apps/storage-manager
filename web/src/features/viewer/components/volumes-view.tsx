@@ -2,7 +2,7 @@ import type { UseQueryResult } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { PVC, StorageClass } from '@/features/viewer/types/viewer'
 
-import { FolderOpen, HardDrive, MoreHorizontal } from 'lucide-react'
+import { CircleAlert, FolderOpen, HardDrive, MoreHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
@@ -14,6 +14,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import {
 	Table,
@@ -23,6 +24,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { translateViewerError } from '@/features/viewer/api/viewer-error'
 import { ErrorCallout } from '@/features/viewer/components/error-callout'
 import { PVCListSkeleton } from '@/features/viewer/components/loading-skeletons'
@@ -96,7 +98,7 @@ export function VolumesView({
 								<TableHeader>
 									<TableRow>
 										<TableHead>{t('viewer.pvc')}</TableHead>
-										<TableHead>{t('status.label')}</TableHead>
+										<TableHead>{t('volumes.usage')}</TableHead>
 										<TableHead>{t('viewer.storageClass')}</TableHead>
 										<TableHead>{t('viewer.accessModes')}</TableHead>
 										<TableHead className="text-right">{t('files.columns.actions')}</TableHead>
@@ -154,27 +156,23 @@ function PVCRow({ fileManagementEnabled, onDelete, onExpand, onOpenFiles, pvc }:
 	const canDelete = !pvc.mounted
 
 	return (
-		<TableRow>
-			<TableCell>
+		<TableRow className="h-16">
+			<TableCell className="max-w-[28rem] whitespace-nowrap">
 				<div className="flex min-w-0 items-center gap-3">
 					<div className="flex size-9 items-center justify-center rounded-md border bg-muted text-muted-foreground">
 						<HardDrive />
 					</div>
-					<div className="min-w-0">
-						<div className="truncate font-medium">{pvc.name}</div>
-						<div className="truncate text-xs text-muted-foreground">
-							{mountedTarget ? `${mountedTarget.name} · ${mountedTarget.namespace}` : pvc.namespace}
+					<div className="flex min-w-0 items-center gap-2">
+						<span className="truncate font-medium">{pvc.name}</span>
+						<div className="flex shrink-0 items-center gap-1">
+							<PVCStatusBadge pvc={pvc} />
+							<PVCMountedBadge mounted={pvc.mounted} mountedPodName={mountedTarget?.name} />
 						</div>
 					</div>
 				</div>
 			</TableCell>
 			<TableCell>
-				<div className="flex items-center gap-1">
-					<PVCStatusBadge pvc={pvc} />
-					<span className="text-xs text-muted-foreground">
-						{pvc.mounted ? t('status.mounted') : t('status.ready')}
-					</span>
-				</div>
+				<PVCUsageCell pvc={pvc} />
 			</TableCell>
 			<TableCell>
 				<span className="text-sm">{pvc.storage_class_name || '-'}</span>
@@ -224,5 +222,93 @@ function PVCRow({ fileManagementEnabled, onDelete, onExpand, onOpenFiles, pvc }:
 				</div>
 			</TableCell>
 		</TableRow>
+	)
+}
+
+function PVCMountedBadge({ mounted, mountedPodName }: { mounted: boolean, mountedPodName?: string }) {
+	const { t } = useTranslation()
+	const badge = (
+		<Badge variant={mounted ? 'default' : 'outline'}>
+			{mounted ? t('status.mounted') : t('status.ready')}
+		</Badge>
+	)
+	if (!mounted || !mountedPodName) {
+		return badge
+	}
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Button
+					className="h-auto rounded-full px-2 py-0.5 text-xs"
+					size="sm"
+					title={mountedPodName}
+					variant="default"
+				>
+					{t('status.mounted')}
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent>{mountedPodName}</TooltipContent>
+		</Tooltip>
+	)
+}
+
+function PVCUsageCell({ pvc }: { pvc: PVC }) {
+	const { t } = useTranslation()
+	const stats = pvc.volume_stats
+	if (!stats) {
+		return (
+			<div className="grid min-h-10 min-w-40 content-center">
+				<span className="text-sm text-muted-foreground">{t('volumes.usageUnavailable')}</span>
+			</div>
+		)
+	}
+	const metricCapacity = stats.metric_capacity_bytes
+	const percent = metricCapacity > 0
+		? Math.min(100, Math.max(0, Math.round((stats.used_bytes / metricCapacity) * 100)))
+		: 0
+	const mismatch = stats.status !== 'ready'
+	const freeText = t('volumes.usageFree', { size: formatBytes(stats.available_bytes) })
+
+	return (
+		<div className="grid min-h-10 min-w-40 content-center gap-1.5">
+			<div className="flex items-center justify-between gap-2 text-sm">
+				<div className="flex min-w-0 items-center gap-1.5">
+					<span className="truncate font-medium">{`${formatBytes(stats.used_bytes)} / ${formatBytes(metricCapacity)}`}</span>
+					{mismatch
+						? (
+								<Tooltip>
+									<TooltipTrigger asChild>
+										<Button
+											aria-label={t('volumes.usageMismatchLabel', { pvc: pvc.name })}
+											className="size-5 shrink-0 text-amber-700"
+											size="icon"
+											variant="ghost"
+										>
+											<CircleAlert />
+										</Button>
+									</TooltipTrigger>
+									<TooltipContent>
+										<div className="grid gap-1">
+											<div>{t('volumes.usageMismatch')}</div>
+											<div>{t('volumes.usageRequestedCapacity', { size: formatBytes(pvc.capacity_bytes) })}</div>
+										</div>
+									</TooltipContent>
+								</Tooltip>
+							)
+						: null}
+				</div>
+				<span className="text-xs text-muted-foreground">{`${percent}%`}</span>
+			</div>
+			<Tooltip>
+				<TooltipTrigger asChild>
+					<Progress
+						aria-label={t('volumes.usageProgressLabel', { pvc: pvc.name })}
+						title={freeText}
+						value={percent}
+					/>
+				</TooltipTrigger>
+				<TooltipContent>{freeText}</TooltipContent>
+			</Tooltip>
+		</div>
 	)
 }

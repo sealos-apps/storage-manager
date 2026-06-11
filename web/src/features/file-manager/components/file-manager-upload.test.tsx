@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FileManagerView } from '@/features/file-manager/components/file-manager-view'
 import { uploadActions, uploadStore } from '@/features/file-manager/stores/upload-store'
 import { readyCapability, renderFileManager, resource, sessionWithClient } from '@/features/file-manager/test/file-manager-view-helpers'
+import { pvcFixture } from '@/features/viewer/test/fakes'
 import { renderWithProviders } from '@/test/render'
 
 vi.mock('@monaco-editor/react', () => ({
@@ -53,7 +54,9 @@ describe('fileManagerUpload', () => {
 				onBackToVolumes={vi.fn()}
 				onPathChange={vi.fn()}
 				onRefreshSession={vi.fn()}
+				onRefreshStorageData={vi.fn()}
 				podSessionID="ps-1"
+				pvc={pvcFixture()}
 				pvcName="data"
 				session={session}
 				sessionCapability={readyCapability()}

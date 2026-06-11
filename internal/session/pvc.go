@@ -58,6 +58,7 @@ func (s *ViewerService) ListPVCs(ctx context.Context, namespace string) (items [
 	if err != nil {
 		return nil, err
 	}
+	volumeStats := s.listPVCVolumeStats(ctx, namespace)
 	items = make([]domain.PVC, 0, len(pvcs))
 	for _, pvc := range pvcs {
 		accessModes := make([]string, 0, len(pvc.Spec.AccessModes))
@@ -69,11 +70,12 @@ func (s *ViewerService) ListPVCs(ctx context.Context, namespace string) (items [
 			return nil, err
 		}
 		supported, viewerMode, reason := kube.ViewerSupportForAccessModes(accessModes)
+		capacityBytes := pvc.Spec.Resources.Requests.Storage().Value()
 		items = append(items, domain.PVC{
 			Namespace:        pvc.Namespace,
 			Name:             pvc.Name,
 			UID:              string(pvc.UID),
-			CapacityBytes:    pvc.Spec.Resources.Requests.Storage().Value(),
+			CapacityBytes:    capacityBytes,
 			Capacity:         pvc.Spec.Resources.Requests.Storage().String(),
 			AccessModes:      accessModes,
 			StorageClassName: pvcStorageClassName(&pvc),
@@ -83,6 +85,7 @@ func (s *ViewerService) ListPVCs(ctx context.Context, namespace string) (items [
 			ViewerMode:       viewerMode,
 			ViewerScheduling: kube.SchedulingForPVC(accessModes, mountInfo),
 			Reason:           reason,
+			VolumeStats:      normalizedPVCVolumeStats(capacityBytes, volumeStats[pvc.Name]),
 		})
 	}
 	s.recorder.Logger().LogAttrs(ctx, slog.LevelDebug, "viewer.list_pvcs.result",
@@ -90,6 +93,45 @@ func (s *ViewerService) ListPVCs(ctx context.Context, namespace string) (items [
 		slog.Int("pvc_count", len(items)),
 	)
 	return items, nil
+}
+
+func (s *ViewerService) listPVCVolumeStats(ctx context.Context, namespace string) map[string]domain.PVCVolumeStats {
+	if s.pvcMetrics == nil {
+		return nil
+	}
+	stats, err := s.pvcMetrics.ListPVCVolumeStats(ctx, namespace)
+	if err != nil {
+		s.recorder.Logger().LogAttrs(ctx, slog.LevelWarn, "pvc.metrics_unavailable",
+			slog.String("namespace", namespace),
+			slog.String("error", err.Error()),
+		)
+		return nil
+	}
+	return stats
+}
+
+func normalizedPVCVolumeStats(capacityBytes int64, stats domain.PVCVolumeStats) *domain.PVCVolumeStats {
+	if stats.Source == "" || stats.UsedBytes == 0 && stats.MetricCapacityBytes == 0 && stats.AvailableBytes == 0 {
+		return nil
+	}
+	if !pvcVolumeStatsMatchClaim(capacityBytes, stats) {
+		stats.Status = "mismatched"
+	}
+	return &stats
+}
+
+func pvcVolumeStatsMatchClaim(capacityBytes int64, stats domain.PVCVolumeStats) bool {
+	if capacityBytes <= 0 || stats.MetricCapacityBytes <= 0 || stats.UsedBytes < 0 || stats.AvailableBytes < 0 {
+		return false
+	}
+	if stats.UsedBytes > capacityBytes {
+		return false
+	}
+	delta := stats.MetricCapacityBytes - capacityBytes
+	if delta < 0 {
+		delta = -delta
+	}
+	return delta*100 <= capacityBytes*10
 }
 
 func (s *ViewerService) CreatePVC(ctx context.Context, input CreatePVCInput) (pvc *domain.PVC, err error) {

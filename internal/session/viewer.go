@@ -16,13 +16,26 @@ import (
 )
 
 type ViewerService struct {
-	cfg      config.Config
-	store    *state.Store
-	kube     kube.Interface
-	pods     *PodService
-	auth     *AuthService
-	recorder *observability.Recorder
-	now      func() time.Time
+	cfg        config.Config
+	store      *state.Store
+	kube       kube.Interface
+	pods       *PodService
+	auth       *AuthService
+	recorder   *observability.Recorder
+	pvcMetrics pvcMetricsReader
+	now        func() time.Time
+}
+
+type ViewerServiceOption func(*ViewerService)
+
+type pvcMetricsReader interface {
+	ListPVCVolumeStats(ctx context.Context, namespace string) (map[string]domain.PVCVolumeStats, error)
+}
+
+func WithPVCMetrics(metrics pvcMetricsReader) ViewerServiceOption {
+	return func(s *ViewerService) {
+		s.pvcMetrics = metrics
+	}
 }
 
 type CreateViewerSessionInput struct {
@@ -39,8 +52,9 @@ func NewViewerService(
 	podService *PodService,
 	authService *AuthService,
 	recorder *observability.Recorder,
+	options ...ViewerServiceOption,
 ) *ViewerService {
-	return &ViewerService{
+	service := &ViewerService{
 		cfg:      cfg,
 		store:    store,
 		kube:     kubeClient,
@@ -49,6 +63,10 @@ func NewViewerService(
 		recorder: recorder,
 		now:      time.Now,
 	}
+	for _, option := range options {
+		option(service)
+	}
+	return service
 }
 
 func (s *ViewerService) CreateViewerSession(

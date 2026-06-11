@@ -99,6 +99,15 @@ type ViewerScheduling struct {
 	Reason       string `json:"reason"`
 }
 
+type PVCVolumeStats struct {
+	Source              string     `json:"source"`
+	Status              string     `json:"status"`
+	SampleTime          *time.Time `json:"sample_time,omitempty"`
+	UsedBytes           int64      `json:"used_bytes"`
+	MetricCapacityBytes int64      `json:"metric_capacity_bytes"`
+	AvailableBytes      int64      `json:"available_bytes"`
+}
+
 type PVC struct {
 	Namespace        string           `json:"namespace"`
 	Name             string           `json:"name"`
@@ -113,6 +122,7 @@ type PVC struct {
 	ViewerMode       string           `json:"viewer_mode"`
 	ViewerScheduling ViewerScheduling `json:"viewer_scheduling"`
 	Reason           string           `json:"reason"`
+	VolumeStats      *PVCVolumeStats  `json:"volume_stats,omitempty"`
 }
 
 type Namespace struct {

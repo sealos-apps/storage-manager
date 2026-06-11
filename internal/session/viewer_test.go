@@ -86,6 +86,115 @@ func TestViewerServiceListPVCs(t *testing.T) {
 	}
 }
 
+func TestViewerServiceListPVCsAddsReadyPVCVolumeStats(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	client := kube.New(fake.NewSimpleClientset(&corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "data", UID: types.UID("uid")},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("10Gi")},
+			},
+		},
+	}))
+	store := state.New(cfg.Cache)
+	recorder := observability.MustNew(cfg.Observability, nil)
+	pods := NewPodService(cfg, store, client, recorder)
+	service := NewViewerService(cfg, store, client, pods, nil, recorder, WithPVCMetrics(fakePVCMetrics{
+		stats: map[string]domain.PVCVolumeStats{
+			"data": {
+				Source:              "kubelet",
+				Status:              "ready",
+				UsedBytes:           4 * 1024 * 1024 * 1024,
+				MetricCapacityBytes: 10 * 1024 * 1024 * 1024,
+				AvailableBytes:      6 * 1024 * 1024 * 1024,
+			},
+		},
+	}))
+
+	items, err := service.ListPVCs(t.Context(), "default")
+	if err != nil {
+		t.Fatalf("ListPVCs() error = %v", err)
+	}
+	if items[0].VolumeStats == nil {
+		t.Fatal("volume stats = nil")
+	}
+	if items[0].VolumeStats.Status != "ready" || items[0].VolumeStats.UsedBytes != 4*1024*1024*1024 {
+		t.Fatalf("volume stats = %#v", items[0].VolumeStats)
+	}
+}
+
+func TestViewerServiceListPVCsMarksMismatchedPVCVolumeStats(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	client := kube.New(fake.NewSimpleClientset(&corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "data", UID: types.UID("uid")},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")},
+			},
+		},
+	}))
+	store := state.New(cfg.Cache)
+	recorder := observability.MustNew(cfg.Observability, nil)
+	pods := NewPodService(cfg, store, client, recorder)
+	service := NewViewerService(cfg, store, client, pods, nil, recorder, WithPVCMetrics(fakePVCMetrics{
+		stats: map[string]domain.PVCVolumeStats{
+			"data": {
+				Source:              "kubelet",
+				Status:              "ready",
+				UsedBytes:           300 * 1024 * 1024 * 1024,
+				MetricCapacityBytes: 418 * 1024 * 1024 * 1024,
+				AvailableBytes:      90 * 1024 * 1024 * 1024,
+			},
+		},
+	}))
+
+	items, err := service.ListPVCs(t.Context(), "default")
+	if err != nil {
+		t.Fatalf("ListPVCs() error = %v", err)
+	}
+	if items[0].VolumeStats == nil || items[0].VolumeStats.Status != "mismatched" {
+		t.Fatalf("volume stats = %#v", items[0].VolumeStats)
+	}
+}
+
+func TestViewerServiceListPVCsKeepsPVCsWhenPVCMetricsFail(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	client := kube.New(fake.NewSimpleClientset(&corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "data", UID: types.UID("uid")},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")},
+			},
+		},
+	}))
+	store := state.New(cfg.Cache)
+	recorder := observability.MustNew(cfg.Observability, nil)
+	pods := NewPodService(cfg, store, client, recorder)
+	service := NewViewerService(cfg, store, client, pods, nil, recorder, WithPVCMetrics(fakePVCMetrics{
+		err: errors.New("vmselect unavailable"),
+	}))
+
+	items, err := service.ListPVCs(t.Context(), "default")
+	if err != nil {
+		t.Fatalf("ListPVCs() error = %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items = %d", len(items))
+	}
+	if items[0].VolumeStats != nil {
+		t.Fatalf("volume stats = %#v, want nil", items[0].VolumeStats)
+	}
+}
+
 func TestCreateViewerSessionRejectsRWOP(t *testing.T) {
 	t.Parallel()
 
@@ -473,6 +582,18 @@ func TestViewerServiceReturnsPodSessionNotFoundCode(t *testing.T) {
 	if apiErr.Code != apienv.CodePodSessionNotFound {
 		t.Fatalf("code = %s, want %s", apiErr.Code, apienv.CodePodSessionNotFound)
 	}
+}
+
+type fakePVCMetrics struct {
+	err   error
+	stats map[string]domain.PVCVolumeStats
+}
+
+func (f fakePVCMetrics) ListPVCVolumeStats(context.Context, string) (map[string]domain.PVCVolumeStats, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.stats, nil
 }
 
 func testMountedPod(namespace string, name string, node string, pvc string) *corev1.Pod {

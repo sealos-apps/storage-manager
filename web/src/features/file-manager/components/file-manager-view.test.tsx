@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FileManagerView } from '@/features/file-manager/components/file-manager-view'
 import { uploadActions } from '@/features/file-manager/stores/upload-store'
 import { readyCapability, reconnectingCapability, renderFileManager, resource, sessionWithClient } from '@/features/file-manager/test/file-manager-view-helpers'
-import { createFakeViewerAPI, viewerSessionFixture } from '@/features/viewer/test/fakes'
+import { createFakeViewerAPI, pvcFixture, viewerSessionFixture } from '@/features/viewer/test/fakes'
 import { renderWithProviders } from '@/test/render'
 
 describe('fileManagerView', () => {
@@ -159,30 +159,38 @@ describe('fileManagerView', () => {
 		expect(modifiedTime).toHaveAttribute('title', expect.stringContaining('2026'))
 	})
 
-	it('shows mounted storage usage from File Browser after the viewer is ready', async () => {
-		const usage = vi.fn().mockResolvedValue({
-			total: 20 * 1024 * 1024 * 1024,
-			used: 5 * 1024 * 1024 * 1024,
-		})
+	it('shows mounted storage usage from the selected PVC metrics after the viewer is ready', async () => {
 		const session = sessionWithClient({
 			list: vi.fn(async () => resource('/', '', true, [
 				resource('/readme.md', 'readme.md', false),
 			])),
-			usage,
 		})
 
-		renderFileManager(session)
+		renderFileManager(session, {
+			pvc: {
+				...pvcFixture(),
+				name: 'data',
+				capacity: '20Gi',
+				capacity_bytes: 20 * 1024 * 1024 * 1024,
+				volume_stats: {
+					available_bytes: 15 * 1024 * 1024 * 1024,
+					metric_capacity_bytes: 20 * 1024 * 1024 * 1024,
+					source: 'victoria-metrics',
+					status: 'ready',
+					used_bytes: 5 * 1024 * 1024 * 1024,
+				},
+			},
+		})
 
 		expect(await screen.findByText('readme.md')).toBeInTheDocument()
 		expect(await screen.findByText((_, element) => element?.textContent === '5 GiB / 20 GiB')).toBeInTheDocument()
-		expect(screen.getByRole('progressbar', { name: /used/i }).querySelector('[data-slot="progress-indicator"]')).toHaveStyle({
+		expect(screen.getByText('Free 15 GiB')).toBeInTheDocument()
+		expect(screen.getByRole('progressbar', { name: /data PVC usage/i }).querySelector('[data-slot="progress-indicator"]')).toHaveStyle({
 			transform: 'translateX(-75%)',
 		})
-		expect(usage).toHaveBeenCalledWith('/', expect.any(AbortSignal))
 	})
 
-	it('keeps files usable when mounted storage usage cannot be read', async () => {
-		const usage = vi.fn().mockRejectedValue(new Error('usage failed'))
+	it('keeps files usable when selected PVC metrics are not collected', async () => {
 		const queryClient = new QueryClient({
 			defaultOptions: {
 				queries: {
@@ -194,33 +202,30 @@ describe('fileManagerView', () => {
 			list: vi.fn(async () => resource('/', '', true, [
 				resource('/readme.md', 'readme.md', false),
 			])),
-			usage,
 		})
 
 		renderFileManager(session, { queryClient })
 
 		expect(await screen.findByText('readme.md')).toBeInTheDocument()
-		expect(await screen.findByText(/capacity unavailable/i)).toBeInTheDocument()
+		expect(await screen.findByText(/not collected/i)).toBeInTheDocument()
 		expect(screen.getByRole('table')).toBeInTheDocument()
-		expect(usage).toHaveBeenCalledTimes(1)
 	})
 
-	it('refreshes mounted storage usage with the file list', async () => {
+	it('refreshes PVC metrics with the file list', async () => {
 		const user = userEvent.setup()
 		const list = vi.fn(async () => resource('/', '', true, [
 			resource('/readme.md', 'readme.md', false),
 		]))
-		const usage = vi.fn().mockResolvedValue({ total: 100, used: 25 })
-		const session = sessionWithClient({ list, usage })
+		const onRefreshStorageData = vi.fn()
+		const session = sessionWithClient({ list })
 
-		renderFileManager(session)
+		renderFileManager(session, { onRefreshStorageData })
 
 		await screen.findByText('readme.md')
-		await waitFor(() => expect(usage).toHaveBeenCalledTimes(1))
 		await user.click(screen.getByRole('button', { name: /refresh/i }))
 
 		await waitFor(() => expect(list).toHaveBeenCalledTimes(2))
-		await waitFor(() => expect(usage).toHaveBeenCalledTimes(2))
+		expect(onRefreshStorageData).toHaveBeenCalledTimes(1)
 	})
 
 	it('opens editable files from the entry name', async () => {
@@ -311,6 +316,8 @@ describe('fileManagerView', () => {
 				onBackToVolumes={vi.fn()}
 				onPathChange={vi.fn()}
 				onRefreshSession={vi.fn()}
+				onRefreshStorageData={vi.fn()}
+				pvc={pvcFixture()}
 				pvcName="data"
 				session={session}
 				sessionCapability={readyCapability()}
@@ -326,6 +333,8 @@ describe('fileManagerView', () => {
 				onBackToVolumes={vi.fn()}
 				onPathChange={vi.fn()}
 				onRefreshSession={vi.fn()}
+				onRefreshStorageData={vi.fn()}
+				pvc={pvcFixture()}
 				pvcName="data"
 				session={session}
 				sessionCapability={readyCapability()}
@@ -358,6 +367,8 @@ describe('fileManagerView', () => {
 				onBackToVolumes={vi.fn()}
 				onPathChange={vi.fn()}
 				onRefreshSession={vi.fn()}
+				onRefreshStorageData={vi.fn()}
+				pvc={pvcFixture()}
 				pvcName="data"
 				session={session}
 				sessionCapability={readyCapability()}
@@ -375,6 +386,8 @@ describe('fileManagerView', () => {
 				onBackToVolumes={vi.fn()}
 				onPathChange={vi.fn()}
 				onRefreshSession={vi.fn()}
+				onRefreshStorageData={vi.fn()}
+				pvc={pvcFixture()}
 				pvcName="data"
 				session={session}
 				sessionCapability={reconnectingCapability()}

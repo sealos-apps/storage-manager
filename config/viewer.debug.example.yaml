@@ -77,6 +77,10 @@ viewer:
     enabled: true
   pvc_creation:
     enabled: true
+  pvc_metrics:
+    enabled: false
+    prometheus_base_url: ""
+    query_timeout: 3s
   pod:
     service_account_name: ""
     mount_path: /srv

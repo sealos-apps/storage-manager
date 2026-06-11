@@ -125,6 +125,12 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 	const storageClassesQuery = useQuery(storageClassListQueryOptions(api))
 	const adminStorageClassesQuery = useQuery(adminStorageClassListQueryOptions(api, canManageStorageClasses))
 	const pvcs = useMemo(() => pvcQuery.data ?? [], [pvcQuery.data])
+	const activePVC = useMemo(() => {
+		if (!selectedPVC) {
+			return null
+		}
+		return pvcs.find(pvc => pvc.uid === selectedPVC.uid) ?? selectedPVC
+	}, [pvcs, selectedPVC])
 	const fileSession = useMemo<FileBrowserSession | null>(() => {
 		if (!token || !selectedPVC || viewerSession?.status !== 'ready' || !viewerSession.token_ready) {
 			return null
@@ -396,7 +402,11 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 										}
 									}}
 									onRefreshSession={refreshActiveSession}
+									onRefreshStorageData={() => {
+										void pvcQuery.refetch()
+									}}
 									podSessionID={viewerSession?.pod_session_id ?? null}
+									pvc={activePVC}
 									pvcName={selectedPVC?.name}
 									session={displayFileSession}
 									sessionCapability={sessionCapability}

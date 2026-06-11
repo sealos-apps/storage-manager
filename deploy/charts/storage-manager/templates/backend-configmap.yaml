@@ -93,6 +93,10 @@ data:
         enabled: {{ .Values.backend.config.viewer.fileManagement.enabled }}
       pvc_creation:
         enabled: {{ .Values.backend.config.viewer.pvcCreation.enabled }}
+      pvc_metrics:
+        enabled: {{ .Values.backend.config.viewer.pvcMetrics.enabled }}
+        prometheus_base_url: {{ .Values.backend.config.viewer.pvcMetrics.prometheusBaseUrl | quote }}
+        query_timeout: {{ .Values.backend.config.viewer.pvcMetrics.queryTimeout | quote }}
       pod:
         service_account_name: {{ .Values.backend.config.viewer.pod.serviceAccountName | quote }}
         mount_path: {{ .Values.backend.config.viewer.pod.mountPath | quote }}

@@ -84,6 +84,10 @@ viewer:
     enabled: false
   file_management:
     enabled: false
+  pvc_metrics:
+    enabled: true
+    prometheus_base_url: http://vmselect.vm.svc:8481/select/0/prometheus
+    query_timeout: 4s
 observability:
   logs:
     level: debug
@@ -147,6 +151,15 @@ admin:
 	if cfg.Viewer.PVCCreation.Enabled {
 		t.Fatal("viewer.pvc_creation.enabled = true")
 	}
+	if !cfg.Viewer.PVCMetrics.Enabled {
+		t.Fatal("viewer.pvc_metrics.enabled = false")
+	}
+	if cfg.Viewer.PVCMetrics.PrometheusBaseURL != "http://vmselect.vm.svc:8481/select/0/prometheus" {
+		t.Fatalf("viewer pvc metrics prometheus base url = %q", cfg.Viewer.PVCMetrics.PrometheusBaseURL)
+	}
+	if cfg.Viewer.PVCMetrics.QueryTimeout != 4*time.Second {
+		t.Fatalf("viewer pvc metrics query timeout = %s", cfg.Viewer.PVCMetrics.QueryTimeout)
+	}
 	if cfg.Observability.Traces.Endpoint != "http://otel-collector:4318/v1/traces" {
 		t.Fatalf("trace endpoint = %q", cfg.Observability.Traces.Endpoint)
 	}
@@ -177,9 +190,14 @@ func TestDefaultOmitsDeploymentValues(t *testing.T) {
 		cfg.Viewer.FileBrowser.Image != "" ||
 		cfg.Viewer.FileBrowser.BinaryPath != "" ||
 		cfg.Viewer.FileBrowser.Port != 0 ||
+		cfg.Viewer.PVCMetrics.Enabled ||
+		cfg.Viewer.PVCMetrics.PrometheusBaseURL != "" ||
 		cfg.Viewer.Ingress.ClassName != "" ||
 		cfg.Viewer.Ingress.HostTemplate != "" {
 		t.Fatalf("Default() contains deployment values: %#v", cfg.Viewer)
+	}
+	if cfg.Viewer.PVCMetrics.QueryTimeout != 3*time.Second {
+		t.Fatalf("viewer.pvc_metrics.query_timeout default = %s", cfg.Viewer.PVCMetrics.QueryTimeout)
 	}
 }
 
@@ -230,6 +248,26 @@ func TestLoadRejectsInvalidConfig(t *testing.T) {
 				"    login_timeout: 2s\n    login_url_mode: external\n",
 			),
 			want: "viewer.filebrowser.login_url_mode",
+		},
+		{
+			name: "enabled pvc metrics without prometheus base url",
+			body: replaceConfig(
+				t,
+				validConfigYAML,
+				"  filebrowser:\n",
+				"  pvc_metrics:\n    enabled: true\n  filebrowser:\n",
+			),
+			want: "viewer.pvc_metrics.prometheus_base_url",
+		},
+		{
+			name: "bad pvc metrics query timeout",
+			body: replaceConfig(
+				t,
+				validConfigYAML,
+				"  filebrowser:\n",
+				"  pvc_metrics:\n    enabled: true\n    prometheus_base_url: http://vmselect.vm.svc:8481/select/0/prometheus\n    query_timeout: 0s\n  filebrowser:\n",
+			),
+			want: "viewer.pvc_metrics.query_timeout",
 		},
 		{
 			name: "bad log exporter",
@@ -440,6 +478,9 @@ func TestDeployChartValuesEmbedValidViewerConfig(t *testing.T) {
 	}
 	if !strings.Contains(viewerYAML, "pvc_creation:\n    enabled: true") {
 		t.Fatalf("viewer.yaml missing pvc_creation feature gate:\n%s", viewerYAML)
+	}
+	if !strings.Contains(viewerYAML, "pvc_metrics:\n    enabled: false\n    prometheus_base_url: \"\"\n    query_timeout: \"3s\"") {
+		t.Fatalf("viewer.yaml missing pvc_metrics configuration:\n%s", viewerYAML)
 	}
 	for _, forbidden := range []string{
 		"namespace_allowlist",

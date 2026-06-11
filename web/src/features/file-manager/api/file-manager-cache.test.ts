@@ -23,13 +23,15 @@ describe('file manager cache', () => {
 		expect(queryClient.getQueryState(fileManagerKeys.files('pvc-1', '/other', 'name:asc'))?.isInvalidated).toBe(false)
 	})
 
-	it('invalidates disk usage after file mutations', () => {
+	it('invalidates file tree and recycle bin after file mutations', () => {
 		const queryClient = new QueryClient()
 		const session = { pvcKey: 'pvc-1' } as FileBrowserSession
-		queryClient.setQueryData(fileManagerKeys.usage('pvc-1'), { total: 100, used: 20 })
+		queryClient.setQueryData(fileManagerKeys.files('pvc-1', '/docs', 'name:asc'), 'docs')
+		queryClient.setQueryData(fileManagerKeys.recycleBin('pvc-1'), [])
 
 		invalidateFileManagerAfterMutation(queryClient, session, ['/docs/file.txt'])
 
-		expect(queryClient.getQueryState(fileManagerKeys.usage('pvc-1'))?.isInvalidated).toBe(true)
+		expect(queryClient.getQueryState(fileManagerKeys.files('pvc-1', '/docs', 'name:asc'))?.isInvalidated).toBe(true)
+		expect(queryClient.getQueryState(fileManagerKeys.recycleBin('pvc-1'))?.isInvalidated).toBe(true)
 	})
 })

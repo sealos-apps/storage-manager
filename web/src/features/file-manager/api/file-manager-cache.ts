@@ -35,9 +35,6 @@ export function invalidateFileManagerAfterMutation(
 ) {
 	invalidateFileTreeQueries(queryClient, session, paths.filter(path => path !== trashRootPath))
 	void queryClient.invalidateQueries({
-		queryKey: fileManagerKeys.usage(session.pvcKey),
-	})
-	void queryClient.invalidateQueries({
 		queryKey: fileManagerKeys.recycleBin(session.pvcKey),
 	})
 }

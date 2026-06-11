@@ -40,6 +40,7 @@ type ViewerConfig struct {
 	HookScript       string               `yaml:"hook_script"`
 	FileManagement   FileManagementConfig `yaml:"file_management"`
 	PVCCreation      PVCCreationConfig    `yaml:"pvc_creation"`
+	PVCMetrics       PVCMetricsConfig     `yaml:"pvc_metrics"`
 	FileBrowser      FileBrowserConfig    `yaml:"filebrowser"`
 	Pod              PodConfig            `yaml:"pod"`
 	Service          ServiceConfig        `yaml:"service"`
@@ -52,6 +53,12 @@ type FileManagementConfig struct {
 
 type PVCCreationConfig struct {
 	Enabled bool `yaml:"enabled"`
+}
+
+type PVCMetricsConfig struct {
+	Enabled           bool          `yaml:"enabled"`
+	PrometheusBaseURL string        `yaml:"prometheus_base_url"`
+	QueryTimeout      time.Duration `yaml:"query_timeout"`
 }
 
 type FeatureConfig struct {
@@ -187,6 +194,9 @@ func Default() Config {
 			PVCCreation: PVCCreationConfig{
 				Enabled: true,
 			},
+			PVCMetrics: PVCMetricsConfig{
+				QueryTimeout: 3 * time.Second,
+			},
 			FileBrowser: FileBrowserConfig{
 				LoginURLMode: "internal",
 			},
@@ -260,6 +270,14 @@ func (cfg Config) Validate() error {
 	}
 	if cfg.Viewer.FileBrowser.LoginTimeout <= 0 {
 		problems = append(problems, "viewer.filebrowser.login_timeout must be positive")
+	}
+	if cfg.Viewer.PVCMetrics.Enabled {
+		if strings.TrimSpace(cfg.Viewer.PVCMetrics.PrometheusBaseURL) == "" {
+			problems = append(problems, "viewer.pvc_metrics.prometheus_base_url is required when pvc metrics are enabled")
+		}
+		if cfg.Viewer.PVCMetrics.QueryTimeout <= 0 {
+			problems = append(problems, "viewer.pvc_metrics.query_timeout must be positive")
+		}
 	}
 	if !slices.Contains([]string{"internal", "public"}, strings.TrimSpace(cfg.Viewer.FileBrowser.LoginURLMode)) {
 		problems = append(problems, "viewer.filebrowser.login_url_mode must be one of internal, public")
@@ -379,6 +397,7 @@ func (cfg Config) Redacted() map[string]any {
 			"hook_script":        "redacted",
 			"file_management":    cfg.Viewer.FileManagement,
 			"pvc_creation":       cfg.Viewer.PVCCreation,
+			"pvc_metrics":        cfg.Viewer.PVCMetrics,
 			"filebrowser":        cfg.Viewer.FileBrowser,
 			"pod":                cfg.Viewer.Pod,
 			"service":            cfg.Viewer.Service,

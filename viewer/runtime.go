@@ -14,6 +14,7 @@ import (
 	"github.com/nixieboluo/sealos-storage-manager/internal/filebrowser"
 	"github.com/nixieboluo/sealos-storage-manager/internal/kube"
 	"github.com/nixieboluo/sealos-storage-manager/internal/observability"
+	"github.com/nixieboluo/sealos-storage-manager/internal/pvcmetrics"
 	"github.com/nixieboluo/sealos-storage-manager/internal/session"
 	"github.com/nixieboluo/sealos-storage-manager/internal/state"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -119,7 +120,15 @@ func newRuntimeFromConfig(cfg config.Config) (*Runtime, error) {
 		filebrowser.NewObservedClient(cfg.Viewer.FileBrowser.LoginTimeout, tracerProvider),
 		recorder,
 	)
-	viewers := session.NewViewerService(cfg, store, kubeClient, pods, auth, recorder)
+	viewers := session.NewViewerService(
+		cfg,
+		store,
+		kubeClient,
+		pods,
+		auth,
+		recorder,
+		session.WithPVCMetrics(newPVCMetricsReader(cfg.Viewer.PVCMetrics, recorder)),
+	)
 	storageClasses := session.NewStorageClassService(adminKubeClient, recorder)
 	cleanup := session.NewCleanupService(cfg, store, pods, recorder)
 	// This in-process scheduler assumes a single backend replica. If the backend
@@ -144,6 +153,19 @@ func newRuntimeFromConfig(cfg config.Config) (*Runtime, error) {
 		recorder: recorder,
 		cancel:   cancelCleanup,
 	}, nil
+}
+
+func newPVCMetricsReader(
+	cfg config.PVCMetricsConfig,
+	recorder *observability.Recorder,
+) pvcmetrics.Reader {
+	if !cfg.Enabled {
+		return nil
+	}
+	return pvcmetrics.NewClient(cfg, &http.Client{
+		Timeout:   cfg.QueryTimeout,
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}, recorder)
 }
 
 func storageClassAdminKubeClient(

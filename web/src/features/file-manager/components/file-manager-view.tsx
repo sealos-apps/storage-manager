@@ -1,9 +1,9 @@
 import type { FileBrowserResource } from '@sealos-storage-manager/filebrowser-client'
 import type { UseQueryResult } from '@tanstack/react-query'
 import type { ColumnDef, SortingState } from '@tanstack/react-table'
-import type { FileBrowserSession, FileEntry, FileListResult, FileTableRow, FileUsage } from '@/features/file-manager/types/file-manager'
+import type { FileBrowserSession, FileEntry, FileListResult, FileTableRow } from '@/features/file-manager/types/file-manager'
 import type { FileSortState } from '@/features/file-manager/utils/file-tree'
-import type { ViewerAPI, ViewerSession } from '@/features/viewer/types/viewer'
+import type { PVC, ViewerAPI, ViewerSession } from '@/features/viewer/types/viewer'
 import type { ManualCloseKind, SessionCapability } from '@/features/viewer/utils/session-capability'
 
 import { parentPath } from '@sealos-storage-manager/filebrowser-client'
@@ -29,9 +29,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { invalidateFileTreeQueries } from '@/features/file-manager/api/file-manager-cache'
-import {
-} from '@/features/file-manager/api/file-manager-mutations'
-import { fileListQueryOptions, fileUsageQueryOptions } from '@/features/file-manager/api/file-manager-query-options'
+import { fileListQueryOptions } from '@/features/file-manager/api/file-manager-query-options'
 import { CreateFolderDialog, FileEditorDialog, UploadDialog } from '@/features/file-manager/components/file-dialogs'
 import { FileActions, FileNameCell, ModifiedTimeCell, SortableHead } from '@/features/file-manager/components/file-table-cells'
 import { FileListErrorState, SessionStatusPopover } from '@/features/file-manager/components/session-status-popover'
@@ -55,7 +53,9 @@ interface FileManagerViewProps {
 	onManualClose?: (kind: ManualCloseKind) => void
 	onPathChange: (path: string) => void
 	onRefreshSession: () => void
+	onRefreshStorageData: () => void
 	podSessionID?: string | null
+	pvc: PVC | null
 	pvcName?: string
 	session: FileBrowserSession | null
 	sessionCapability: SessionCapability
@@ -102,7 +102,9 @@ export function FileManagerView({
 	onManualClose,
 	onPathChange,
 	onRefreshSession,
+	onRefreshStorageData,
 	podSessionID,
+	pvc,
 	pvcName,
 	session,
 	sessionCapability,
@@ -116,7 +118,6 @@ export function FileManagerView({
 	const canShowFileList = sessionCapability.canShowFileList && session !== null
 	const canUseFiles = sessionCapability.canUseFiles && session !== null
 	const fileQuery = useQuery(fileListQueryOptions(session, currentPath, sort, canUseFiles))
-	const usageQuery = useQuery(fileUsageQueryOptions(session, canUseFiles))
 	const entries = fileQuery.data?.entries ?? emptyEntries
 	const treeScope = `${session?.pvcKey ?? 'inactive'}:${currentPath}`
 	const [treeState, setTreeState] = useState<BranchTreeState>(() => createBranchTreeState(treeScope))
@@ -306,7 +307,7 @@ export function FileManagerView({
 					</p>
 				</div>
 				<div className="flex flex-wrap items-center gap-3">
-					{canShowFileList ? <StorageUsageSummary query={usageQuery} /> : null}
+					{canShowFileList ? <StorageUsageSummary pvc={pvc} /> : null}
 					<Button onClick={onBackToVolumes} size="sm" variant="outline">
 						<ArrowLeft data-icon="inline-start" />
 						{t('files.backToVolumes')}
@@ -331,7 +332,7 @@ export function FileManagerView({
 										disabled={!canUseFiles || operationsDisabled}
 										onClick={() => {
 											onRefreshSession()
-											void usageQuery.refetch()
+											onRefreshStorageData()
 											void fileQuery.refetch()
 										}}
 										size="icon"
@@ -490,44 +491,46 @@ export function FileManagerView({
 }
 
 interface StorageUsageSummaryProps {
-	query: UseQueryResult<FileUsage, Error>
+	pvc: PVC | null
 }
 
-function StorageUsageSummary({ query }: StorageUsageSummaryProps) {
+function StorageUsageSummary({ pvc }: StorageUsageSummaryProps) {
 	const { t } = useTranslation()
-	const usage = query.data
-	const percent = usage && usage.total > 0
-		? Math.min(100, Math.max(0, Math.round((usage.used / usage.total) * 100)))
+	const stats = pvc?.volume_stats
+	const percent = stats && pvc.capacity_bytes > 0
+		? Math.min(100, Math.max(0, Math.round((stats.used_bytes / pvc.capacity_bytes) * 100)))
 		: 0
 
-	if (query.isLoading) {
+	if (!stats) {
 		return (
-			<div className="grid min-w-48 gap-2 rounded-lg border bg-card px-3 py-2" role="status">
-				<div className="h-3 w-32 rounded bg-muted" />
-				<div className="h-2 w-full rounded bg-muted" />
+			<div className="rounded-lg border bg-card px-3 py-2 text-xs text-muted-foreground">
+				{t('volumes.usageUnavailable')}
 			</div>
 		)
 	}
 
-	if (query.error || !usage) {
+	if (stats.status !== 'ready') {
 		return (
 			<div className="rounded-lg border bg-card px-3 py-2 text-xs text-muted-foreground">
-				{t('files.usageUnavailable')}
+				<span className="font-medium text-amber-700">{t('volumes.usageMismatch')}</span>
 			</div>
 		)
 	}
 
 	return (
-		<div className="flex flex-row gap-2 items-center rounded-lg border bg-card px-3 py-2">
-			<div className="flex items-center justify-between gap-1 text-xs shrink-0">
-				<span className="font-medium text-foreground">{t('files.usedCapacity')}</span>
+		<div className="grid min-w-56 gap-1.5 rounded-lg border bg-card px-3 py-2">
+			<div className="flex items-center justify-between gap-2 text-xs">
+				<span className="font-medium text-foreground">
+					{`${formatBytes(stats.used_bytes)} / ${formatBytes(pvc.capacity_bytes)}`}
+				</span>
 				<span className="text-muted-foreground">
-					{formatBytes(usage.used)}
-					{' / '}
-					{formatBytes(usage.total)}
+					{`${percent}%`}
 				</span>
 			</div>
-			<Progress className="min-w-36" aria-label={t('files.usedCapacity')} value={percent} />
+			<Progress aria-label={t('volumes.usageProgressLabel', { pvc: pvc.name })} value={percent} />
+			<div className="text-xs text-muted-foreground">
+				{t('volumes.usageFree', { size: formatBytes(stats.available_bytes) })}
+			</div>
 		</div>
 	)
 }

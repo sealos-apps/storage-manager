@@ -167,6 +167,22 @@ func TestWrapKubernetesTransportInjectsTraceContext(t *testing.T) {
 	}
 }
 
+func TestNewPVCMetricsReaderHonorsFeatureFlag(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default().Viewer.PVCMetrics
+	if reader := newPVCMetricsReader(cfg, observabilityTestRecorder(t)); reader != nil {
+		t.Fatalf("reader = %#v, want nil when disabled", reader)
+	}
+
+	cfg.Enabled = true
+	cfg.PrometheusBaseURL = "http://vmselect.vm.svc:8481/select/0/prometheus"
+	reader := newPVCMetricsReader(cfg, observabilityTestRecorder(t))
+	if reader == nil {
+		t.Fatal("reader = nil when pvc metrics are enabled")
+	}
+}
+
 func TestNewRuntimeStartsCleanupLoopWithPurgeInterval(t *testing.T) {
 	dir := t.TempDir()
 	namespacePath := filepath.Join(dir, "namespace")

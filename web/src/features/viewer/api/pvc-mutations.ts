@@ -35,6 +35,7 @@ export function createPVCMutationOptions(
 					reason: '',
 				},
 				reason: '',
+				volume_stats: undefined,
 			}
 			queryClient.setQueryData<PVC[]>(key, current => [
 				...(current ?? []).filter(pvc => pvc.name !== input.name),
