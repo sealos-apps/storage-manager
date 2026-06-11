@@ -17,6 +17,7 @@ export type StorageClassDescribe = session.StorageClassDescribe
 export type StorageClassYAML = session.StorageClassYAML
 export type AdminNamespace = domain.Namespace
 export type ViewerContext = viewer.ViewerContext
+export type StorageQuota = viewer.StorageQuota
 
 export type ViewerMode = 'readonly' | 'readwrite' | string
 export type ViewerStatus = 'active' | 'ready' | 'creating' | 'closed' | 'expired' | 'failed' | string
@@ -37,6 +38,8 @@ export const backendViewerErrorCodes = [
 	'PVC_CREATE_FORBIDDEN',
 	'PVC_DELETE_FORBIDDEN',
 	'PVC_EXPAND_FORBIDDEN',
+	'PVC_QUOTA_EXCEEDED',
+	'PVC_QUOTA_UNAVAILABLE',
 	'PVC_EXPAND_UNSUPPORTED',
 	'PVC_EXPAND_NOT_INCREASED',
 	'UNSUPPORTED_ACCESS_MODE',
@@ -107,6 +110,10 @@ export interface ListPVCsInput {
 	namespace: string
 }
 
+export interface GetStorageQuotaInput {
+	namespace: string
+}
+
 export interface ViewerAPI {
 	adminCapabilities: () => Promise<AdminCapabilities>
 	adminCreateStorageClass: (input: StorageClassYAMLInput) => Promise<StorageClass>
@@ -124,6 +131,7 @@ export interface ViewerAPI {
 	expandPVC: (input: ExpandPVCInput) => Promise<PVC>
 	getPodSession: (podSessionID: string) => Promise<PodSession>
 	getContext: () => Promise<ViewerContext>
+	getStorageQuota: (input: GetStorageQuotaInput) => Promise<StorageQuota>
 	getViewerSession: (viewerSessionID: string) => Promise<ViewerSession>
 	heartbeatViewerSession: (viewerSessionID: string) => Promise<Heartbeat>
 	issueViewerToken: (viewerSessionID: string) => Promise<ViewerToken>

@@ -44,6 +44,11 @@ backend:
         enabled: true
       pvcCreation:
         enabled: true
+      storageQuota:
+        enabled: true
+        accountBaseUrl: "http://account-service.account-system.svc:2333"
+        queryTimeout: 3s
+        systemQuota: 100Gi
       pvcMetrics:
         enabled: false
         prometheusBaseUrl: ""

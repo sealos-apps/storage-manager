@@ -11,6 +11,7 @@ import {
 	adminStorageClassYAMLQueryOptions,
 	pvcListQueryOptions,
 	storageClassListQueryOptions,
+	storageQuotaQueryOptions,
 	viewerContextQueryOptions,
 	viewerSessionQueryOptions,
 } from '@/features/viewer/api/viewer-query-options'
@@ -69,6 +70,22 @@ describe('viewer query options', () => {
 			queryKey: options.queryKey,
 			signal: new AbortController().signal,
 		})).resolves.toHaveLength(1)
+	})
+
+	it('uses a stable storage quota query key', async () => {
+		const api = createFakeViewerAPI()
+		const options = storageQuotaQueryOptions('ns-admin', api)
+
+		expect(options.queryKey).toEqual(viewerKeys.storageQuota('ns-admin'))
+		await expect(options.queryFn?.({
+			client: mutationContext.client,
+			meta: undefined,
+			queryKey: options.queryKey,
+			signal: new AbortController().signal,
+		})).resolves.toMatchObject({
+			available_bytes: 15 * 1024 * 1024 * 1024,
+			available_quantity: '15Gi',
+		})
 	})
 
 	it('uses stable admin StorageClass query keys', async () => {

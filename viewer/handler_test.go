@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/nixieboluo/sealos-storage-manager/internal/accountquota"
 	"github.com/nixieboluo/sealos-storage-manager/internal/authn"
 	"github.com/nixieboluo/sealos-storage-manager/internal/config"
 	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
@@ -44,6 +45,18 @@ type fakeStorageClassService struct {
 	yaml     *session.StorageClassYAML
 	describe *session.StorageClassDescribe
 	item     *domain.StorageClass
+}
+
+type fakeStorageQuotaService struct {
+	err      error
+	input    *storageQuotaCall
+	calls    *int
+	response accountquota.StorageQuota
+}
+
+type storageQuotaCall struct {
+	authorization string
+	namespace     string
 }
 
 const testKubeconfig = `apiVersion: v1
@@ -235,6 +248,26 @@ func (f fakeStorageClassService) DeleteStorageClass(_ context.Context, _ string)
 
 func (f fakeStorageClassService) DescribeStorageClass(_ context.Context, _ string) (*session.StorageClassDescribe, error) {
 	return f.describe, nil
+}
+
+func (f fakeStorageQuotaService) StorageQuota(
+	_ context.Context,
+	namespace string,
+	authorization string,
+) (accountquota.StorageQuota, error) {
+	if f.calls != nil {
+		(*f.calls)++
+	}
+	if f.input != nil {
+		*f.input = storageQuotaCall{
+			authorization: authorization,
+			namespace:     namespace,
+		}
+	}
+	if f.err != nil {
+		return accountquota.StorageQuota{}, f.err
+	}
+	return f.response, nil
 }
 
 type fakePodService struct {

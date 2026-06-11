@@ -5,6 +5,7 @@ import type {
 	CreateViewerSessionInput,
 	DeletePVCInput,
 	ExpandPVCInput,
+	GetStorageQuotaInput,
 	Heartbeat,
 	ListPVCsInput,
 	PodSession,
@@ -13,6 +14,7 @@ import type {
 	StorageClassDescribe,
 	StorageClassYAML,
 	StorageClassYAMLInput,
+	StorageQuota,
 	ViewerAPI,
 	ViewerContext,
 	ViewerSession,
@@ -235,6 +237,19 @@ export function createViewerApi(
 					Authorization: authorization(),
 				})
 				return response.context
+			}
+			catch (error) {
+				throw normalizeViewerError(error)
+			}
+		},
+
+		async getStorageQuota(input: GetStorageQuotaInput): Promise<StorageQuota> {
+			try {
+				const response = await activeClient.viewer.GetStorageQuota({
+					Authorization: authorization(),
+					Namespace: input.namespace,
+				})
+				return response.storage_quota
 			}
 			catch (error) {
 				throw normalizeViewerError(error)

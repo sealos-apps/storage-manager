@@ -159,6 +159,16 @@ describe('viewer API adapter', () => {
 		const getContext = vi.fn().mockResolvedValue({
 			context: viewerContextFixture(),
 		})
+		const getStorageQuota = vi.fn().mockResolvedValue({
+			storage_quota: {
+				available_bytes: 15 * 1024 * 1024 * 1024,
+				available_quantity: '15Gi',
+				limit_bytes: 20 * 1024 * 1024 * 1024,
+				limit_quantity: '20Gi',
+				used_bytes: 5 * 1024 * 1024 * 1024,
+				used_quantity: '5Gi',
+			},
+		})
 		const createViewerSession = vi.fn().mockResolvedValue({
 			viewer_session: viewerSessionFixture({ id: 'vs_1' }),
 		})
@@ -179,11 +189,15 @@ describe('viewer API adapter', () => {
 				ExpandPVC: expandPVC,
 				DeletePVC: deletePVC,
 				GetContext: getContext,
+				GetStorageQuota: getStorageQuota,
 			},
 		} as never)
 
 		await expect(api.getContext()).resolves.toEqual(expect.objectContaining({
 			namespace: 'ns-admin',
+		}))
+		await expect(api.getStorageQuota({ namespace: 'default' })).resolves.toEqual(expect.objectContaining({
+			available_quantity: '15Gi',
 		}))
 		await expect(api.listPVCs({ namespace: 'default' })).resolves.toEqual([
 			expect.objectContaining({ name: 'mysql-data' }),
@@ -288,6 +302,10 @@ describe('viewer API adapter', () => {
 		})
 		expect(getContext).toHaveBeenCalledWith({
 			Authorization: 'Bearer test-kubeconfig',
+		})
+		expect(getStorageQuota).toHaveBeenCalledWith({
+			Authorization: 'Bearer test-kubeconfig',
+			Namespace: 'default',
 		})
 	})
 

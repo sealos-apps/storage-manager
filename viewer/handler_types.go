@@ -10,6 +10,11 @@ type AuthenticatedRequest struct {
 	Authorization string `header:"Authorization" encore:"sensitive"`
 }
 
+type StorageQuotaRequest struct {
+	Authorization string `header:"Authorization" encore:"sensitive"`
+	Namespace     string `query:"namespace"`
+}
+
 type ListPVCsRequest struct {
 	Authorization string `header:"Authorization" encore:"sensitive"`
 	Namespace     string `query:"namespace"`
@@ -69,6 +74,19 @@ type ViewerContext struct {
 
 type ContextResponse struct {
 	Context ViewerContext `json:"context"`
+}
+
+type StorageQuota struct {
+	AvailableBytes    int64  `json:"available_bytes"`
+	AvailableQuantity string `json:"available_quantity"`
+	LimitBytes        int64  `json:"limit_bytes"`
+	LimitQuantity     string `json:"limit_quantity"`
+	UsedBytes         int64  `json:"used_bytes"`
+	UsedQuantity      string `json:"used_quantity"`
+}
+
+type StorageQuotaResponse struct {
+	StorageQuota StorageQuota `json:"storage_quota"`
 }
 
 type PVCResponse struct {

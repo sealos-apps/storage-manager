@@ -93,6 +93,11 @@ data:
         enabled: {{ .Values.backend.config.viewer.fileManagement.enabled }}
       pvc_creation:
         enabled: {{ .Values.backend.config.viewer.pvcCreation.enabled }}
+      storage_quota:
+        enabled: {{ .Values.backend.config.viewer.storageQuota.enabled }}
+        account_base_url: {{ .Values.backend.config.viewer.storageQuota.accountBaseUrl | quote }}
+        query_timeout: {{ .Values.backend.config.viewer.storageQuota.queryTimeout | quote }}
+        system_quota: {{ .Values.backend.config.viewer.storageQuota.systemQuota | quote }}
       pvc_metrics:
         enabled: {{ .Values.backend.config.viewer.pvcMetrics.enabled }}
         prometheus_base_url: {{ .Values.backend.config.viewer.pvcMetrics.prometheusBaseUrl | quote }}

@@ -17,6 +17,11 @@ func GetContext(ctx context.Context, req *AuthenticatedRequest) (*ContextRespons
 	return runtimeHandler().GetContextData(ctx, req)
 }
 
+//encore:api public method=GET path=/storage-quota
+func GetStorageQuota(ctx context.Context, req *StorageQuotaRequest) (*StorageQuotaResponse, error) {
+	return runtimeHandler().GetStorageQuotaData(ctx, req)
+}
+
 //encore:api public method=POST path=/pvcs
 func CreatePVC(ctx context.Context, req *CreatePVCRequest) (*PVCResponse, error) {
 	return runtimeHandler().CreatePVCData(ctx, req)

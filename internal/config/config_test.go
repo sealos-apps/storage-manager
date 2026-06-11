@@ -82,6 +82,11 @@ viewer:
     public_scheme: https
   pvc_creation:
     enabled: false
+  storage_quota:
+    enabled: true
+    account_base_url: http://account-service.account-system.svc:2333
+    query_timeout: 5s
+    system_quota: 200Gi
   file_management:
     enabled: false
   pvc_metrics:
@@ -151,6 +156,18 @@ admin:
 	if cfg.Viewer.PVCCreation.Enabled {
 		t.Fatal("viewer.pvc_creation.enabled = true")
 	}
+	if !cfg.Viewer.StorageQuota.Enabled {
+		t.Fatal("viewer.storage_quota.enabled = false")
+	}
+	if cfg.Viewer.StorageQuota.AccountBaseURL != "http://account-service.account-system.svc:2333" {
+		t.Fatalf("viewer storage quota account base url = %q", cfg.Viewer.StorageQuota.AccountBaseURL)
+	}
+	if cfg.Viewer.StorageQuota.QueryTimeout != 5*time.Second {
+		t.Fatalf("viewer storage quota query timeout = %s", cfg.Viewer.StorageQuota.QueryTimeout)
+	}
+	if cfg.Viewer.StorageQuota.SystemQuota != "200Gi" {
+		t.Fatalf("viewer storage quota system quota = %q", cfg.Viewer.StorageQuota.SystemQuota)
+	}
 	if !cfg.Viewer.PVCMetrics.Enabled {
 		t.Fatal("viewer.pvc_metrics.enabled = false")
 	}
@@ -192,12 +209,20 @@ func TestDefaultOmitsDeploymentValues(t *testing.T) {
 		cfg.Viewer.FileBrowser.Port != 0 ||
 		cfg.Viewer.PVCMetrics.Enabled ||
 		cfg.Viewer.PVCMetrics.PrometheusBaseURL != "" ||
+		cfg.Viewer.StorageQuota.Enabled ||
+		cfg.Viewer.StorageQuota.AccountBaseURL != "" ||
 		cfg.Viewer.Ingress.ClassName != "" ||
 		cfg.Viewer.Ingress.HostTemplate != "" {
 		t.Fatalf("Default() contains deployment values: %#v", cfg.Viewer)
 	}
 	if cfg.Viewer.PVCMetrics.QueryTimeout != 3*time.Second {
 		t.Fatalf("viewer.pvc_metrics.query_timeout default = %s", cfg.Viewer.PVCMetrics.QueryTimeout)
+	}
+	if cfg.Viewer.StorageQuota.QueryTimeout != 3*time.Second {
+		t.Fatalf("viewer.storage_quota.query_timeout default = %s", cfg.Viewer.StorageQuota.QueryTimeout)
+	}
+	if cfg.Viewer.StorageQuota.SystemQuota != "100Gi" {
+		t.Fatalf("viewer.storage_quota.system_quota default = %q", cfg.Viewer.StorageQuota.SystemQuota)
 	}
 }
 
@@ -258,6 +283,16 @@ func TestLoadRejectsInvalidConfig(t *testing.T) {
 				"  pvc_metrics:\n    enabled: true\n  filebrowser:\n",
 			),
 			want: "viewer.pvc_metrics.prometheus_base_url",
+		},
+		{
+			name: "enabled storage quota without account base url",
+			body: replaceConfig(
+				t,
+				validConfigYAML,
+				"  filebrowser:\n",
+				"  storage_quota:\n    enabled: true\n  filebrowser:\n",
+			),
+			want: "viewer.storage_quota.account_base_url",
 		},
 		{
 			name: "bad pvc metrics query timeout",

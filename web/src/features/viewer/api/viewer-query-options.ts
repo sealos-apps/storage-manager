@@ -37,6 +37,15 @@ export function storageClassListQueryOptions(api: ViewerAPI = viewerApi) {
 	})
 }
 
+export function storageQuotaQueryOptions(namespace: string, api: ViewerAPI = viewerApi) {
+	return queryOptions({
+		queryKey: viewerKeys.storageQuota(namespace),
+		queryFn: () => api.getStorageQuota({ namespace }),
+		enabled: namespace.length > 0,
+		staleTime: 15_000,
+	})
+}
+
 export function adminCapabilitiesQueryOptions(api: ViewerAPI = viewerApi) {
 	return queryOptions({
 		queryKey: viewerKeys.adminCapabilities(),

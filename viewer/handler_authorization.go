@@ -122,7 +122,7 @@ func allowedAdminNamespaces(namespaces []corev1.Namespace, currentNamespace stri
 		}
 		// Sealos user namespaces use the ns- prefix. Admin PVC browsing only exposes
 		// system namespaces so the dropdown stays bounded and never lists other users.
-		if strings.HasPrefix(name, "ns-") {
+		if isUserNamespace(name) {
 			continue
 		}
 		if _, ok := seen[name]; ok {
@@ -242,6 +242,13 @@ func (h *Handler) authenticateRequest(req interface{ authorizationHeader() strin
 }
 
 func (req *AuthenticatedRequest) authorizationHeader() string {
+	if req == nil {
+		return ""
+	}
+	return req.Authorization
+}
+
+func (req *StorageQuotaRequest) authorizationHeader() string {
 	if req == nil {
 		return ""
 	}

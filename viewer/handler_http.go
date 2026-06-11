@@ -23,6 +23,14 @@ func (h *Handler) GetContext(w http.ResponseWriter, req *http.Request) {
 	writeHTTPResponse(w, response, err)
 }
 
+func (h *Handler) GetStorageQuota(w http.ResponseWriter, req *http.Request) {
+	response, err := h.getStorageQuota(req.Context(), &StorageQuotaRequest{
+		Authorization: req.Header.Get("Authorization"),
+		Namespace:     req.URL.Query().Get("namespace"),
+	})
+	writeHTTPResponse(w, response, err)
+}
+
 func (h *Handler) CreateViewerSession(w http.ResponseWriter, req *http.Request) {
 	var body CreateViewerSessionRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {

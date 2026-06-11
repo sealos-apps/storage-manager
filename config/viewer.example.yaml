@@ -77,6 +77,11 @@ viewer:
     enabled: true
   pvc_creation:
     enabled: true
+  storage_quota:
+    enabled: true
+    account_base_url: http://account-service.account-system.svc:2333
+    query_timeout: 3s
+    system_quota: 100Gi
   pvc_metrics:
     enabled: false
     prometheus_base_url: ""

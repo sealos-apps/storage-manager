@@ -12,6 +12,8 @@ export const viewerErrorMessageKeys = {
 	PVC_CREATE_FORBIDDEN: 'errors.pvcCreateForbidden',
 	PVC_DELETE_FORBIDDEN: 'errors.pvcDeleteForbidden',
 	PVC_EXPAND_FORBIDDEN: 'errors.pvcExpandForbidden',
+	PVC_QUOTA_EXCEEDED: 'errors.pvcQuotaExceeded',
+	PVC_QUOTA_UNAVAILABLE: 'errors.pvcQuotaUnavailable',
 	PVC_EXPAND_UNSUPPORTED: 'errors.pvcExpandUnsupported',
 	PVC_EXPAND_NOT_INCREASED: 'errors.pvcExpandNotIncreased',
 	UNSUPPORTED_ACCESS_MODE: 'errors.unsupportedAccessMode',

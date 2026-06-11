@@ -3,6 +3,7 @@ package viewer
 import (
 	"context"
 
+	"github.com/nixieboluo/sealos-storage-manager/internal/accountquota"
 	"github.com/nixieboluo/sealos-storage-manager/internal/authn"
 	"github.com/nixieboluo/sealos-storage-manager/internal/config"
 	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
@@ -49,6 +50,10 @@ type authService interface {
 	VerifyHook(input session.HookVerifyInput) domain.FileBrowserHookVerification
 }
 
+type storageQuotaService interface {
+	StorageQuota(ctx context.Context, namespace string, authorization string) (accountquota.StorageQuota, error)
+}
+
 type authorizer interface {
 	CanListPVCs(ctx context.Context, principal *authn.Principal, namespace string) error
 	CanGetPVC(ctx context.Context, principal *authn.Principal, namespace string, name string) error
@@ -68,6 +73,7 @@ type Handler struct {
 	storageClasses storageClassService
 	pods           podService
 	auth           authService
+	storageQuota   storageQuotaService
 	recorder       *observability.Recorder
 	authz          authorizer
 	adminAuthz     adminAuthorizer
@@ -126,6 +132,12 @@ func WithFeatureConfig(features config.FeatureConfig) HandlerOption {
 	}
 }
 
+func WithStorageQuotaService(storageQuota storageQuotaService) HandlerOption {
+	return func(h *Handler) {
+		h.storageQuota = storageQuota
+	}
+}
+
 func WithStorageClassService(storageClasses storageClassService) HandlerOption {
 	return func(h *Handler) {
 		h.storageClasses = storageClasses
@@ -155,6 +167,7 @@ func NewHandler(
 		storageClasses: unavailableStorageClassService{},
 		pods:           pods,
 		auth:           auth,
+		storageQuota:   disabledStorageQuotaService{},
 		recorder:       recorder,
 		authz:          authz,
 		adminAuthz:     denyAdminAuthorizer{},

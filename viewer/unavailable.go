@@ -2,7 +2,9 @@ package viewer
 
 import (
 	"context"
+	"math"
 
+	"github.com/nixieboluo/sealos-storage-manager/internal/accountquota"
 	"github.com/nixieboluo/sealos-storage-manager/internal/authn"
 	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
 	"github.com/nixieboluo/sealos-storage-manager/internal/session"
@@ -115,6 +117,26 @@ func (unavailableAuthService) VerifyHook(_ session.HookVerifyInput) domain.FileB
 		Allow:  false,
 		Reason: errRuntimeUnavailable.Error(),
 		Scope:  "/",
+	}
+}
+
+type disabledStorageQuotaService struct{}
+
+func (disabledStorageQuotaService) StorageQuota(
+	context.Context,
+	string,
+	string,
+) (accountquota.StorageQuota, error) {
+	return disabledStorageQuotaService{}.quota(), nil
+}
+
+func (disabledStorageQuotaService) quota() accountquota.StorageQuota {
+	return accountquota.StorageQuota{
+		AvailableBytes:    math.MaxInt64,
+		AvailableQuantity: accountquota.BinaryQuantity(math.MaxInt64),
+		LimitBytes:        math.MaxInt64,
+		LimitQuantity:     accountquota.BinaryQuantity(math.MaxInt64),
+		UsedQuantity:      "0",
 	}
 }
 

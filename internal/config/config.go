@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/validation"
 )
 
@@ -40,6 +41,7 @@ type ViewerConfig struct {
 	HookScript       string               `yaml:"hook_script"`
 	FileManagement   FileManagementConfig `yaml:"file_management"`
 	PVCCreation      PVCCreationConfig    `yaml:"pvc_creation"`
+	StorageQuota     StorageQuotaConfig   `yaml:"storage_quota"`
 	PVCMetrics       PVCMetricsConfig     `yaml:"pvc_metrics"`
 	FileBrowser      FileBrowserConfig    `yaml:"filebrowser"`
 	Pod              PodConfig            `yaml:"pod"`
@@ -55,6 +57,13 @@ type PVCCreationConfig struct {
 	Enabled bool `yaml:"enabled"`
 }
 
+type StorageQuotaConfig struct {
+	Enabled        bool          `yaml:"enabled"`
+	AccountBaseURL string        `yaml:"account_base_url"`
+	QueryTimeout   time.Duration `yaml:"query_timeout"`
+	SystemQuota    string        `yaml:"system_quota"`
+}
+
 type PVCMetricsConfig struct {
 	Enabled           bool          `yaml:"enabled"`
 	PrometheusBaseURL string        `yaml:"prometheus_base_url"`
@@ -64,6 +73,7 @@ type PVCMetricsConfig struct {
 type FeatureConfig struct {
 	FileManagement FileManagementConfig
 	PVCCreation    PVCCreationConfig
+	StorageQuota   StorageQuotaConfig
 }
 
 type FileBrowserConfig struct {
@@ -194,6 +204,10 @@ func Default() Config {
 			PVCCreation: PVCCreationConfig{
 				Enabled: true,
 			},
+			StorageQuota: StorageQuotaConfig{
+				QueryTimeout: 3 * time.Second,
+				SystemQuota:  "100Gi",
+			},
 			PVCMetrics: PVCMetricsConfig{
 				QueryTimeout: 3 * time.Second,
 			},
@@ -278,6 +292,19 @@ func (cfg Config) Validate() error {
 		if cfg.Viewer.PVCMetrics.QueryTimeout <= 0 {
 			problems = append(problems, "viewer.pvc_metrics.query_timeout must be positive")
 		}
+	}
+	if cfg.Viewer.StorageQuota.Enabled {
+		if strings.TrimSpace(cfg.Viewer.StorageQuota.AccountBaseURL) == "" {
+			problems = append(problems, "viewer.storage_quota.account_base_url is required when storage quota is enabled")
+		}
+		if cfg.Viewer.StorageQuota.QueryTimeout <= 0 {
+			problems = append(problems, "viewer.storage_quota.query_timeout must be positive")
+		}
+	}
+	if strings.TrimSpace(cfg.Viewer.StorageQuota.SystemQuota) == "" {
+		problems = append(problems, "viewer.storage_quota.system_quota is required")
+	} else if _, err := resource.ParseQuantity(strings.TrimSpace(cfg.Viewer.StorageQuota.SystemQuota)); err != nil {
+		problems = append(problems, "viewer.storage_quota.system_quota must be a valid Kubernetes quantity")
 	}
 	if !slices.Contains([]string{"internal", "public"}, strings.TrimSpace(cfg.Viewer.FileBrowser.LoginURLMode)) {
 		problems = append(problems, "viewer.filebrowser.login_url_mode must be one of internal, public")
@@ -380,6 +407,7 @@ func (cfg Config) Features() FeatureConfig {
 	return FeatureConfig{
 		FileManagement: cfg.Viewer.FileManagement,
 		PVCCreation:    cfg.Viewer.PVCCreation,
+		StorageQuota:   cfg.Viewer.StorageQuota,
 	}
 }
 
@@ -397,6 +425,7 @@ func (cfg Config) Redacted() map[string]any {
 			"hook_script":        "redacted",
 			"file_management":    cfg.Viewer.FileManagement,
 			"pvc_creation":       cfg.Viewer.PVCCreation,
+			"storage_quota":      cfg.Viewer.StorageQuota,
 			"pvc_metrics":        cfg.Viewer.PVCMetrics,
 			"filebrowser":        cfg.Viewer.FileBrowser,
 			"pod":                cfg.Viewer.Pod,

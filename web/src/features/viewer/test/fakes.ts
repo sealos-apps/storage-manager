@@ -6,6 +6,7 @@ import type {
 	StorageClass,
 	StorageClassDescribe,
 	StorageClassYAML,
+	StorageQuota,
 	ViewerAPI,
 	ViewerContext,
 	ViewerSession,
@@ -78,6 +79,18 @@ export function storageClassYAMLFixture(overrides: Partial<StorageClassYAML> = {
 			'  name: standard',
 			'provisioner: kubernetes.io/no-provisioner',
 		].join('\n'),
+		...overrides,
+	}
+}
+
+export function storageQuotaFixture(overrides: Partial<StorageQuota> = {}): StorageQuota {
+	return {
+		available_bytes: 15 * 1024 * 1024 * 1024,
+		available_quantity: '15Gi',
+		limit_bytes: 20 * 1024 * 1024 * 1024,
+		limit_quantity: '20Gi',
+		used_bytes: 5 * 1024 * 1024 * 1024,
+		used_quantity: '5Gi',
 		...overrides,
 	}
 }
@@ -208,6 +221,7 @@ export function createFakeViewerAPI(overrides: Partial<ViewerAPI> = {}): ViewerA
 				capacity_bytes: input.capacityBytes,
 			}),
 		getContext: async () => viewerContextFixture(),
+		getStorageQuota: async () => storageQuotaFixture(),
 		getPodSession: async id => podSessionFixture({ id }),
 		getViewerSession: async id => viewerSessionFixture({ id, status: 'ready', token_ready: true }),
 		heartbeatViewerSession: async id => heartbeatFixture({ viewer_session_id: id }),

@@ -60,6 +60,9 @@ export function createPVCMutationOptions(
 			void queryClient.invalidateQueries({
 				queryKey: viewerKeys.pvcs(variables.namespace),
 			})
+			void queryClient.invalidateQueries({
+				queryKey: viewerKeys.storageQuota(variables.namespace),
+			})
 		},
 	})
 }
@@ -89,6 +92,9 @@ export function deletePVCMutationOptions(
 		onSettled: (_data, _error, variables) => {
 			void queryClient.invalidateQueries({
 				queryKey: viewerKeys.pvcs(variables.namespace),
+			})
+			void queryClient.invalidateQueries({
+				queryKey: viewerKeys.storageQuota(variables.namespace),
 			})
 		},
 	})

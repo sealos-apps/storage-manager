@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/nixieboluo/sealos-storage-manager/internal/accountquota"
 	"github.com/nixieboluo/sealos-storage-manager/internal/config"
 	"github.com/nixieboluo/sealos-storage-manager/internal/filebrowser"
 	"github.com/nixieboluo/sealos-storage-manager/internal/kube"
@@ -144,6 +145,7 @@ func newRuntimeFromConfig(cfg config.Config) (*Runtime, error) {
 		nil,
 		WithDebugConfig(cfg.Debug),
 		WithFeatureConfig(cfg.Features()),
+		WithStorageQuotaService(newStorageQuotaService(cfg.Viewer.StorageQuota, recorder)),
 		WithStorageClassService(storageClasses),
 		WithAdminAuthorizer(newKubernetesAdminAuthorizer(cfg.Admin, recorder)),
 	)
@@ -153,6 +155,19 @@ func newRuntimeFromConfig(cfg config.Config) (*Runtime, error) {
 		recorder: recorder,
 		cancel:   cancelCleanup,
 	}, nil
+}
+
+func newStorageQuotaService(
+	cfg config.StorageQuotaConfig,
+	recorder *observability.Recorder,
+) storageQuotaService {
+	if !cfg.Enabled {
+		return disabledStorageQuotaService{}
+	}
+	return accountquota.NewClient(cfg, &http.Client{
+		Timeout:   cfg.QueryTimeout,
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
+	}, recorder)
 }
 
 func newPVCMetricsReader(

@@ -14,6 +14,8 @@ const (
 	CodePVCCreateForbidden          Code = "PVC_CREATE_FORBIDDEN"
 	CodePVCDeleteForbidden          Code = "PVC_DELETE_FORBIDDEN"
 	CodePVCExpandForbidden          Code = "PVC_EXPAND_FORBIDDEN"
+	CodePVCQuotaExceeded            Code = "PVC_QUOTA_EXCEEDED"
+	CodePVCQuotaUnavailable         Code = "PVC_QUOTA_UNAVAILABLE"
 	CodePVCExpandUnsupported        Code = "PVC_EXPAND_UNSUPPORTED"
 	CodePVCExpandNotIncreased       Code = "PVC_EXPAND_NOT_INCREASED"
 	CodeStorageClassNotFound        Code = "STORAGE_CLASS_NOT_FOUND"
@@ -50,6 +52,8 @@ var AllCodes = [...]Code{
 	CodePVCCreateForbidden,
 	CodePVCDeleteForbidden,
 	CodePVCExpandForbidden,
+	CodePVCQuotaExceeded,
+	CodePVCQuotaUnavailable,
 	CodePVCExpandUnsupported,
 	CodePVCExpandNotIncreased,
 	CodeStorageClassNotFound,

@@ -12,6 +12,11 @@ func (h *Handler) GetContextData(ctx context.Context, req *AuthenticatedRequest)
 	return response, toEncoreError(apiErr)
 }
 
+func (h *Handler) GetStorageQuotaData(ctx context.Context, req *StorageQuotaRequest) (*StorageQuotaResponse, error) {
+	response, apiErr := h.getStorageQuota(ctx, req)
+	return response, toEncoreError(apiErr)
+}
+
 func (h *Handler) CreatePVCData(ctx context.Context, req *CreatePVCRequest) (*PVCResponse, error) {
 	response, apiErr := h.createPVC(ctx, req)
 	return response, toEncoreError(apiErr)

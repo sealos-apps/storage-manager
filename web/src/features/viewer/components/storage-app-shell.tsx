@@ -41,6 +41,7 @@ import {
 	adminStorageClassListQueryOptions,
 	pvcListQueryOptions,
 	storageClassListQueryOptions,
+	storageQuotaQueryOptions,
 	viewerContextQueryOptions,
 } from '@/features/viewer/api/viewer-query-options'
 import { ErrorCallout } from '@/features/viewer/components/error-callout'
@@ -123,6 +124,7 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 	const adminNamespaces = adminNamespacesQuery.data ?? []
 	const pvcQuery = useQuery(pvcListQueryOptions(effectiveNamespace, api))
 	const storageClassesQuery = useQuery(storageClassListQueryOptions(api))
+	const storageQuotaQuery = useQuery(storageQuotaQueryOptions(effectiveNamespace, api))
 	const adminStorageClassesQuery = useQuery(adminStorageClassListQueryOptions(api, canManageStorageClasses))
 	const pvcs = useMemo(() => pvcQuery.data ?? [], [pvcQuery.data])
 	const activePVC = useMemo(() => {
@@ -228,6 +230,7 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 			adminCapabilitiesQuery.refetch(),
 			pvcQuery.refetch(),
 			storageClassesQuery.refetch(),
+			storageQuotaQuery.refetch(),
 		]
 		if (canSelectAdminNamespace) {
 			refetches.push(adminNamespacesQuery.refetch())
@@ -440,11 +443,13 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 				onOpenChange={setCreateOpen}
 				open={createOpen && pvcCreationEnabled}
 				storageClasses={storageClassesQuery.data ?? []}
+				storageQuota={storageQuotaQuery.data ?? null}
 			/>
 			<ExpandPVCDialog
 				mutation={expandPVCMutation}
 				onOpenChange={setExpandPVC}
 				pvc={expandPVC}
+				storageQuota={storageQuotaQuery.data ?? null}
 			/>
 			<DeletePVCDialog
 				deleteState={deleteState}

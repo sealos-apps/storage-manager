@@ -29,6 +29,8 @@ func TestAllCodesContainsEveryPublicBusinessCode(t *testing.T) {
 		CodePVCCreateForbidden,
 		CodePVCDeleteForbidden,
 		CodePVCExpandForbidden,
+		CodePVCQuotaExceeded,
+		CodePVCQuotaUnavailable,
 		CodePVCExpandUnsupported,
 		CodePVCExpandNotIncreased,
 		CodeStorageClassNotFound,

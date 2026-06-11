@@ -14,6 +14,7 @@ import {
 	storageClassDescribeFixture,
 	storageClassFixture,
 	storageClassYAMLFixture,
+	storageQuotaFixture,
 	viewerSessionFixture,
 	viewerTokenFixture,
 } from '@/features/viewer/test/fakes'
@@ -217,6 +218,33 @@ describe('storageAppShell', () => {
 		expect(listPVCs).toHaveBeenCalledWith({ namespace: 'ns-admin' })
 		expect(adminListNamespaces).not.toHaveBeenCalled()
 		expect(adminListStorageClasses).not.toHaveBeenCalled()
+	})
+
+	it('prevents creating PVCs larger than available storage quota', async () => {
+		const user = userEvent.setup()
+		const createPVC = vi.fn()
+		const api = createFakeViewerAPI({
+			createPVC,
+			getStorageQuota: vi.fn().mockResolvedValue(storageQuotaFixture({
+				available_bytes: 5 * 1024 * 1024 * 1024,
+				available_quantity: '5Gi',
+			})),
+			listPVCs: vi.fn().mockResolvedValue([]),
+			listStorageClasses: vi.fn().mockResolvedValue([
+				storageClassFixture({ name: 'standard' }),
+			]),
+		})
+
+		renderWithProviders(<StorageAppShell api={api} />)
+
+		await user.click(await screen.findByRole('button', { name: /^create pvc$/i }))
+		await user.type(screen.getByLabelText(/^name$/i), 'too-large')
+		await user.clear(screen.getByLabelText(/^capacity$/i))
+		await user.type(screen.getByLabelText(/^capacity$/i), '6')
+
+		expect(await screen.findByText('Storage quota available: 5Gi.')).toBeInTheDocument()
+		expect(screen.getByRole('button', { name: /^create$/i })).toBeDisabled()
+		expect(createPVC).not.toHaveBeenCalled()
 	})
 
 	it('uses the current joined namespace when admin capabilities are disabled there', async () => {

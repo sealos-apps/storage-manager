@@ -1,5 +1,5 @@
 import type { UseMutationResult } from '@tanstack/react-query'
-import type { PVC, StorageClass } from '@/features/viewer/types/viewer'
+import type { PVC, StorageClass, StorageQuota } from '@/features/viewer/types/viewer'
 
 import { useForm } from '@tanstack/react-form'
 import { useState } from 'react'
@@ -71,6 +71,7 @@ interface CreatePVCDialogProps {
 	onOpenChange: (open: boolean) => void
 	open: boolean
 	storageClasses: StorageClass[]
+	storageQuota: StorageQuota | null
 }
 
 export function CreatePVCDialog({
@@ -79,6 +80,7 @@ export function CreatePVCDialog({
 	onOpenChange,
 	open,
 	storageClasses,
+	storageQuota,
 }: CreatePVCDialogProps) {
 	const { t } = useTranslation()
 	const firstStorageClass = storageClasses[0]
@@ -99,6 +101,9 @@ export function CreatePVCDialog({
 				return
 			}
 			if (capacityGi === null) {
+				return
+			}
+			if (exceedsStorageQuota(capacityGi * bytesPerGi, storageQuota)) {
 				return
 			}
 			mutation.mutate({
@@ -177,26 +182,12 @@ export function CreatePVCDialog({
 						}}
 					>
 						{field => (
-							<FormField
+							<CreateCapacityField
 								error={field.state.meta.errorMap.onBlur}
-								id="pvc-capacity"
-								label={t('viewer.capacity')}
-							>
-								<CapacityGiInput
-									aria-invalid={field.state.meta.errorMap.onBlur ? true : undefined}
-									id="pvc-capacity"
-									name={field.name}
-									onBlur={() => {
-										const normalized = normalizeCapacityGi(field.state.value)
-										if (normalized !== field.state.value) {
-											field.handleChange(normalized)
-										}
-										field.handleBlur()
-									}}
-									onChange={event => field.handleChange(event.target.value)}
-									value={field.state.value}
-								/>
-							</FormField>
+								field={field}
+								storageQuota={storageQuota}
+								t={t}
+							/>
 						)}
 					</form.Field>
 					<FormField id="pvc-storage-class" label={t('volumes.storageClass')}>
@@ -264,6 +255,7 @@ export function CreatePVCDialog({
 										|| !namespace
 										|| values.name.trim().length === 0
 										|| parseCapacityGi(values.capacityGi) === null
+										|| exceedsStorageQuota((parseCapacityGi(values.capacityGi) ?? 0) * bytesPerGi, storageQuota)
 										|| activeStorageClassName.length === 0
 										|| activeAccessMode.length === 0
 									}
@@ -302,13 +294,60 @@ function FormField({
 	)
 }
 
+function CreateCapacityField({
+	error,
+	field,
+	storageQuota,
+	t,
+}: {
+	error?: unknown
+	field: {
+		handleBlur: () => void
+		handleChange: (value: string) => void
+		name: string
+		state: { value: string }
+	}
+	storageQuota: StorageQuota | null
+	t: ReturnType<typeof useTranslation>['t']
+}) {
+	const parsed = parseCapacityGi(field.state.value)
+	const quotaError = parsed !== null && exceedsStorageQuota(parsed * bytesPerGi, storageQuota)
+		? storageQuotaError(t, storageQuota)
+		: ''
+	const fieldError = quotaError || error
+
+	return (
+		<FormField
+			error={fieldError}
+			id="pvc-capacity"
+			label={t('viewer.capacity')}
+		>
+			<CapacityGiInput
+				aria-invalid={fieldError ? true : undefined}
+				id="pvc-capacity"
+				name={field.name}
+				onBlur={() => {
+					const normalized = normalizeCapacityGi(field.state.value)
+					if (normalized !== field.state.value) {
+						field.handleChange(normalized)
+					}
+					field.handleBlur()
+				}}
+				onChange={event => field.handleChange(event.target.value)}
+				value={field.state.value}
+			/>
+		</FormField>
+	)
+}
+
 interface ExpandPVCDialogProps {
 	mutation: UseMutationResult<PVC, Error, ExpandPVCVariables>
 	onOpenChange: (pvc: PVC | null) => void
 	pvc: PVC | null
+	storageQuota: StorageQuota | null
 }
 
-export function ExpandPVCDialog({ mutation, onOpenChange, pvc }: ExpandPVCDialogProps) {
+export function ExpandPVCDialog({ mutation, onOpenChange, pvc, storageQuota }: ExpandPVCDialogProps) {
 	const { t } = useTranslation()
 	const currentGi = pvc ? Math.max(1, Math.ceil(pvc.capacity_bytes / 1024 / 1024 / 1024)) : 1
 	return (
@@ -317,6 +356,7 @@ export function ExpandPVCDialog({ mutation, onOpenChange, pvc }: ExpandPVCDialog
 			mutation={mutation}
 			onOpenChange={onOpenChange}
 			pvc={pvc}
+			storageQuota={storageQuota}
 			key={pvc?.uid ?? 'closed'}
 			t={t}
 		/>
@@ -328,6 +368,7 @@ function ExpandPVCDialogContent({
 	mutation,
 	onOpenChange,
 	pvc,
+	storageQuota,
 	t,
 }: ExpandPVCDialogProps & {
 	currentGi: number
@@ -335,7 +376,10 @@ function ExpandPVCDialogContent({
 }) {
 	const [nextGiInput, setNextGiInput] = useState(String(currentGi + 10))
 	const value = parseCapacityGi(nextGiInput)
-	const capacityError = value !== null && value > currentGi ? '' : t('volumes.capacityRequired')
+	const requestedDeltaBytes = value !== null ? (value - currentGi) * bytesPerGi : 0
+	const capacityError = value !== null && value > currentGi
+		? (exceedsStorageQuota(requestedDeltaBytes, storageQuota) ? storageQuotaError(t, storageQuota) : '')
+		: t('volumes.capacityRequired')
 
 	return (
 		<Dialog
@@ -491,6 +535,16 @@ function parseCapacityGi(value: string) {
 function normalizeCapacityGi(value: string) {
 	const parsed = parseCapacityGi(value)
 	return parsed === null ? value : String(parsed)
+}
+
+function exceedsStorageQuota(requiredBytes: number, storageQuota: StorageQuota | null) {
+	return storageQuota !== null && requiredBytes > storageQuota.available_bytes
+}
+
+function storageQuotaError(t: ReturnType<typeof useTranslation>['t'], storageQuota: StorageQuota | null) {
+	return t('volumes.storageQuotaAvailable', {
+		quantity: storageQuota?.available_quantity ?? '0',
+	})
 }
 
 function CapacityGiInput({
