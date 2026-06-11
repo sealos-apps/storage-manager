@@ -22,6 +22,7 @@ import { renderWithProviders } from '@/test/render'
 
 const sealosAuthorizationMockState = vi.hoisted(() => ({
 	authorization: {
+		accountAuthorizationHeader: 'Bearer account.jwt.token',
 		authorizationHeader: 'Bearer test',
 		session: {
 			kubeconfig: 'apiVersion: v1\nclusters: []',
@@ -64,6 +65,7 @@ describe('storageAppShell', () => {
 		viewerUIStore.actions.reset()
 		vi.unstubAllEnvs()
 		sealosAuthorizationMockState.authorization = {
+			accountAuthorizationHeader: 'Bearer account.jwt.token',
 			authorizationHeader: 'Bearer test',
 			session: {
 				kubeconfig: 'apiVersion: v1\nclusters: []',
@@ -384,6 +386,7 @@ describe('storageAppShell', () => {
 		vi.stubEnv('DEV', true)
 		vi.stubEnv('VITE_DEV_ENABLE_ADMIN_MODE', 'true')
 		sealosAuthorizationMockState.authorization = {
+			accountAuthorizationHeader: '',
 			authorizationHeader: 'Bearer dev',
 			session: null,
 			source: 'dev-kubeconfig',

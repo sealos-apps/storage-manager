@@ -25,7 +25,7 @@ import Client from '@sealos-storage-manager/encore-client'
 
 import { env } from '@/config/env'
 import { normalizeViewerError } from '@/features/viewer/api/viewer-error'
-import { getCachedAuthorizationHeader } from '@/services/sealos/sealos-authorization'
+import { getCachedAccountAuthorizationHeader, getCachedAuthorizationHeader } from '@/services/sealos/sealos-authorization'
 
 export function readAuthorizationHeader() {
 	return getCachedAuthorizationHeader()
@@ -48,6 +48,9 @@ export function createViewerApi(
 	const activeClient = client ?? new Client(apiTarget(), fetcher ? { fetcher } : undefined)
 	function authorization() {
 		return readAuthorizationHeader()
+	}
+	function accountAuthorization() {
+		return getCachedAccountAuthorizationHeader()
 	}
 
 	return {
@@ -177,6 +180,7 @@ export function createViewerApi(
 			try {
 				const response = await activeClient.viewer.CreatePVC({
 					Authorization: authorization(),
+					SealosAccountAuthorization: accountAuthorization(),
 					namespace: input.namespace,
 					name: input.name,
 					capacity: input.capacity,
@@ -221,6 +225,7 @@ export function createViewerApi(
 			try {
 				const response = await activeClient.viewer.ExpandPVC(input.namespace, input.name, {
 					Authorization: authorization(),
+					SealosAccountAuthorization: accountAuthorization(),
 					capacity: input.capacity,
 					capacity_bytes: input.capacityBytes,
 				})
@@ -248,6 +253,7 @@ export function createViewerApi(
 				const response = await activeClient.viewer.GetStorageQuota({
 					Authorization: authorization(),
 					Namespace: input.namespace,
+					SealosAccountAuthorization: accountAuthorization(),
 				})
 				return response.storage_quota
 			}

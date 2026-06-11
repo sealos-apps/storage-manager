@@ -112,7 +112,7 @@ func (h *Handler) getStorageQuota(ctx context.Context, req *StorageQuotaRequest)
 			return nil, apiErr
 		}
 	}
-	quota, quotaErr := h.storageQuotaForNamespace(ctx, op.namespace, req.Authorization)
+	quota, quotaErr := h.storageQuotaForNamespace(ctx, op.namespace, req.SealosAccountAuthorization)
 	if quotaErr != nil {
 		apiErr := storageQuotaUnavailableError(quotaErr)
 		h.observe(ctx, http.MethodGet, "/storage-quota", apiErr.Status, start)
@@ -173,7 +173,7 @@ func (h *Handler) createPVC(ctx context.Context, req *CreatePVCRequest) (*PVCRes
 			return nil, apiErr
 		}
 	}
-	if apiErr := h.requireStorageQuota(ctx, op.namespace, req.Authorization, requestedCapacityBytes(req.Capacity, req.CapacityBytes)); apiErr != nil {
+	if apiErr := h.requireStorageQuota(ctx, op.namespace, req.SealosAccountAuthorization, requestedCapacityBytes(req.Capacity, req.CapacityBytes)); apiErr != nil {
 		h.recordAudit(ctx, auditDecision{
 			adminAllowed:       op.mode == operationModeAdmin,
 			decision:           "deny",
@@ -327,7 +327,7 @@ func (h *Handler) expandPVC(
 	if requiredBytes < 0 {
 		requiredBytes = 0
 	}
-	if apiErr := h.requireStorageQuota(ctx, op.namespace, req.Authorization, requiredBytes); apiErr != nil {
+	if apiErr := h.requireStorageQuota(ctx, op.namespace, req.SealosAccountAuthorization, requiredBytes); apiErr != nil {
 		h.recordAudit(ctx, auditDecision{
 			adminAllowed:       op.mode == operationModeAdmin,
 			decision:           "deny",

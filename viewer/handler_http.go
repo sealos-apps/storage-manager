@@ -25,8 +25,9 @@ func (h *Handler) GetContext(w http.ResponseWriter, req *http.Request) {
 
 func (h *Handler) GetStorageQuota(w http.ResponseWriter, req *http.Request) {
 	response, err := h.getStorageQuota(req.Context(), &StorageQuotaRequest{
-		Authorization: req.Header.Get("Authorization"),
-		Namespace:     req.URL.Query().Get("namespace"),
+		Authorization:              req.Header.Get("Authorization"),
+		Namespace:                  req.URL.Query().Get("namespace"),
+		SealosAccountAuthorization: req.Header.Get("X-Sealos-Account-Authorization"),
 	})
 	writeHTTPResponse(w, response, err)
 }
@@ -49,6 +50,7 @@ func (h *Handler) CreatePVC(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	body.Authorization = req.Header.Get("Authorization")
+	body.SealosAccountAuthorization = req.Header.Get("X-Sealos-Account-Authorization")
 	response, err := h.createPVC(req.Context(), &body)
 	writeHTTPResponse(w, response, err)
 }
@@ -66,6 +68,7 @@ func (h *Handler) ExpandPVC(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	body.Authorization = req.Header.Get("Authorization")
+	body.SealosAccountAuthorization = req.Header.Get("X-Sealos-Account-Authorization")
 	namespace, name := expandPVCPathParams(req.URL.Path)
 	response, err := h.expandPVC(req.Context(), namespace, name, &body)
 	writeHTTPResponse(w, response, err)

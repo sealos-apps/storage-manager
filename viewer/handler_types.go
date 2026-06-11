@@ -11,8 +11,9 @@ type AuthenticatedRequest struct {
 }
 
 type StorageQuotaRequest struct {
-	Authorization string `header:"Authorization" encore:"sensitive"`
-	Namespace     string `query:"namespace"`
+	Authorization              string `header:"Authorization" encore:"sensitive"`
+	Namespace                  string `query:"namespace"`
+	SealosAccountAuthorization string `header:"X-Sealos-Account-Authorization" encore:"sensitive"`
 }
 
 type ListPVCsRequest struct {
@@ -21,19 +22,21 @@ type ListPVCsRequest struct {
 }
 
 type CreatePVCRequest struct {
-	Authorization    string   `header:"Authorization" encore:"sensitive"`
-	Namespace        string   `json:"namespace"`
-	Name             string   `json:"name"`
-	Capacity         string   `json:"capacity"`
-	CapacityBytes    int64    `json:"capacity_bytes"`
-	AccessModes      []string `json:"access_modes"`
-	StorageClassName string   `json:"storage_class_name"`
+	Authorization              string   `header:"Authorization" encore:"sensitive"`
+	SealosAccountAuthorization string   `header:"X-Sealos-Account-Authorization" encore:"sensitive"`
+	Namespace                  string   `json:"namespace"`
+	Name                       string   `json:"name"`
+	Capacity                   string   `json:"capacity"`
+	CapacityBytes              int64    `json:"capacity_bytes"`
+	AccessModes                []string `json:"access_modes"`
+	StorageClassName           string   `json:"storage_class_name"`
 }
 
 type ExpandPVCRequest struct {
-	Authorization string `header:"Authorization" encore:"sensitive"`
-	Capacity      string `json:"capacity"`
-	CapacityBytes int64  `json:"capacity_bytes"`
+	Authorization              string `header:"Authorization" encore:"sensitive"`
+	SealosAccountAuthorization string `header:"X-Sealos-Account-Authorization" encore:"sensitive"`
+	Capacity                   string `json:"capacity"`
+	CapacityBytes              int64  `json:"capacity_bytes"`
 }
 
 type CreateViewerSessionRequest struct {

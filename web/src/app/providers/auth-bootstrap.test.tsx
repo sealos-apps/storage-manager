@@ -58,6 +58,7 @@ describe('auth bootstrap', () => {
 		initializeSealosAuthorizationMock.mockReturnValue(
 			new Promise((resolve) => {
 				resolveAuthorization = () => resolve({
+					accountAuthorizationHeader: '',
 					authorizationHeader: 'Bearer test',
 					session: null,
 					source: 'dev-kubeconfig',
@@ -123,6 +124,7 @@ describe('auth bootstrap', () => {
 		initializeSealosAuthorizationMock.mockReturnValue(
 			new Promise((resolve) => {
 				resolveAuthorization = () => resolve({
+					accountAuthorizationHeader: '',
 					authorizationHeader: 'Bearer test',
 					session: null,
 					source: 'dev-kubeconfig',
@@ -148,6 +150,7 @@ describe('auth bootstrap', () => {
 			forcedLanguage: 'en',
 		}
 		initializeSealosAuthorizationMock.mockResolvedValue({
+			accountAuthorizationHeader: 'Bearer account.jwt.token',
 			authorizationHeader: 'Bearer test',
 			session: {
 				user: {
@@ -170,6 +173,7 @@ describe('auth bootstrap', () => {
 	it('uses the Desktop SDK language when forced language is empty', async () => {
 		sdkLanguageMockState.getLanguage.mockResolvedValue({ lng: 'en' })
 		initializeSealosAuthorizationMock.mockResolvedValue({
+			accountAuthorizationHeader: 'Bearer account.jwt.token',
 			authorizationHeader: 'Bearer test',
 			session: {
 				user: {
@@ -192,6 +196,7 @@ describe('auth bootstrap', () => {
 	it('falls back to SDK session language when Desktop SDK language is unavailable', async () => {
 		sdkLanguageMockState.getLanguage.mockRejectedValue(new Error('language unavailable'))
 		initializeSealosAuthorizationMock.mockResolvedValue({
+			accountAuthorizationHeader: 'Bearer account.jwt.token',
 			authorizationHeader: 'Bearer test',
 			session: {
 				user: {
@@ -214,6 +219,7 @@ describe('auth bootstrap', () => {
 	it('updates language from Desktop language change events', async () => {
 		sdkLanguageMockState.getLanguage.mockResolvedValue({ lng: 'en' })
 		initializeSealosAuthorizationMock.mockResolvedValue({
+			accountAuthorizationHeader: 'Bearer account.jwt.token',
 			authorizationHeader: 'Bearer test',
 			session: null,
 			source: 'sdk',
@@ -239,6 +245,7 @@ describe('auth bootstrap', () => {
 		}
 		sdkLanguageMockState.getLanguage.mockResolvedValue({ lng: 'zh' })
 		initializeSealosAuthorizationMock.mockResolvedValue({
+			accountAuthorizationHeader: 'Bearer account.jwt.token',
 			authorizationHeader: 'Bearer test',
 			session: null,
 			source: 'sdk',
@@ -261,6 +268,7 @@ describe('auth bootstrap', () => {
 		vi.stubEnv('DEV', true)
 		vi.stubEnv('VITE_DEV_DISABLE_SEALOS_DESKTOP_SDK', 'true')
 		initializeSealosAuthorizationMock.mockResolvedValue({
+			accountAuthorizationHeader: '',
 			authorizationHeader: 'Bearer test',
 			session: null,
 			source: 'dev-kubeconfig',

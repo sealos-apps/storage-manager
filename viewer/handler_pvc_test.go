@@ -309,6 +309,7 @@ func TestHandlerGetStorageQuotaUsesAccountServiceQuota(t *testing.T) {
 	)
 	req := httptest.NewRequest(http.MethodGet, "/storage-quota", nil)
 	req.Header.Set("Authorization", url.QueryEscape(testUserNamespaceKubeconfig))
+	req.Header.Set("X-Sealos-Account-Authorization", "Bearer account.jwt.token")
 	recorder := httptest.NewRecorder()
 
 	handler.GetStorageQuota(recorder, req)
@@ -319,8 +320,8 @@ func TestHandlerGetStorageQuotaUsesAccountServiceQuota(t *testing.T) {
 	if input.namespace != "ns-admin" {
 		t.Fatalf("quota namespace = %q", input.namespace)
 	}
-	if input.authorization == "" {
-		t.Fatal("quota authorization is empty")
+	if input.authorization != "Bearer account.jwt.token" {
+		t.Fatalf("quota authorization = %q", input.authorization)
 	}
 	if !strings.Contains(recorder.Body.String(), `"available_quantity":"15Gi"`) {
 		t.Fatalf("body = %s", recorder.Body.String())

@@ -7,9 +7,19 @@ import { ViewerApiError } from '@/features/viewer/api/viewer-error'
 export type SealosAuthorizationSource = 'dev-kubeconfig' | 'sdk'
 
 export interface SealosAuthorizationState {
+	accountAuthorizationHeader: string
 	authorizationHeader: string
 	session: SessionV1 | null
 	source: SealosAuthorizationSource
+}
+
+interface OAuthTokenLike {
+	access_token?: unknown
+	token_type?: unknown
+}
+
+interface AccountSessionExtras {
+	token?: unknown
 }
 
 let cachedAuthorization: SealosAuthorizationState | null = null
@@ -27,6 +37,10 @@ export function getCachedAuthorizationHeader() {
 		})
 	}
 	return cachedAuthorization.authorizationHeader
+}
+
+export function getCachedAccountAuthorizationHeader() {
+	return cachedAuthorization?.accountAuthorizationHeader ?? ''
 }
 
 export function getCachedSealosAuthorization() {
@@ -67,6 +81,7 @@ async function resolveSealosAuthorization(): Promise<SealosAuthorizationState> {
 	if (devKubeconfig) {
 		printDevKubeconfigWarning()
 		return {
+			accountAuthorizationHeader: '',
 			authorizationHeader: encodeKubeconfigAuthorization(devKubeconfig),
 			session: null,
 			source: 'dev-kubeconfig',
@@ -81,6 +96,7 @@ async function resolveSealosAuthorization(): Promise<SealosAuthorizationState> {
 		}
 		printSdkAuthorizationInfo(session)
 		return {
+			accountAuthorizationHeader: resolveAccountAuthorizationHeader(session),
 			authorizationHeader: encodeKubeconfigAuthorization(session.kubeconfig),
 			session,
 			source: 'sdk',
@@ -101,6 +117,28 @@ async function resolveSealosAuthorization(): Promise<SealosAuthorizationState> {
 
 function encodeKubeconfigAuthorization(kubeconfig: string) {
 	return `Bearer ${encodeURIComponent(kubeconfig)}`
+}
+
+function resolveAccountAuthorizationHeader(session: SessionV1) {
+	const token = (session as SessionV1 & AccountSessionExtras).token
+	if (typeof token === 'string' && token.trim().length > 0) {
+		return normalizeBearerToken(token)
+	}
+	const accessToken = stringValue((token as OAuthTokenLike | undefined)?.access_token)
+	if (!accessToken) {
+		return ''
+	}
+	const tokenType = stringValue((token as OAuthTokenLike | undefined)?.token_type) ?? 'Bearer'
+	return `${tokenType} ${accessToken}`
+}
+
+function normalizeBearerToken(token: string) {
+	const trimmed = token.trim()
+	return /^Bearer\s+/i.test(trimmed) ? trimmed : `Bearer ${trimmed}`
+}
+
+function stringValue(value: unknown) {
+	return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
 }
 
 function printDevKubeconfigWarning() {

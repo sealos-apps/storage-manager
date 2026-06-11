@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ViewerApiError } from '@/features/viewer/api/viewer-error'
 import {
+	getCachedAccountAuthorizationHeader,
 	getCachedAuthorizationHeader,
 	getCachedSealosAuthorization,
 	initializeSealosAuthorization,
@@ -55,6 +56,13 @@ function sessionFixture(input: Partial<SessionV1> = {}): SessionV1 {
 		},
 		...input,
 	}
+}
+
+function sessionWithTokenFixture(token: unknown): SessionV1 {
+	return {
+		...sessionFixture(),
+		token,
+	} as SessionV1
 }
 
 describe('sealos authorization bootstrap', () => {
@@ -122,6 +130,19 @@ describe('sealos authorization bootstrap', () => {
 			}),
 		)
 		expect(JSON.stringify(consoleWarnSpy.mock.calls)).not.toContain('apiVersion')
+	})
+
+	it('caches account authorization from the Sealos SDK OAuth access token', async () => {
+		vi.stubEnv('DEV', false)
+		sdk.createSealosApp.mockReturnValue(vi.fn())
+		sdk.getSession.mockResolvedValue(sessionWithTokenFixture({
+			access_token: 'account.jwt.token',
+			token_type: 'Bearer',
+		}))
+
+		await initializeSealosAuthorization()
+
+		expect(getCachedAccountAuthorizationHeader()).toBe('Bearer account.jwt.token')
 	})
 
 	it('uses Sealos SDK in production and suppresses dev console auth info', async () => {

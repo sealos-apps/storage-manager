@@ -13,15 +13,30 @@ import {
 	viewerSessionFixture,
 } from '@/features/viewer/test/fakes'
 import {
+	getCachedAccountAuthorizationHeader,
 	initializeSealosAuthorization,
 	resetSealosAuthorizationForTest,
 } from '@/services/sealos/sealos-authorization'
+
+const sdk = vi.hoisted(() => ({
+	createSealosApp: vi.fn(),
+	getSession: vi.fn(),
+}))
+
+vi.mock('@labring/sealos-desktop-sdk/app', () => ({
+	createSealosApp: sdk.createSealosApp,
+	sealosApp: {
+		getSession: sdk.getSession,
+	},
+}))
 
 describe('viewer API adapter', () => {
 	afterEach(() => {
 		resetSealosAuthorizationForTest()
 		delete window.__SEALOS_STORAGE_MANAGER_CONFIG__
 		window.localStorage.clear()
+		sdk.createSealosApp.mockReset()
+		sdk.getSession.mockReset()
 		vi.resetModules()
 		vi.unstubAllEnvs()
 	})
@@ -107,9 +122,23 @@ describe('viewer API adapter', () => {
 	})
 
 	it('unwraps Encore response envelopes through the generated client boundary', async () => {
-		vi.stubEnv('DEV', true)
-		vi.stubEnv('VITE_DEV_KUBECONFIG', 'test-kubeconfig')
+		vi.stubEnv('DEV', false)
 		vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+		sdk.createSealosApp.mockReturnValue(vi.fn())
+		sdk.getSession.mockResolvedValue({
+			kubeconfig: 'test-kubeconfig',
+			token: {
+				access_token: 'account.jwt.token',
+				token_type: 'Bearer',
+			},
+			user: {
+				avatar: '',
+				id: 'user-1',
+				k8sUsername: 'ns-admin',
+				name: 'Admin',
+				nsid: 'ns-admin',
+			},
+		})
 		await initializeSealosAuthorization()
 		const listPVCs = vi.fn().mockResolvedValue({
 			pvc_list: { items: [pvcFixture({ name: 'mysql-data' })] },
@@ -285,6 +314,7 @@ describe('viewer API adapter', () => {
 		})
 		expect(createPVC).toHaveBeenCalledWith({
 			Authorization: 'Bearer test-kubeconfig',
+			SealosAccountAuthorization: 'Bearer account.jwt.token',
 			namespace: 'default',
 			name: 'cache-data',
 			capacity: '5Gi',
@@ -294,6 +324,7 @@ describe('viewer API adapter', () => {
 		})
 		expect(expandPVC).toHaveBeenCalledWith('default', 'mysql-data', {
 			Authorization: 'Bearer test-kubeconfig',
+			SealosAccountAuthorization: 'Bearer account.jwt.token',
 			capacity: '20Gi',
 			capacity_bytes: 20 * 1024 * 1024 * 1024,
 		})
@@ -305,6 +336,7 @@ describe('viewer API adapter', () => {
 		})
 		expect(getStorageQuota).toHaveBeenCalledWith({
 			Authorization: 'Bearer test-kubeconfig',
+			SealosAccountAuthorization: getCachedAccountAuthorizationHeader(),
 			Namespace: 'default',
 		})
 	})
