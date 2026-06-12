@@ -5,4 +5,4 @@ COPY registry_${TARGETARCH} registry
 COPY charts charts
 COPY entrypoint.sh entrypoint.sh
 
-CMD ["bash", "entrypoint.sh"]
+CMD ["bash entrypoint.sh"]

@@ -379,8 +379,8 @@ jobs:
                   BACKEND_IMAGE="${GHCR_BACKEND_RUNTIME_IMAGE}:${IMAGE_TAG}"
                   WEB_IMAGE="${GHCR_WEB_RUNTIME_IMAGE}:${IMAGE_TAG}"
                   VALUES_FILES=(
-                    "charts/sealos-storage-manager/values.yaml"
-                    "charts/sealos-storage-manager/sealos-storage-manager-values.yaml"
+                    "charts/storage-manager/values.yaml"
+                    "charts/storage-manager/storage-manager-values.yaml"
                   )
 
                   sudo sealos login -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}" ghcr.io
