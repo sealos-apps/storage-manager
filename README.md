@@ -223,17 +223,25 @@ The chart derives:
 - File Browser viewer host template:
   `<hostPrefix>-{{ .PodSessionID }}.<cloudDomain>`
 
-Override `backend.config.viewer.hookClientToken` before exposing the service.
-The committed value is a placeholder token.
+Override `user.hookClientToken` before exposing the service. The committed
+value is a placeholder token.
 
 Expose `viewer-web` as the public entrypoint. The chart renders nginx config
 that serves the SPA, rewrites public `/api/*` requests to the backend's
 unprefixed routes, and proxies `/metrics` plus
 `/internal/filebrowser-hook/verify` to the internal `viewer-backend` service.
 
-Override frontend runtime settings through `web.runtimeConfig` values. The
-default `apiBaseUrl` is `/api`, which keeps browser API requests on the same
-origin as the web app and lets the frontend service own the public rewrite.
+Use `charts/storage-manager/storage-manager-values.yaml` as the user-level
+override entrypoint for Sealos installs. It exposes product-facing `user.*`
+values such as `user.adminUserIds`, `user.hookClientToken`,
+`user.integrations.*`, `user.viewer.*`, `user.web.*`, `user.desktop.enabled`,
+and `user.features.*`. The chart's internal `backend.*`, `web.*`, `rbac.*`,
+and `desktopApp.*` paths remain available for advanced Helm overrides, but they
+are not the recommended install-package interface.
+
+The default `user.web.apiBaseUrl` is `/api`, which keeps browser API requests on
+the same origin as the web app and lets the frontend service own the public
+rewrite.
 
 ## Sealos Cluster Image
 
@@ -244,9 +252,10 @@ origin as the web app and lets the frontend service own the public rewrite.
 - `entrypoint.sh`, which sources `/root/.sealos/cloud/scripts/tools.sh`, reads
   global HTTP/TLS settings, loads packaged values plus all
   `/root/.sealos/cloud/values/apps/storage-manager/*-values.yaml`
-  overrides, and runs `helm upgrade -i`.
+  overrides, and runs `helm upgrade -i ... --create-namespace`. The chart does
+  not render a `Namespace` resource.
 - `charts/storage-manager/storage-manager-values.yaml`, the
-  packaged defaults used by Sealos app installs.
+  user-level packaged values used by Sealos app installs.
 
 The `images` workflow publishes:
 

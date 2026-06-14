@@ -537,6 +537,60 @@ func TestDeployChartHasPackagedAppValues(t *testing.T) {
 	}
 }
 
+func TestDeployChartDoesNotRenderNamespaceResource(t *testing.T) {
+	t.Parallel()
+
+	data := renderDeployChart(t)
+	decoder := yaml.NewDecoder(strings.NewReader(string(data)))
+	for {
+		var document struct {
+			Kind string `yaml:"kind"`
+		}
+		if err := decoder.Decode(&document); err != nil {
+			if err != io.EOF {
+				t.Fatalf("parse rendered deploy chart: %v", err)
+			}
+			break
+		}
+		if document.Kind == "Namespace" {
+			t.Fatalf("deploy chart must rely on helm --create-namespace, rendered Namespace resource:\n%s", data)
+		}
+	}
+}
+
+func TestDeployPackagedValuesUseUserLevelOverrides(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	valuesPath := filepath.Join(root, "deploy", "charts", "storage-manager", "storage-manager-values.yaml")
+	viewerYAML := deployViewerYAML(t,
+		"-f", valuesPath,
+		"--set", "user.adminUserIds[0]=alice",
+		"--set", "user.hookClientToken=token-123",
+		"--set", "user.integrations.accountBaseUrl=http://account.example.svc:2333",
+		"--set", "user.integrations.prometheusBaseUrl=http://prom.example.svc:8481/select/0/prometheus",
+		"--set", "user.viewer.hostPrefix=pvc-viewer",
+		"--set", "user.viewer.filebrowserLoginUrlMode=public",
+		"--set", "user.features.fileManagement=false",
+		"--set", "user.features.pvcMetrics=false",
+		"--set", "cloudDomain=cloud.sealos.test",
+	)
+	for _, expected := range []string{
+		`- "alice"`,
+		`hook_client_token: "token-123"`,
+		`account_base_url: "http://account.example.svc:2333"`,
+		`prometheus_base_url: "http://prom.example.svc:8481/select/0/prometheus"`,
+		`host_template: "pvc-viewer-{{ .PodSessionID }}.cloud.sealos.test"`,
+		`login_url_mode: "public"`,
+		"file_management:\n        enabled: false",
+		"pvc_metrics:\n        enabled: false",
+	} {
+		if !strings.Contains(viewerYAML, expected) {
+			t.Fatalf("viewer.yaml missing user-level value %q:\n%s", expected, viewerYAML)
+		}
+	}
+}
+
 func TestDeployChartDerivesPublicHostsFromCloudDomain(t *testing.T) {
 	t.Parallel()
 
@@ -713,9 +767,12 @@ func renderDeployChartWithArgs(t *testing.T, args ...string) []byte {
 	helmArgs = append(helmArgs, "template", "storage-manager", chartDir, "--namespace", "storage-manager")
 	helmArgs = append(helmArgs, args...)
 	cmd := exec.Command("helm", helmArgs...) //nolint:gosec // Test renders committed chart path.
-	output, err := cmd.CombinedOutput()
+	output, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("render deploy chart: %v\n%s", err, output)
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			t.Fatalf("render deploy chart: %v\n%s", err, exitErr.Stderr)
+		}
+		t.Fatalf("render deploy chart: %v", err)
 	}
 	return output
 }

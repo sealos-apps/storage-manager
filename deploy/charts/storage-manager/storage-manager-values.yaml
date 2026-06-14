@@ -1,47 +1,25 @@
-# User-overridable values for the Sealos Storage Manager install package.
+# User-level values for the Sealos Storage Manager install package.
+# Advanced chart internals remain configurable through values.yaml paths.
 
-backend:
-  replicaCount: 1
-  config:
-    admin:
-      allowedUserIds:
-        - admin
-    viewer:
-      backendVerifyUrl: ""
-      hookClientToken: replace-me
-      filebrowser:
-        loginUrlMode: internal
-      fileManagement:
-        enabled: true
-      pvcCreation:
-        enabled: true
-      storageQuota:
-        enabled: true
-        accountBaseUrl: "http://account-service.account-system.svc:2333"
-      pvcMetrics:
-        enabled: true
-        prometheusBaseUrl: "http://vmselect-vm-stack-victoria-metrics-k8s-stack.vm.svc.cluster.local:8481/select/0/prometheus"
-      ingress:
-        hostPrefix: viewer
-    observability:
-      traces:
-        endpoint: ""
+user:
+  adminUserIds:
+    - admin
+  hookClientToken: replace-me
 
-web:
-  replicaCount: 1
-  runtimeConfig:
-    apiBaseUrl: /api
-  publicHost: ""
-  ingress:
-    enabled: true
-    tls:
-      enabled: true
-
-rbac:
-  create: true
-
-storageClassAdmin:
-  create: true
-
-desktopApp:
-  create: true
+  # features:
+  #   fileManagement: true
+  #   pvcCreation: true
+  #   storageQuota: true
+  #   pvcMetrics: true
+  # integrations:
+  #   accountBaseUrl: "http://account-service.account-system.svc:2333"
+  #   prometheusBaseUrl: "http://vmselect-vm-stack-victoria-metrics-k8s-stack.vm.svc.cluster.local:8481/select/0/prometheus"
+  # viewer:
+  #   hostPrefix: viewer
+  #   backendVerifyUrl: ""
+  #   filebrowserLoginUrlMode: internal
+  # web:
+  #   apiBaseUrl: /api
+  #   publicHost: ""
+  # desktop:
+  #   enabled: true

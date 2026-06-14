@@ -1,5 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
+{{- $user := default dict .Values.user }}
+{{- $webUser := default dict (get $user "web") }}
 metadata:
   name: {{ .Values.web.configMapName | quote }}
   namespace: {{ include "storage-manager.namespace" . | quote }}
@@ -8,7 +10,7 @@ metadata:
 data:
   runtime-config.js: |
     window.__SEALOS_STORAGE_MANAGER_CONFIG__ = {
-      apiBaseUrl: {{ .Values.web.runtimeConfig.apiBaseUrl | quote }},
+      apiBaseUrl: {{ default .Values.web.runtimeConfig.apiBaseUrl (get $webUser "apiBaseUrl") | quote }},
       forcedLanguage: {{ .Values.web.runtimeConfig.forcedLanguage | quote }},
       fileUploadTusThresholdBytes: {{ .Values.web.runtimeConfig.fileUploadTusThresholdBytes }},
       fileUploadTusChunkBytes: {{ .Values.web.runtimeConfig.fileUploadTusChunkBytes }},

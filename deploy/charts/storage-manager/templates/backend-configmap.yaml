@@ -1,5 +1,13 @@
 apiVersion: v1
 kind: ConfigMap
+{{- $user := default dict .Values.user }}
+{{- $features := default dict (get $user "features") }}
+{{- $integrations := default dict (get $user "integrations") }}
+{{- $viewerUser := default dict (get $user "viewer") }}
+{{- $adminUserIds := .Values.backend.config.admin.allowedUserIds }}
+{{- if hasKey $user "adminUserIds" }}
+{{- $adminUserIds = get $user "adminUserIds" }}
+{{- end }}
 metadata:
   name: {{ .Values.backend.configMapName | quote }}
   namespace: {{ include "storage-manager.namespace" . | quote }}
@@ -9,14 +17,14 @@ data:
   viewer.yaml: |
     admin:
       allowed_user_ids:
-{{- range .Values.backend.config.admin.allowedUserIds }}
+{{- range $adminUserIds }}
         - {{ . | quote }}
 {{- end }}
       storage_class_service_account_name: {{ .Values.backend.config.admin.storageClassServiceAccountName | quote }}
 
     viewer:
       backend_verify_url: {{ include "storage-manager.backendVerifyURL" . | quote }}
-      hook_client_token: {{ .Values.backend.config.viewer.hookClientToken | quote }}
+      hook_client_token: {{ default .Values.backend.config.viewer.hookClientToken (get $user "hookClientToken") | quote }}
       hook_script: |
         #!/bin/sh
         set -eu
@@ -88,19 +96,19 @@ data:
         port: {{ .Values.backend.config.viewer.filebrowser.port }}
         token_ttl: {{ .Values.backend.config.viewer.filebrowser.tokenTtl | quote }}
         login_timeout: {{ .Values.backend.config.viewer.filebrowser.loginTimeout | quote }}
-        login_url_mode: {{ .Values.backend.config.viewer.filebrowser.loginUrlMode | quote }}
+        login_url_mode: {{ default .Values.backend.config.viewer.filebrowser.loginUrlMode (get $viewerUser "filebrowserLoginUrlMode") | quote }}
       file_management:
-        enabled: {{ .Values.backend.config.viewer.fileManagement.enabled }}
+        enabled: {{ if hasKey $features "fileManagement" }}{{ get $features "fileManagement" }}{{ else }}{{ .Values.backend.config.viewer.fileManagement.enabled }}{{ end }}
       pvc_creation:
-        enabled: {{ .Values.backend.config.viewer.pvcCreation.enabled }}
+        enabled: {{ if hasKey $features "pvcCreation" }}{{ get $features "pvcCreation" }}{{ else }}{{ .Values.backend.config.viewer.pvcCreation.enabled }}{{ end }}
       storage_quota:
-        enabled: {{ .Values.backend.config.viewer.storageQuota.enabled }}
-        account_base_url: {{ .Values.backend.config.viewer.storageQuota.accountBaseUrl | quote }}
+        enabled: {{ if hasKey $features "storageQuota" }}{{ get $features "storageQuota" }}{{ else }}{{ .Values.backend.config.viewer.storageQuota.enabled }}{{ end }}
+        account_base_url: {{ default .Values.backend.config.viewer.storageQuota.accountBaseUrl (get $integrations "accountBaseUrl") | quote }}
         query_timeout: {{ .Values.backend.config.viewer.storageQuota.queryTimeout | quote }}
         system_quota: {{ .Values.backend.config.viewer.storageQuota.systemQuota | quote }}
       pvc_metrics:
-        enabled: {{ .Values.backend.config.viewer.pvcMetrics.enabled }}
-        prometheus_base_url: {{ .Values.backend.config.viewer.pvcMetrics.prometheusBaseUrl | quote }}
+        enabled: {{ if hasKey $features "pvcMetrics" }}{{ get $features "pvcMetrics" }}{{ else }}{{ .Values.backend.config.viewer.pvcMetrics.enabled }}{{ end }}
+        prometheus_base_url: {{ default .Values.backend.config.viewer.pvcMetrics.prometheusBaseUrl (get $integrations "prometheusBaseUrl") | quote }}
         query_timeout: {{ .Values.backend.config.viewer.pvcMetrics.queryTimeout | quote }}
       pod:
         service_account_name: {{ .Values.backend.config.viewer.pod.serviceAccountName | quote }}

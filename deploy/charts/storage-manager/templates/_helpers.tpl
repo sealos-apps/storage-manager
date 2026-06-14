@@ -3,7 +3,7 @@
 {{- end -}}
 
 {{- define "storage-manager.namespace" -}}
-{{- default .Release.Namespace .Values.namespace.name -}}
+{{- .Release.Namespace -}}
 {{- end -}}
 
 {{- define "storage-manager.labels" -}}
@@ -67,7 +67,10 @@ app.kubernetes.io/instance: {{ .Release.Name | quote }}
 {{- end -}}
 
 {{- define "storage-manager.webHost" -}}
-{{- default (printf "storage-manager.%s" (default "127.0.0.1.nip.io" .Values.cloudDomain)) .Values.web.publicHost -}}
+{{- $user := default dict .Values.user -}}
+{{- $webUser := default dict (get $user "web") -}}
+{{- $publicHost := default .Values.web.publicHost (get $webUser "publicHost") -}}
+{{- default (printf "storage-manager.%s" (default "127.0.0.1.nip.io" .Values.cloudDomain)) $publicHost -}}
 {{- end -}}
 
 {{- define "storage-manager.webOrigin" -}}
@@ -75,7 +78,10 @@ app.kubernetes.io/instance: {{ .Release.Name | quote }}
 {{- end -}}
 
 {{- define "storage-manager.viewerHostTemplate" -}}
-{{- printf "%s-{{ .PodSessionID }}.%s" .Values.backend.config.viewer.ingress.hostPrefix (default "127.0.0.1.nip.io" .Values.cloudDomain) -}}
+{{- $user := default dict .Values.user -}}
+{{- $viewerUser := default dict (get $user "viewer") -}}
+{{- $hostPrefix := default .Values.backend.config.viewer.ingress.hostPrefix (get $viewerUser "hostPrefix") -}}
+{{- printf "%s-{{ .PodSessionID }}.%s" $hostPrefix (default "127.0.0.1.nip.io" .Values.cloudDomain) -}}
 {{- end -}}
 
 {{- define "storage-manager.viewerTLSSecretName" -}}
@@ -87,8 +93,11 @@ app.kubernetes.io/instance: {{ .Release.Name | quote }}
 {{- end -}}
 
 {{- define "storage-manager.backendVerifyURL" -}}
-{{- if .Values.backend.config.viewer.backendVerifyUrl -}}
-{{- .Values.backend.config.viewer.backendVerifyUrl -}}
+{{- $user := default dict .Values.user -}}
+{{- $viewerUser := default dict (get $user "viewer") -}}
+{{- $backendVerifyURL := default .Values.backend.config.viewer.backendVerifyUrl (get $viewerUser "backendVerifyUrl") -}}
+{{- if $backendVerifyURL -}}
+{{- $backendVerifyURL -}}
 {{- else -}}
 {{- include "storage-manager.backendURL" . -}}/internal/filebrowser-hook/verify
 {{- end -}}
