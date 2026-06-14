@@ -2,10 +2,20 @@ apiVersion: v1
 kind: ConfigMap
 {{- $config := default dict .Values.config }}
 {{- $configWeb := default dict (get $config "web") }}
+{{- $configRuntime := default dict (get $config "runtimeConfig") }}
+{{- $configNginx := default dict (get $config "nginx") }}
 {{- $user := default dict .Values.user }}
 {{- $webUser := default dict (get $user "web") }}
-{{- $apiBaseURL := default .Values.web.runtimeConfig.apiBaseUrl (get $configWeb "apiBaseUrl") }}
+{{- $webValues := default dict .Values.web }}
+{{- $webRuntime := default dict (get $webValues "runtimeConfig") }}
+{{- $webNginx := default dict (get $webValues "nginx") }}
+{{- $apiBaseURL := default (get $webRuntime "apiBaseUrl") (get $configWeb "apiBaseUrl") }}
 {{- $apiBaseURL = default $apiBaseURL (get $webUser "apiBaseUrl") }}
+{{- $forcedLanguage := default (get $webRuntime "forcedLanguage") (get $configRuntime "forcedLanguage") }}
+{{- $fileUploadTusThresholdBytes := default (get $webRuntime "fileUploadTusThresholdBytes") (get $configRuntime "fileUploadTusThresholdBytes") }}
+{{- $fileUploadTusChunkBytes := default (get $webRuntime "fileUploadTusChunkBytes") (get $configRuntime "fileUploadTusChunkBytes") }}
+{{- $fileUploadTusRetryCount := default (get $webRuntime "fileUploadTusRetryCount") (get $configRuntime "fileUploadTusRetryCount") }}
+{{- $clientMaxBodySize := default (get $webNginx "clientMaxBodySize") (get $configNginx "clientMaxBodySize") }}
 metadata:
   name: {{ .Values.web.configMapName | quote }}
   namespace: {{ include "storage-manager.namespace" . | quote }}
@@ -15,10 +25,10 @@ data:
   runtime-config.js: |
     window.__SEALOS_STORAGE_MANAGER_CONFIG__ = {
       apiBaseUrl: {{ $apiBaseURL | quote }},
-      forcedLanguage: {{ .Values.web.runtimeConfig.forcedLanguage | quote }},
-      fileUploadTusThresholdBytes: {{ .Values.web.runtimeConfig.fileUploadTusThresholdBytes }},
-      fileUploadTusChunkBytes: {{ .Values.web.runtimeConfig.fileUploadTusChunkBytes }},
-      fileUploadTusRetryCount: {{ .Values.web.runtimeConfig.fileUploadTusRetryCount }},
+      forcedLanguage: {{ $forcedLanguage | quote }},
+      fileUploadTusThresholdBytes: {{ $fileUploadTusThresholdBytes | int64 }},
+      fileUploadTusChunkBytes: {{ $fileUploadTusChunkBytes | int64 }},
+      fileUploadTusRetryCount: {{ $fileUploadTusRetryCount | int64 }},
     }
   nginx.conf: |
     server {
@@ -27,7 +37,7 @@ data:
       root /usr/share/nginx/html;
       index index.html;
 
-      client_max_body_size {{ .Values.web.nginx.clientMaxBodySize }};
+      client_max_body_size {{ $clientMaxBodySize }};
 
       location = /runtime-config.js {
         add_header Cache-Control "no-store";

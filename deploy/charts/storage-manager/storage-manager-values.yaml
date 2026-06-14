@@ -10,6 +10,25 @@ config:
     pvcCreation: true
     storageQuota: true
     pvcMetrics: true
+  filebrowser:
+    image: filebrowser/filebrowser:v2.30.0
+    binaryPath: /filebrowser
+    port: 8080
+    tokenTtl: 15m
+    loginTimeout: 2s
+    pod:
+      serviceAccountName: ""
+      mountPath: /srv
+      databasePath: /tmp/filebrowser.db
+      cpuRequest: 50m
+      memoryRequest: 64Mi
+      cpuLimit: 500m
+      memoryLimit: 512Mi
+  storageQuota:
+    queryTimeout: 3s
+    systemQuota: 100Gi
+  pvcMetrics:
+    queryTimeout: 3s
   integrations:
     accountBaseUrl: "http://account-service.account-system.svc:2333"
     prometheusBaseUrl: "http://vmselect-vm-stack-victoria-metrics-k8s-stack.vm.svc.cluster.local:8481/select/0/prometheus"
@@ -20,5 +39,13 @@ config:
   web:
     apiBaseUrl: /api
     publicHost: ""
+  runtimeConfig:
+    forcedLanguage: ""
+    fileUploadTusThresholdBytes: 33554432
+    fileUploadTusChunkBytes: 8388608
+    fileUploadTusRetryCount: 5
+  nginx:
+    clientMaxBodySize: "0"
+  publicHost: ""
   desktop:
     enabled: true

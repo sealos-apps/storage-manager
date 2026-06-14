@@ -69,9 +69,11 @@ app.kubernetes.io/instance: {{ .Release.Name | quote }}
 {{- define "storage-manager.webHost" -}}
 {{- $config := default dict .Values.config -}}
 {{- $user := default dict .Values.user -}}
+{{- $webValues := default dict .Values.web -}}
 {{- $configWeb := default dict (get $config "web") -}}
 {{- $webUser := default dict (get $user "web") -}}
-{{- $publicHost := default .Values.web.publicHost (get $configWeb "publicHost") -}}
+{{- $publicHost := default (get $webValues "publicHost") (get $config "publicHost") -}}
+{{- $publicHost = default $publicHost (get $configWeb "publicHost") -}}
 {{- $publicHost = default $publicHost (get $webUser "publicHost") -}}
 {{- default (printf "storage-manager.%s" (default "127.0.0.1.nip.io" .Values.cloudDomain)) $publicHost -}}
 {{- end -}}
@@ -85,7 +87,10 @@ app.kubernetes.io/instance: {{ .Release.Name | quote }}
 {{- $user := default dict .Values.user -}}
 {{- $configViewer := default dict (get $config "viewer") -}}
 {{- $viewerUser := default dict (get $user "viewer") -}}
-{{- $hostPrefix := default .Values.backend.config.viewer.ingress.hostPrefix (get $configViewer "hostPrefix") -}}
+{{- $backendConfig := default dict .Values.backend.config -}}
+{{- $backendViewer := default dict (get $backendConfig "viewer") -}}
+{{- $backendIngress := default dict (get $backendViewer "ingress") -}}
+{{- $hostPrefix := default (get $backendIngress "hostPrefix") (get $configViewer "hostPrefix") -}}
 {{- $hostPrefix = default $hostPrefix (get $viewerUser "hostPrefix") -}}
 {{- printf "%s-{{ .PodSessionID }}.%s" $hostPrefix (default "127.0.0.1.nip.io" .Values.cloudDomain) -}}
 {{- end -}}
@@ -103,7 +108,9 @@ app.kubernetes.io/instance: {{ .Release.Name | quote }}
 {{- $user := default dict .Values.user -}}
 {{- $configViewer := default dict (get $config "viewer") -}}
 {{- $viewerUser := default dict (get $user "viewer") -}}
-{{- $backendVerifyURL := default .Values.backend.config.viewer.backendVerifyUrl (get $configViewer "backendVerifyUrl") -}}
+{{- $backendConfig := default dict .Values.backend.config -}}
+{{- $backendViewer := default dict (get $backendConfig "viewer") -}}
+{{- $backendVerifyURL := default (get $backendViewer "backendVerifyUrl") (get $configViewer "backendVerifyUrl") -}}
 {{- $backendVerifyURL = default $backendVerifyURL (get $viewerUser "backendVerifyUrl") -}}
 {{- if $backendVerifyURL -}}
 {{- $backendVerifyURL -}}

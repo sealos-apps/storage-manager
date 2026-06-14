@@ -4,11 +4,25 @@ kind: ConfigMap
 {{- $configFeatures := default dict (get $config "features") }}
 {{- $configIntegrations := default dict (get $config "integrations") }}
 {{- $configViewer := default dict (get $config "viewer") }}
+{{- $configFilebrowser := default dict (get $config "filebrowser") }}
+{{- $configFilebrowserPod := default dict (get $configFilebrowser "pod") }}
+{{- $configStorageQuota := default dict (get $config "storageQuota") }}
+{{- $configPVCMetrics := default dict (get $config "pvcMetrics") }}
 {{- $user := default dict .Values.user }}
 {{- $features := default dict (get $user "features") }}
 {{- $integrations := default dict (get $user "integrations") }}
 {{- $viewerUser := default dict (get $user "viewer") }}
+{{- $backendConfig := default dict .Values.backend.config }}
+{{- $backendAdmin := default dict (get $backendConfig "admin") }}
+{{- $backendViewer := default dict (get $backendConfig "viewer") }}
+{{- $backendFilebrowser := default dict (get $backendViewer "filebrowser") }}
+{{- $backendFilebrowserPod := default dict (get $backendViewer "pod") }}
+{{- $backendStorageQuota := default dict (get $backendViewer "storageQuota") }}
+{{- $backendPVCMetrics := default dict (get $backendViewer "pvcMetrics") }}
 {{- $adminUserIds := list }}
+{{- if hasKey $backendAdmin "allowedUserIds" }}
+{{- $adminUserIds = get $backendAdmin "allowedUserIds" }}
+{{- end }}
 {{- if hasKey $config "adminUserIds" }}
 {{- $adminUserIds = get $config "adminUserIds" }}
 {{- end }}
@@ -39,6 +53,22 @@ kind: ConfigMap
 {{- $accountBaseURL = default $accountBaseURL (get $integrations "accountBaseUrl") }}
 {{- $prometheusBaseURL := default "" (get $configIntegrations "prometheusBaseUrl") }}
 {{- $prometheusBaseURL = default $prometheusBaseURL (get $integrations "prometheusBaseUrl") }}
+{{- $storageClassServiceAccountName := default "" (get $backendAdmin "storageClassServiceAccountName") }}
+{{- $filebrowserImage := default (get $backendFilebrowser "image") (get $configFilebrowser "image") }}
+{{- $filebrowserBinaryPath := default (get $backendFilebrowser "binaryPath") (get $configFilebrowser "binaryPath") }}
+{{- $filebrowserPort := default (get $backendFilebrowser "port") (get $configFilebrowser "port") }}
+{{- $filebrowserTokenTTL := default (get $backendFilebrowser "tokenTtl") (get $configFilebrowser "tokenTtl") }}
+{{- $filebrowserLoginTimeout := default (get $backendFilebrowser "loginTimeout") (get $configFilebrowser "loginTimeout") }}
+{{- $storageQuotaQueryTimeout := default (get $backendStorageQuota "queryTimeout") (get $configStorageQuota "queryTimeout") }}
+{{- $storageQuotaSystemQuota := default (get $backendStorageQuota "systemQuota") (get $configStorageQuota "systemQuota") }}
+{{- $pvcMetricsQueryTimeout := default (get $backendPVCMetrics "queryTimeout") (get $configPVCMetrics "queryTimeout") }}
+{{- $podServiceAccountName := default (get $backendFilebrowserPod "serviceAccountName") (get $configFilebrowserPod "serviceAccountName") }}
+{{- $podMountPath := default (get $backendFilebrowserPod "mountPath") (get $configFilebrowserPod "mountPath") }}
+{{- $podDatabasePath := default (get $backendFilebrowserPod "databasePath") (get $configFilebrowserPod "databasePath") }}
+{{- $podCPURequest := default (get $backendFilebrowserPod "cpuRequest") (get $configFilebrowserPod "cpuRequest") }}
+{{- $podMemoryRequest := default (get $backendFilebrowserPod "memoryRequest") (get $configFilebrowserPod "memoryRequest") }}
+{{- $podCPULimit := default (get $backendFilebrowserPod "cpuLimit") (get $configFilebrowserPod "cpuLimit") }}
+{{- $podMemoryLimit := default (get $backendFilebrowserPod "memoryLimit") (get $configFilebrowserPod "memoryLimit") }}
 metadata:
   name: {{ .Values.backend.configMapName | quote }}
   namespace: {{ include "storage-manager.namespace" . | quote }}
@@ -51,7 +81,7 @@ data:
 {{- range $adminUserIds }}
         - {{ . | quote }}
 {{- end }}
-      storage_class_service_account_name: {{ .Values.backend.config.admin.storageClassServiceAccountName | quote }}
+      storage_class_service_account_name: {{ $storageClassServiceAccountName | quote }}
 
     viewer:
       backend_verify_url: {{ include "storage-manager.backendVerifyURL" . | quote }}
@@ -122,11 +152,11 @@ data:
           echo "user.perm.delete=false"
         fi
       filebrowser:
-        image: {{ .Values.backend.config.viewer.filebrowser.image | quote }}
-        binary_path: {{ .Values.backend.config.viewer.filebrowser.binaryPath | quote }}
-        port: {{ .Values.backend.config.viewer.filebrowser.port }}
-        token_ttl: {{ .Values.backend.config.viewer.filebrowser.tokenTtl | quote }}
-        login_timeout: {{ .Values.backend.config.viewer.filebrowser.loginTimeout | quote }}
+        image: {{ $filebrowserImage | quote }}
+        binary_path: {{ $filebrowserBinaryPath | quote }}
+        port: {{ $filebrowserPort }}
+        token_ttl: {{ $filebrowserTokenTTL | quote }}
+        login_timeout: {{ $filebrowserLoginTimeout | quote }}
         login_url_mode: {{ $loginURLMode | quote }}
       file_management:
         enabled: {{ $fileManagementEnabled }}
@@ -135,20 +165,20 @@ data:
       storage_quota:
         enabled: {{ $storageQuotaEnabled }}
         account_base_url: {{ $accountBaseURL | quote }}
-        query_timeout: {{ .Values.backend.config.viewer.storageQuota.queryTimeout | quote }}
-        system_quota: {{ .Values.backend.config.viewer.storageQuota.systemQuota | quote }}
+        query_timeout: {{ $storageQuotaQueryTimeout | quote }}
+        system_quota: {{ $storageQuotaSystemQuota | quote }}
       pvc_metrics:
         enabled: {{ $pvcMetricsEnabled }}
         prometheus_base_url: {{ $prometheusBaseURL | quote }}
-        query_timeout: {{ .Values.backend.config.viewer.pvcMetrics.queryTimeout | quote }}
+        query_timeout: {{ $pvcMetricsQueryTimeout | quote }}
       pod:
-        service_account_name: {{ .Values.backend.config.viewer.pod.serviceAccountName | quote }}
-        mount_path: {{ .Values.backend.config.viewer.pod.mountPath | quote }}
-        database_path: {{ .Values.backend.config.viewer.pod.databasePath | quote }}
-        cpu_request: {{ .Values.backend.config.viewer.pod.cpuRequest | quote }}
-        memory_request: {{ .Values.backend.config.viewer.pod.memoryRequest | quote }}
-        cpu_limit: {{ .Values.backend.config.viewer.pod.cpuLimit | quote }}
-        memory_limit: {{ .Values.backend.config.viewer.pod.memoryLimit | quote }}
+        service_account_name: {{ $podServiceAccountName | quote }}
+        mount_path: {{ $podMountPath | quote }}
+        database_path: {{ $podDatabasePath | quote }}
+        cpu_request: {{ $podCPURequest | quote }}
+        memory_request: {{ $podMemoryRequest | quote }}
+        cpu_limit: {{ $podCPULimit | quote }}
+        memory_limit: {{ $podMemoryLimit | quote }}
       service:
         type: {{ .Values.backend.config.viewer.service.type | quote }}
         port: {{ .Values.backend.config.viewer.service.port }}

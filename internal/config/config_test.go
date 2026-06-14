@@ -568,29 +568,29 @@ func TestDeployChartInternalConfigIsNotDuplicated(t *testing.T) {
 	backend := requiredYAMLMap(t, values, "backend")
 	backendConfig := requiredYAMLMap(t, backend, "config")
 	backendViewer := requiredYAMLMap(t, backendConfig, "viewer")
-	backendFilebrowser := requiredYAMLMap(t, backendViewer, "filebrowser")
-	backendStorageQuota := requiredYAMLMap(t, backendViewer, "storageQuota")
-	backendPVCMetrics := requiredYAMLMap(t, backendViewer, "pvcMetrics")
-	backendIngress := requiredYAMLMap(t, backendViewer, "ingress")
-	webValues := requiredYAMLMap(t, values, "web")
-	webRuntimeConfig := requiredYAMLMap(t, webValues, "runtimeConfig")
+	for _, required := range []string{"service", "ingress"} {
+		if _, ok := backendViewer[required]; !ok {
+			t.Fatalf("backend.config.viewer missing deployment wiring key %q", required)
+		}
+	}
 
-	for _, duplicate := range []struct {
-		scope string
-		m     map[string]any
-		keys  []string
-	}{
-		{scope: "backend.config.viewer", m: backendViewer, keys: []string{"backendVerifyUrl", "hookClientToken", "fileManagement", "pvcCreation"}},
-		{scope: "backend.config.viewer.filebrowser", m: backendFilebrowser, keys: []string{"loginUrlMode"}},
-		{scope: "backend.config.viewer.storageQuota", m: backendStorageQuota, keys: []string{"enabled", "accountBaseUrl"}},
-		{scope: "backend.config.viewer.pvcMetrics", m: backendPVCMetrics, keys: []string{"enabled", "prometheusBaseUrl"}},
-		{scope: "backend.config.viewer.ingress", m: backendIngress, keys: []string{"hostPrefix"}},
-		{scope: "web.runtimeConfig", m: webRuntimeConfig, keys: []string{"apiBaseUrl"}},
+	for _, path := range [][]string{
+		{"backend", "config", "admin", "allowedUserIds"},
+		{"backend", "config", "viewer", "backendVerifyUrl"},
+		{"backend", "config", "viewer", "hookClientToken"},
+		{"backend", "config", "viewer", "fileManagement"},
+		{"backend", "config", "viewer", "pvcCreation"},
+		{"backend", "config", "viewer", "filebrowser"},
+		{"backend", "config", "viewer", "storageQuota"},
+		{"backend", "config", "viewer", "pvcMetrics"},
+		{"backend", "config", "viewer", "pod"},
+		{"backend", "config", "viewer", "ingress", "hostPrefix"},
+		{"web", "runtimeConfig"},
+		{"web", "nginx"},
+		{"web", "publicHost"},
 	} {
-		for _, key := range duplicate.keys {
-			if _, ok := duplicate.m[key]; ok {
-				t.Fatalf("%s.%s duplicates config values", duplicate.scope, key)
-			}
+		if hasYAMLPath(values, path...) {
+			t.Fatalf("%s duplicates config values", strings.Join(path, "."))
 		}
 	}
 }
@@ -660,23 +660,60 @@ func TestDeployPackagedValuesUseUserLevelOverrides(t *testing.T) {
 
 	root := repoRoot(t)
 	valuesPath := filepath.Join(root, "deploy", "charts", "storage-manager", "storage-manager-values.yaml")
-	viewerYAML := deployViewerYAML(t,
+	args := []string{
 		"-f", valuesPath,
 		"--set", "config.adminUserIds[0]=alice",
 		"--set", "config.hookClientToken=token-123",
 		"--set", "config.integrations.accountBaseUrl=http://account.example.svc:2333",
 		"--set", "config.integrations.prometheusBaseUrl=http://prom.example.svc:8481/select/0/prometheus",
+		"--set-string", "config.filebrowser.image=custom/filebrowser:v3",
+		"--set-string", "config.filebrowser.binaryPath=/custom-filebrowser",
+		"--set", "config.filebrowser.port=18080",
+		"--set-string", "config.filebrowser.tokenTtl=30m",
+		"--set-string", "config.filebrowser.loginTimeout=4s",
+		"--set-string", "config.filebrowser.pod.serviceAccountName=viewer-sa",
+		"--set-string", "config.filebrowser.pod.mountPath=/data",
+		"--set-string", "config.filebrowser.pod.databasePath=/tmp/custom.db",
+		"--set-string", "config.filebrowser.pod.cpuRequest=75m",
+		"--set-string", "config.filebrowser.pod.memoryRequest=96Mi",
+		"--set-string", "config.filebrowser.pod.cpuLimit=750m",
+		"--set-string", "config.filebrowser.pod.memoryLimit=768Mi",
+		"--set-string", "config.storageQuota.queryTimeout=9s",
+		"--set-string", "config.storageQuota.systemQuota=250Gi",
+		"--set-string", "config.pvcMetrics.queryTimeout=8s",
 		"--set", "config.viewer.hostPrefix=pvc-viewer",
 		"--set", "config.viewer.filebrowserLoginUrlMode=public",
 		"--set", "config.features.fileManagement=false",
 		"--set", "config.features.pvcMetrics=false",
+		"--set-string", "config.web.apiBaseUrl=/storage-api",
+		"--set-string", "config.runtimeConfig.forcedLanguage=zh-Hans",
+		"--set", "config.runtimeConfig.fileUploadTusThresholdBytes=12345",
+		"--set", "config.runtimeConfig.fileUploadTusChunkBytes=6789",
+		"--set", "config.runtimeConfig.fileUploadTusRetryCount=7",
+		"--set-string", "config.nginx.clientMaxBodySize=128m",
 		"--set", "cloudDomain=cloud.sealos.test",
-	)
+	}
+	viewerYAML := deployViewerYAML(t, args...)
 	for _, expected := range []string{
 		`- "alice"`,
 		`hook_client_token: "token-123"`,
+		`image: "custom/filebrowser:v3"`,
+		`binary_path: "/custom-filebrowser"`,
+		`port: 18080`,
+		`token_ttl: "30m"`,
+		`login_timeout: "4s"`,
+		`service_account_name: "viewer-sa"`,
+		`mount_path: "/data"`,
+		`database_path: "/tmp/custom.db"`,
+		`cpu_request: "75m"`,
+		`memory_request: "96Mi"`,
+		`cpu_limit: "750m"`,
+		`memory_limit: "768Mi"`,
 		`account_base_url: "http://account.example.svc:2333"`,
+		`query_timeout: "9s"`,
+		`system_quota: "250Gi"`,
 		`prometheus_base_url: "http://prom.example.svc:8481/select/0/prometheus"`,
+		`query_timeout: "8s"`,
 		`host_template: "pvc-viewer-{{ .PodSessionID }}.cloud.sealos.test"`,
 		`login_url_mode: "public"`,
 		"file_management:\n        enabled: false",
@@ -684,6 +721,20 @@ func TestDeployPackagedValuesUseUserLevelOverrides(t *testing.T) {
 	} {
 		if !strings.Contains(viewerYAML, expected) {
 			t.Fatalf("viewer.yaml missing user-level value %q:\n%s", expected, viewerYAML)
+		}
+	}
+
+	renderedChart := string(renderDeployChartWithArgs(t, args...))
+	for _, expected := range []string{
+		`apiBaseUrl: "/storage-api"`,
+		`forcedLanguage: "zh-Hans"`,
+		`fileUploadTusThresholdBytes: 12345`,
+		`fileUploadTusChunkBytes: 6789`,
+		`fileUploadTusRetryCount: 7`,
+		`client_max_body_size 128m;`,
+	} {
+		if !strings.Contains(renderedChart, expected) {
+			t.Fatalf("rendered chart missing user-level value %q:\n%s", expected, renderedChart)
 		}
 	}
 }
@@ -759,7 +810,7 @@ func TestDeployChartAllowsBackendVerifyURLOverride(t *testing.T) {
 	t.Parallel()
 
 	viewerYAML := deployViewerYAML(t,
-		"--set", "backend.config.viewer.backendVerifyUrl=https://storage.cloud.sealos.test/internal/filebrowser-hook/verify",
+		"--set", "config.viewer.backendVerifyUrl=https://storage.cloud.sealos.test/internal/filebrowser-hook/verify",
 	)
 	if !strings.Contains(viewerYAML, `backend_verify_url: "https://storage.cloud.sealos.test/internal/filebrowser-hook/verify"`) {
 		t.Fatalf("viewer.yaml missing overridden backend verify URL:\n%s", viewerYAML)
@@ -878,6 +929,21 @@ func requiredYAMLMap(t *testing.T, parent map[string]any, key string) map[string
 		t.Fatalf("YAML key %q is %T, want map[string]any", key, value)
 	}
 	return nested
+}
+
+func hasYAMLPath(root map[string]any, path ...string) bool {
+	var current any = root
+	for _, key := range path {
+		m, ok := current.(map[string]any)
+		if !ok {
+			return false
+		}
+		current, ok = m[key]
+		if !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func equalYAMLValue(t *testing.T, field string, want any, got any) {

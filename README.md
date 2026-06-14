@@ -234,9 +234,10 @@ unprefixed routes, and proxies `/metrics` plus
 Use `charts/storage-manager/storage-manager-values.yaml` as the user-level
 override entrypoint for Sealos installs. It exposes product-facing `config.*`
 values such as `config.adminUserIds`, `config.hookClientToken`,
-`config.integrations.*`, `config.viewer.*`, `config.web.*`,
-`config.desktop.enabled`, and `config.features.*`. Use `config.*` for every
-field represented there; the
+`config.integrations.*`, `config.filebrowser.*`, `config.storageQuota.*`,
+`config.pvcMetrics.*`, `config.viewer.*`, `config.web.*`,
+`config.runtimeConfig.*`, `config.nginx.*`, `config.desktop.enabled`, and
+`config.features.*`. Use `config.*` for every field represented there; the
 chart's internal `backend.*`, `web.*`, `rbac.*`, and `desktopApp.*` paths remain
 available for low-level Helm wiring and fields outside the packaged user
 surface.
