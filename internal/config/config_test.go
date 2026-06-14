@@ -560,6 +560,43 @@ func TestDeployChartPackagedUserValuesMatchDefaults(t *testing.T) {
 	}
 }
 
+func TestDeployChartInternalDefaultsUseUserValues(t *testing.T) {
+	t.Parallel()
+
+	valuesPath := filepath.Join(repoRoot(t), "deploy", "charts", "storage-manager", "values.yaml")
+	values := loadYAMLMap(t, valuesPath)
+	user := requiredYAMLMap(t, values, "user")
+	features := requiredYAMLMap(t, user, "features")
+	integrations := requiredYAMLMap(t, user, "integrations")
+	viewer := requiredYAMLMap(t, user, "viewer")
+	web := requiredYAMLMap(t, user, "web")
+	desktop := requiredYAMLMap(t, user, "desktop")
+	backend := requiredYAMLMap(t, values, "backend")
+	backendConfig := requiredYAMLMap(t, backend, "config")
+	backendViewer := requiredYAMLMap(t, backendConfig, "viewer")
+	backendFilebrowser := requiredYAMLMap(t, backendViewer, "filebrowser")
+	backendFileManagement := requiredYAMLMap(t, backendViewer, "fileManagement")
+	backendPVCCreation := requiredYAMLMap(t, backendViewer, "pvcCreation")
+	backendStorageQuota := requiredYAMLMap(t, backendViewer, "storageQuota")
+	backendPVCMetrics := requiredYAMLMap(t, backendViewer, "pvcMetrics")
+	backendIngress := requiredYAMLMap(t, backendViewer, "ingress")
+	webValues := requiredYAMLMap(t, values, "web")
+	webRuntimeConfig := requiredYAMLMap(t, webValues, "runtimeConfig")
+	desktopApp := requiredYAMLMap(t, values, "desktopApp")
+
+	equalYAMLValue(t, "backend.config.viewer.hookClientToken", user["hookClientToken"], backendViewer["hookClientToken"])
+	equalYAMLValue(t, "backend.config.viewer.filebrowser.loginUrlMode", viewer["filebrowserLoginUrlMode"], backendFilebrowser["loginUrlMode"])
+	equalYAMLValue(t, "backend.config.viewer.fileManagement.enabled", features["fileManagement"], backendFileManagement["enabled"])
+	equalYAMLValue(t, "backend.config.viewer.pvcCreation.enabled", features["pvcCreation"], backendPVCCreation["enabled"])
+	equalYAMLValue(t, "backend.config.viewer.storageQuota.enabled", features["storageQuota"], backendStorageQuota["enabled"])
+	equalYAMLValue(t, "backend.config.viewer.storageQuota.accountBaseUrl", integrations["accountBaseUrl"], backendStorageQuota["accountBaseUrl"])
+	equalYAMLValue(t, "backend.config.viewer.pvcMetrics.enabled", features["pvcMetrics"], backendPVCMetrics["enabled"])
+	equalYAMLValue(t, "backend.config.viewer.pvcMetrics.prometheusBaseUrl", integrations["prometheusBaseUrl"], backendPVCMetrics["prometheusBaseUrl"])
+	equalYAMLValue(t, "backend.config.viewer.ingress.hostPrefix", viewer["hostPrefix"], backendIngress["hostPrefix"])
+	equalYAMLValue(t, "web.runtimeConfig.apiBaseUrl", web["apiBaseUrl"], webRuntimeConfig["apiBaseUrl"])
+	equalYAMLValue(t, "desktopApp.create", desktop["enabled"], desktopApp["create"])
+}
+
 func TestDeployEntrypointSyncsPackagedValuesToAppsDir(t *testing.T) {
 	t.Parallel()
 
@@ -829,6 +866,28 @@ func loadYAMLMap(t *testing.T, path string) map[string]any {
 		t.Fatalf("parse %s: %v", path, err)
 	}
 	return out
+}
+
+func requiredYAMLMap(t *testing.T, parent map[string]any, key string) map[string]any {
+	t.Helper()
+
+	value, ok := parent[key]
+	if !ok {
+		t.Fatalf("missing YAML map key %q", key)
+	}
+	nested, ok := value.(map[string]any)
+	if !ok {
+		t.Fatalf("YAML key %q is %T, want map[string]any", key, value)
+	}
+	return nested
+}
+
+func equalYAMLValue(t *testing.T, field string, want any, got any) {
+	t.Helper()
+
+	if diff := cmpYAML(want, got); diff != "" {
+		t.Fatalf("%s does not match user default (-user +internal):\n%s", field, diff)
+	}
 }
 
 func cmpYAML(a any, b any) string {
