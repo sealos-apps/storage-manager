@@ -413,6 +413,8 @@ describe('storageAppShell', () => {
 		const namespaceCombobox = await screen.findByRole('combobox', { name: /system namespace/i })
 		await user.type(namespaceCombobox, 'ns-admin')
 		await user.click(namespaceCombobox)
+		expect(await screen.findByText('All spaces')).toBeInTheDocument()
+		expect(screen.queryByRole('option', { name: /kube-system/i })).not.toBeInTheDocument()
 		await user.click(await screen.findByText('All spaces'))
 
 		await waitFor(() => expect(listPVCs).toHaveBeenCalledWith({ namespace: ALL_NAMESPACES }))

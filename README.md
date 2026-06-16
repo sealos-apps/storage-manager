@@ -211,10 +211,10 @@ deployment. Validate it before shipping changes:
 make deploy-verify
 ```
 
-In Sealos-managed installs, `deploy/entrypoint.sh` injects global HTTP/TLS
-settings into Helm from `/root/.sealos/cloud/values/global.yaml` and
+In Sealos-managed installs, `deploy/entrypoint.sh` injects install-time
+HTTP/TLS settings into Helm from environment overrides and
 `sealos-system/sealos-config`. The chart defaults intentionally omit those
-global values.
+cluster-specific values.
 
 The chart derives:
 
@@ -223,17 +223,29 @@ The chart derives:
 - File Browser viewer host template:
   `<hostPrefix>-{{ .PodSessionID }}.<cloudDomain>`
 
-Override `backend.config.viewer.hookClientToken` before exposing the service.
-The committed value is a placeholder token.
+Override `config.hookClientToken` before exposing the service. The committed
+value is a placeholder token.
 
 Expose `viewer-web` as the public entrypoint. The chart renders nginx config
 that serves the SPA, rewrites public `/api/*` requests to the backend's
 unprefixed routes, and proxies `/metrics` plus
 `/internal/filebrowser-hook/verify` to the internal `viewer-backend` service.
 
-Override frontend runtime settings through `web.runtimeConfig` values. The
-default `apiBaseUrl` is `/api`, which keeps browser API requests on the same
-origin as the web app and lets the frontend service own the public rewrite.
+Use `charts/storage-manager/storage-manager-values.yaml` as the user-level
+override entrypoint for Sealos installs. It exposes product-facing `config.*`
+values such as `config.adminUserIds`, `config.hookClientToken`,
+`config.integrations.*`, `config.filebrowser.*`, `config.storageQuota.*`,
+`config.pvcMetrics.*`, `config.viewer.*`, `config.web.*`,
+`config.runtimeConfig.*`, `config.nginx.*`, `config.features.*`, and
+`desktopApp.create`. Use `config.*` for every field represented there; keep
+`desktopApp.create` as the single Desktop App creation switch. The chart's
+internal `backend.*`, `web.*`, `rbac.*`, and other `desktopApp.*` paths remain
+available for low-level Helm wiring and fields outside the packaged user
+surface.
+
+The default `config.web.apiBaseUrl` is `/api`, which keeps browser API requests on
+the same origin as the web app and lets the frontend service own the public
+rewrite.
 
 ## Sealos Cluster Image
 
@@ -242,11 +254,14 @@ origin as the web app and lets the frontend service own the public rewrite.
 - `Kubefile`, which packages cached runtime images, charts, and the install
   entrypoint.
 - `entrypoint.sh`, which sources `/root/.sealos/cloud/scripts/tools.sh`, reads
-  global HTTP/TLS settings, loads packaged values plus all
-  `/root/.sealos/cloud/values/apps/storage-manager/*-values.yaml`
-  overrides, and runs `helm upgrade -i`.
+  install-time HTTP/TLS settings from `sealos-system/sealos-config`,
+  initializes `/root/.sealos/cloud/values/apps/storage-manager/` with the
+  packaged `storage-manager-values.yaml` when that app values directory is
+  missing, loads all `*-values.yaml` files from that app values directory, and
+  runs `helm upgrade -i ... --create-namespace`. The chart does not render a
+  `Namespace` resource.
 - `charts/storage-manager/storage-manager-values.yaml`, the
-  packaged defaults used by Sealos app installs.
+  user-level packaged values used by Sealos app installs.
 
 The `images` workflow publishes:
 

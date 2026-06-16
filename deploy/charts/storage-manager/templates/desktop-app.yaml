@@ -1,4 +1,5 @@
-{{- if .Values.desktopApp.create }}
+{{- $createDesktopApp := .Values.desktopApp.create }}
+{{- if $createDesktopApp }}
 apiVersion: app.sealos.io/v1
 kind: App
 metadata:

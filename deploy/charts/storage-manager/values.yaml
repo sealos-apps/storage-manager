@@ -1,6 +1,55 @@
-namespace:
-  create: true
-  name: storage-manager
+cloudDomain: 127.0.0.1.nip.io
+cloudPort: ""
+httpPort: ""
+disableHttps: false
+certSecretName: wildcard-cert
+
+config:
+  adminUserIds:
+    - admin
+  hookClientToken: replace-me
+  features:
+    fileManagement: true
+    pvcCreation: true
+    storageQuota: true
+    pvcMetrics: true
+    pvcMountDetection: true
+  filebrowser:
+    image: filebrowser/filebrowser:v2.30.0
+    binaryPath: /filebrowser
+    port: 8080
+    tokenTtl: 15m
+    loginTimeout: 2s
+    pod:
+      serviceAccountName: ""
+      mountPath: /srv
+      databasePath: /tmp/filebrowser.db
+      cpuRequest: 50m
+      memoryRequest: 64Mi
+      cpuLimit: 500m
+      memoryLimit: 512Mi
+  storageQuota:
+    queryTimeout: 3s
+    systemQuota: 100Gi
+  pvcMetrics:
+    queryTimeout: 3s
+  integrations:
+    accountBaseUrl: "http://account-service.account-system.svc:2333"
+    prometheusBaseUrl: "http://vmselect-vm-stack-victoria-metrics-k8s-stack.vm.svc.cluster.local:8481/select/0/prometheus"
+  viewer:
+    hostPrefix: viewer
+    backendVerifyUrl: ""
+    filebrowserLoginUrlMode: internal
+  web:
+    apiBaseUrl: /api
+    publicHost: ""
+  runtimeConfig:
+    forcedLanguage: ""
+    fileUploadTusThresholdBytes: 33554432
+    fileUploadTusChunkBytes: 8388608
+    fileUploadTusRetryCount: 5
+  nginx:
+    clientMaxBodySize: "0"
 
 rbac:
   create: true
@@ -23,51 +72,10 @@ backend:
   configMapName: viewer-backend-config
   configMountPath: /app/config
   config:
-    admin:
-      allowedUserIds:
-        - admin
-      storageClassServiceAccountName: storageclass-admin
     viewer:
-      backendVerifyUrl: ""
-      hookClientToken: replace-me
-      filebrowser:
-        image: filebrowser/filebrowser:v2.30.0
-        binaryPath: /filebrowser
-        port: 8080
-        tokenTtl: 15m
-        loginTimeout: 2s
-        loginUrlMode: internal
-      fileManagement:
-        enabled: true
-      pvcCreation:
-        enabled: true
-      storageQuota:
-        enabled: true
-        accountBaseUrl: "http://account-service.account-system.svc:2333"
-        queryTimeout: 3s
-        systemQuota: 100Gi
-      pvcMetrics:
-        enabled: true
-        prometheusBaseUrl: "http://vmselect-vm-stack-victoria-metrics-k8s-stack.vm.svc.cluster.local:8481/select/0/prometheus"
-        queryTimeout: 3s
-      pvcMountDetection:
-        enabled: true
-      pod:
-        serviceAccountName: ""
-        mountPath: /srv
-        databasePath: /tmp/filebrowser.db
-        cpuRequest: 50m
-        memoryRequest: 64Mi
-        cpuLimit: 500m
-        memoryLimit: 512Mi
       service:
         type: ClusterIP
         port: 80
-      ingress:
-        className: nginx
-        hostPrefix: viewer
-        # Empty uses the injected certSecretName when disableHttps is false.
-        tlsSecretName: ""
     observability:
       serviceName: storage-manager-viewer
       logs:
@@ -96,15 +104,6 @@ web:
     targetPort: http
   containerPort: 8080
   configMapName: viewer-web-config
-  runtimeConfig:
-    apiBaseUrl: /api
-    forcedLanguage: ""
-    fileUploadTusThresholdBytes: 33554432
-    fileUploadTusChunkBytes: 8388608
-    fileUploadTusRetryCount: 5
-  nginx:
-    clientMaxBodySize: "0"
-  publicHost: ""
   ingress:
     enabled: true
     className: nginx
@@ -113,7 +112,6 @@ web:
     pathType: Prefix
     tls:
       enabled: true
-      secretName: ""
 
 storageClassAdmin:
   create: true

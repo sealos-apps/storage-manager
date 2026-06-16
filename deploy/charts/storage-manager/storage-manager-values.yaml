@@ -1,49 +1,74 @@
-# User-overridable values for the Sealos Storage Manager install package.
+config:
+  adminUserIds:
+    - admin
+  hookClientToken: replace-me
+  features:
+    fileManagement: true
+    pvcCreation: true
+    storageQuota: true
+    pvcMetrics: true
+    pvcMountDetection: true
+  filebrowser:
+    image: filebrowser/filebrowser:v2.30.0
+    binaryPath: /filebrowser
+    port: 8080
+    tokenTtl: 15m
+    loginTimeout: 2s
+    pod:
+      serviceAccountName: ""
+      mountPath: /srv
+      databasePath: /tmp/filebrowser.db
+      cpuRequest: 50m
+      memoryRequest: 64Mi
+      cpuLimit: 500m
+      memoryLimit: 512Mi
+  storageQuota:
+    queryTimeout: 3s
+    systemQuota: 100Gi
+  pvcMetrics:
+    queryTimeout: 3s
+  integrations:
+    accountBaseUrl: "http://account-service.account-system.svc:2333"
+    prometheusBaseUrl: "http://vmselect-vm-stack-victoria-metrics-k8s-stack.vm.svc.cluster.local:8481/select/0/prometheus"
+  viewer:
+    hostPrefix: viewer
+    backendVerifyUrl: ""
+    filebrowserLoginUrlMode: internal
+  web:
+    apiBaseUrl: /api
+    publicHost: ""
+  runtimeConfig:
+    forcedLanguage: ""
+    fileUploadTusThresholdBytes: 33554432
+    fileUploadTusChunkBytes: 8388608
+    fileUploadTusRetryCount: 5
+  nginx:
+    clientMaxBodySize: "0"
 
 backend:
   replicaCount: 1
+#  image:
+#    repository: ghcr.io/sealos-apps/storage-manager/storage-manager-backend
+#    tag: latest
+#    pullPolicy: IfNotPresent
   config:
-    admin:
-      allowedUserIds:
-        - admin
-    viewer:
-      backendVerifyUrl: ""
-      hookClientToken: replace-me
-      filebrowser:
-        loginUrlMode: internal
-      fileManagement:
-        enabled: true
-      pvcCreation:
-        enabled: true
-      storageQuota:
-        enabled: true
-        accountBaseUrl: "http://account-service.account-system.svc:2333"
-      pvcMetrics:
-        enabled: true
-        prometheusBaseUrl: "http://vmselect-vm-stack-victoria-metrics-k8s-stack.vm.svc.cluster.local:8481/select/0/prometheus"
-      pvcMountDetection:
-        enabled: true
-      ingress:
-        hostPrefix: viewer
     observability:
+      logs:
+        exporter: encore
+        level: info
       traces:
+        exporter: none
         endpoint: ""
+        sampleRatio: 1
+        batchTimeout: 5s
+        exportTimeout: 5s
+    debug:
+      enabled: false
+      forcedNamespace: ""
 
 web:
   replicaCount: 1
-  runtimeConfig:
-    apiBaseUrl: /api
-  publicHost: ""
-  ingress:
-    enabled: true
-    tls:
-      enabled: true
-
-rbac:
-  create: true
-
-storageClassAdmin:
-  create: true
-
-desktopApp:
-  create: true
+#  image:
+#    repository: ghcr.io/sealos-apps/storage-manager/storage-manager-web
+#    tag: latest
+#    pullPolicy: IfNotPresent

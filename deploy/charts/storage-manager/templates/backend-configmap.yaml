@@ -1,5 +1,26 @@
 apiVersion: v1
 kind: ConfigMap
+{{- $config := default dict .Values.config }}
+{{- $configFeatures := default dict (get $config "features") }}
+{{- $configIntegrations := default dict (get $config "integrations") }}
+{{- $configViewer := default dict (get $config "viewer") }}
+{{- $configFilebrowser := default dict (get $config "filebrowser") }}
+{{- $configFilebrowserPod := default dict (get $configFilebrowser "pod") }}
+{{- $configStorageQuota := default dict (get $config "storageQuota") }}
+{{- $configPVCMetrics := default dict (get $config "pvcMetrics") }}
+{{- $adminUserIds := list }}
+{{- if hasKey $config "adminUserIds" }}
+{{- $adminUserIds = get $config "adminUserIds" }}
+{{- end }}
+{{- $hookClientToken := default "" (get $config "hookClientToken") }}
+{{- $loginURLMode := default "" (get $configViewer "filebrowserLoginUrlMode") }}
+{{- $fileManagementEnabled := get $configFeatures "fileManagement" }}
+{{- $pvcCreationEnabled := get $configFeatures "pvcCreation" }}
+{{- $storageQuotaEnabled := get $configFeatures "storageQuota" }}
+{{- $pvcMetricsEnabled := get $configFeatures "pvcMetrics" }}
+{{- $pvcMountDetectionEnabled := get $configFeatures "pvcMountDetection" }}
+{{- $accountBaseURL := default "" (get $configIntegrations "accountBaseUrl") }}
+{{- $prometheusBaseURL := default "" (get $configIntegrations "prometheusBaseUrl") }}
 metadata:
   name: {{ .Values.backend.configMapName | quote }}
   namespace: {{ include "storage-manager.namespace" . | quote }}
@@ -9,14 +30,14 @@ data:
   viewer.yaml: |
     admin:
       allowed_user_ids:
-{{- range .Values.backend.config.admin.allowedUserIds }}
+{{- range $adminUserIds }}
         - {{ . | quote }}
 {{- end }}
-      storage_class_service_account_name: {{ .Values.backend.config.admin.storageClassServiceAccountName | quote }}
+      storage_class_service_account_name: {{ .Values.storageClassAdmin.serviceAccountName | quote }}
 
     viewer:
       backend_verify_url: {{ include "storage-manager.backendVerifyURL" . | quote }}
-      hook_client_token: {{ .Values.backend.config.viewer.hookClientToken | quote }}
+      hook_client_token: {{ $hookClientToken | quote }}
       hook_script: |
         #!/bin/sh
         set -eu
@@ -83,40 +104,40 @@ data:
           echo "user.perm.delete=false"
         fi
       filebrowser:
-        image: {{ .Values.backend.config.viewer.filebrowser.image | quote }}
-        binary_path: {{ .Values.backend.config.viewer.filebrowser.binaryPath | quote }}
-        port: {{ .Values.backend.config.viewer.filebrowser.port }}
-        token_ttl: {{ .Values.backend.config.viewer.filebrowser.tokenTtl | quote }}
-        login_timeout: {{ .Values.backend.config.viewer.filebrowser.loginTimeout | quote }}
-        login_url_mode: {{ .Values.backend.config.viewer.filebrowser.loginUrlMode | quote }}
+        image: {{ get $configFilebrowser "image" | quote }}
+        binary_path: {{ get $configFilebrowser "binaryPath" | quote }}
+        port: {{ get $configFilebrowser "port" }}
+        token_ttl: {{ get $configFilebrowser "tokenTtl" | quote }}
+        login_timeout: {{ get $configFilebrowser "loginTimeout" | quote }}
+        login_url_mode: {{ $loginURLMode | quote }}
       file_management:
-        enabled: {{ .Values.backend.config.viewer.fileManagement.enabled }}
+        enabled: {{ $fileManagementEnabled }}
       pvc_creation:
-        enabled: {{ .Values.backend.config.viewer.pvcCreation.enabled }}
+        enabled: {{ $pvcCreationEnabled }}
       storage_quota:
-        enabled: {{ .Values.backend.config.viewer.storageQuota.enabled }}
-        account_base_url: {{ .Values.backend.config.viewer.storageQuota.accountBaseUrl | quote }}
-        query_timeout: {{ .Values.backend.config.viewer.storageQuota.queryTimeout | quote }}
-        system_quota: {{ .Values.backend.config.viewer.storageQuota.systemQuota | quote }}
+        enabled: {{ $storageQuotaEnabled }}
+        account_base_url: {{ $accountBaseURL | quote }}
+        query_timeout: {{ get $configStorageQuota "queryTimeout" | quote }}
+        system_quota: {{ get $configStorageQuota "systemQuota" | quote }}
       pvc_metrics:
-        enabled: {{ .Values.backend.config.viewer.pvcMetrics.enabled }}
-        prometheus_base_url: {{ .Values.backend.config.viewer.pvcMetrics.prometheusBaseUrl | quote }}
-        query_timeout: {{ .Values.backend.config.viewer.pvcMetrics.queryTimeout | quote }}
+        enabled: {{ $pvcMetricsEnabled }}
+        prometheus_base_url: {{ $prometheusBaseURL | quote }}
+        query_timeout: {{ get $configPVCMetrics "queryTimeout" | quote }}
       pvc_mount_detection:
-        enabled: {{ .Values.backend.config.viewer.pvcMountDetection.enabled }}
+        enabled: {{ $pvcMountDetectionEnabled }}
       pod:
-        service_account_name: {{ .Values.backend.config.viewer.pod.serviceAccountName | quote }}
-        mount_path: {{ .Values.backend.config.viewer.pod.mountPath | quote }}
-        database_path: {{ .Values.backend.config.viewer.pod.databasePath | quote }}
-        cpu_request: {{ .Values.backend.config.viewer.pod.cpuRequest | quote }}
-        memory_request: {{ .Values.backend.config.viewer.pod.memoryRequest | quote }}
-        cpu_limit: {{ .Values.backend.config.viewer.pod.cpuLimit | quote }}
-        memory_limit: {{ .Values.backend.config.viewer.pod.memoryLimit | quote }}
+        service_account_name: {{ get $configFilebrowserPod "serviceAccountName" | quote }}
+        mount_path: {{ get $configFilebrowserPod "mountPath" | quote }}
+        database_path: {{ get $configFilebrowserPod "databasePath" | quote }}
+        cpu_request: {{ get $configFilebrowserPod "cpuRequest" | quote }}
+        memory_request: {{ get $configFilebrowserPod "memoryRequest" | quote }}
+        cpu_limit: {{ get $configFilebrowserPod "cpuLimit" | quote }}
+        memory_limit: {{ get $configFilebrowserPod "memoryLimit" | quote }}
       service:
         type: {{ .Values.backend.config.viewer.service.type | quote }}
         port: {{ .Values.backend.config.viewer.service.port }}
       ingress:
-        class_name: {{ .Values.backend.config.viewer.ingress.className | quote }}
+        class_name: {{ .Values.web.ingress.className | quote }}
         host_template: {{ include "storage-manager.viewerHostTemplate" . | quote }}
         public_scheme: {{ include "storage-manager.scheme" . | quote }}
         tls_secret_name: {{ include "storage-manager.viewerTLSSecretName" . | quote }}

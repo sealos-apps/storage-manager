@@ -548,14 +548,248 @@ func TestDeployChartHasPackagedAppValues(t *testing.T) {
 	}
 }
 
+func TestDeployChartPackagedValuesOmitRuntimeHTTPValues(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	defaultValuesPath := filepath.Join(root, "deploy", "charts", "storage-manager", "values.yaml")
+	packagedValuesPath := filepath.Join(root, "deploy", "charts", "storage-manager", "storage-manager-values.yaml")
+
+	defaultValues := loadYAMLMap(t, defaultValuesPath)
+	packagedValues := loadYAMLMap(t, packagedValuesPath)
+	for _, required := range []string{"cloudDomain", "cloudPort", "httpPort", "disableHttps", "certSecretName"} {
+		if _, ok := defaultValues[required]; !ok {
+			t.Fatalf("default values.yaml missing chart runtime value %q", required)
+		}
+		if _, ok := packagedValues[required]; ok {
+			t.Fatalf("packaged user values should not expose chart runtime value %q", required)
+		}
+	}
+	if _, ok := packagedValues["config"]; !ok {
+		t.Fatal("packaged user values should expose config overrides")
+	}
+}
+
+func TestDeployChartInternalConfigIsNotDuplicated(t *testing.T) {
+	t.Parallel()
+
+	valuesPath := filepath.Join(repoRoot(t), "deploy", "charts", "storage-manager", "values.yaml")
+	values := loadYAMLMap(t, valuesPath)
+	backend := requiredYAMLMap(t, values, "backend")
+	backendConfig := requiredYAMLMap(t, backend, "config")
+	backendViewer := requiredYAMLMap(t, backendConfig, "viewer")
+	for _, required := range []string{"service"} {
+		if _, ok := backendViewer[required]; !ok {
+			t.Fatalf("backend.config.viewer missing deployment wiring key %q", required)
+		}
+	}
+
+	for _, path := range [][]string{
+		{"config", "publicHost"},
+		{"config", "desktop"},
+		{"backend", "config", "admin"},
+		{"backend", "config", "admin", "allowedUserIds"},
+		{"backend", "config", "viewer", "backendVerifyUrl"},
+		{"backend", "config", "viewer", "hookClientToken"},
+		{"backend", "config", "viewer", "fileManagement"},
+		{"backend", "config", "viewer", "pvcCreation"},
+		{"backend", "config", "viewer", "filebrowser"},
+		{"backend", "config", "viewer", "storageQuota"},
+		{"backend", "config", "viewer", "pvcMetrics"},
+		{"backend", "config", "viewer", "pod"},
+		{"backend", "config", "viewer", "ingress"},
+		{"backend", "config", "viewer", "ingress", "hostPrefix"},
+		{"web", "runtimeConfig"},
+		{"web", "nginx"},
+		{"web", "publicHost"},
+		{"web", "ingress", "tls", "secretName"},
+	} {
+		if hasYAMLPath(values, path...) {
+			t.Fatalf("%s duplicates config values", strings.Join(path, "."))
+		}
+	}
+}
+
+func TestDeployEntrypointInitializesPackagedValuesToAppsDir(t *testing.T) {
+	t.Parallel()
+
+	entrypointPath := filepath.Join(repoRoot(t), "deploy", "entrypoint.sh")
+	body, err := os.ReadFile(entrypointPath) //nolint:gosec // Test reads a committed repo fixture path.
+	if err != nil {
+		t.Fatalf("read deploy entrypoint: %v", err)
+	}
+	entrypoint := string(body)
+	for _, expected := range []string{
+		`APP_VALUES_DIR=${APP_VALUES_DIR:-"/root/.sealos/cloud/values/apps/storage-manager"}`,
+		`sync_packaged_app_values "$PACKAGED_APP_VALUES_FILE" "$APP_VALUES_DIR"`,
+		`source /root/.sealos/cloud/scripts/tools.sh`,
+		`if [ -d "$app_values_dir" ]; then`,
+		`warn "WARN: app values dir missing; initializing ${app_values_dir} from packaged values ${packaged_values_file}"`,
+		`cp -f "$packaged_values_file" "${app_values_dir}/storage-manager-values.yaml"`,
+		`HELM_VALUES_ARGS=()`,
+		`append_app_values "$APP_VALUES_DIR"`,
+		`global_http_disable_https`,
+		`global_http_effective_port`,
+		`global_http_external_url`,
+		`WEB_URL="$(global_http_external_url "$WEB_HOST")"`,
+		`EFFECTIVE_PORT="$(global_http_effective_port)"`,
+		`get_cm_value "$SEALOS_SYSTEM_NS" "$SEALOS_CONFIG_CM" cloudDomain`,
+		`get_cm_value "$SEALOS_SYSTEM_NS" "$SEALOS_CONFIG_CM" cloudPort`,
+		`get_cm_value "$SEALOS_SYSTEM_NS" "$SEALOS_CONFIG_CM" httpPort`,
+		`get_cm_value "$SEALOS_SYSTEM_NS" "$SEALOS_CONFIG_CM" disableHttps`,
+		`get_cm_value "$SEALOS_SYSTEM_NS" "$SEALOS_CONFIG_CM" certSecretName`,
+	} {
+		if !strings.Contains(entrypoint, expected) {
+			t.Fatalf("entrypoint missing %q", expected)
+		}
+	}
+	for _, forbidden := range []string{
+		"SEALOS_GLOBAL_VALUES_FILE",
+		"ensure_global_values_ready_for_component",
+		"read_global_value",
+		"read_yaml_file_path",
+		"truthy()",
+		"public_scheme()",
+		"effective_port()",
+		"public_port_suffix()",
+		"external_url()",
+		`HELM_VALUES_ARGS=("-f" "$PACKAGED_APP_VALUES_FILE")`,
+	} {
+		if strings.Contains(entrypoint, forbidden) {
+			t.Fatalf("entrypoint should not contain %q", forbidden)
+		}
+	}
+}
+
+func TestDeployChartDoesNotRenderNamespaceResource(t *testing.T) {
+	t.Parallel()
+
+	data := renderDeployChart(t)
+	decoder := yaml.NewDecoder(strings.NewReader(string(data)))
+	for {
+		var document struct {
+			Kind string `yaml:"kind"`
+		}
+		if err := decoder.Decode(&document); err != nil {
+			if err != io.EOF {
+				t.Fatalf("parse rendered deploy chart: %v", err)
+			}
+			break
+		}
+		if document.Kind == "Namespace" {
+			t.Fatalf("deploy chart must rely on helm --create-namespace, rendered Namespace resource:\n%s", data)
+		}
+	}
+}
+
+func TestDeployPackagedValuesUseUserLevelOverrides(t *testing.T) {
+	t.Parallel()
+
+	root := repoRoot(t)
+	valuesPath := filepath.Join(root, "deploy", "charts", "storage-manager", "storage-manager-values.yaml")
+	args := []string{
+		"-f", valuesPath,
+		"--set", "config.adminUserIds[0]=alice",
+		"--set", "config.hookClientToken=token-123",
+		"--set", "config.integrations.accountBaseUrl=http://account.example.svc:2333",
+		"--set", "config.integrations.prometheusBaseUrl=http://prom.example.svc:8481/select/0/prometheus",
+		"--set-string", "config.filebrowser.image=custom/filebrowser:v3",
+		"--set-string", "config.filebrowser.binaryPath=/custom-filebrowser",
+		"--set", "config.filebrowser.port=18080",
+		"--set-string", "config.filebrowser.tokenTtl=30m",
+		"--set-string", "config.filebrowser.loginTimeout=4s",
+		"--set-string", "config.filebrowser.pod.serviceAccountName=viewer-sa",
+		"--set-string", "config.filebrowser.pod.mountPath=/data",
+		"--set-string", "config.filebrowser.pod.databasePath=/tmp/custom.db",
+		"--set-string", "config.filebrowser.pod.cpuRequest=75m",
+		"--set-string", "config.filebrowser.pod.memoryRequest=96Mi",
+		"--set-string", "config.filebrowser.pod.cpuLimit=750m",
+		"--set-string", "config.filebrowser.pod.memoryLimit=768Mi",
+		"--set-string", "config.storageQuota.queryTimeout=9s",
+		"--set-string", "config.storageQuota.systemQuota=250Gi",
+		"--set-string", "config.pvcMetrics.queryTimeout=8s",
+		"--set", "config.viewer.hostPrefix=pvc-viewer",
+		"--set", "config.viewer.filebrowserLoginUrlMode=public",
+		"--set", "config.features.fileManagement=false",
+		"--set", "config.features.pvcMetrics=false",
+		"--set-string", "config.web.apiBaseUrl=/storage-api",
+		"--set-string", "config.runtimeConfig.forcedLanguage=zh-Hans",
+		"--set", "config.runtimeConfig.fileUploadTusThresholdBytes=12345",
+		"--set", "config.runtimeConfig.fileUploadTusChunkBytes=6789",
+		"--set", "config.runtimeConfig.fileUploadTusRetryCount=7",
+		"--set-string", "config.nginx.clientMaxBodySize=128m",
+		"--set", "cloudDomain=cloud.sealos.test",
+	}
+	viewerYAML := deployViewerYAML(t, args...)
+	for _, expected := range []string{
+		`- "alice"`,
+		`hook_client_token: "token-123"`,
+		`image: "custom/filebrowser:v3"`,
+		`binary_path: "/custom-filebrowser"`,
+		`port: 18080`,
+		`token_ttl: "30m"`,
+		`login_timeout: "4s"`,
+		`service_account_name: "viewer-sa"`,
+		`mount_path: "/data"`,
+		`database_path: "/tmp/custom.db"`,
+		`cpu_request: "75m"`,
+		`memory_request: "96Mi"`,
+		`cpu_limit: "750m"`,
+		`memory_limit: "768Mi"`,
+		`account_base_url: "http://account.example.svc:2333"`,
+		`query_timeout: "9s"`,
+		`system_quota: "250Gi"`,
+		`prometheus_base_url: "http://prom.example.svc:8481/select/0/prometheus"`,
+		`query_timeout: "8s"`,
+		`host_template: "pvc-viewer-{{ .PodSessionID }}.cloud.sealos.test"`,
+		`login_url_mode: "public"`,
+	} {
+		if !strings.Contains(viewerYAML, expected) {
+			t.Fatalf("viewer.yaml missing user-level value %q:\n%s", expected, viewerYAML)
+		}
+	}
+	viewerConfig := parseYAMLStringMap(t, "viewer.yaml", viewerYAML)
+	viewerSection := requiredYAMLMap(t, viewerConfig, "viewer")
+	fileManagement := requiredYAMLMap(t, viewerSection, "file_management")
+	pvcMetrics := requiredYAMLMap(t, viewerSection, "pvc_metrics")
+	if got := fileManagement["enabled"]; got != false {
+		t.Fatalf("viewer.file_management.enabled = %#v, want false", got)
+	}
+	if got := pvcMetrics["enabled"]; got != false {
+		t.Fatalf("viewer.pvc_metrics.enabled = %#v, want false", got)
+	}
+
+	renderedChart := string(renderDeployChartWithArgs(t, args...))
+	for _, expected := range []string{
+		`apiBaseUrl: "/storage-api"`,
+		`forcedLanguage: "zh-Hans"`,
+		`fileUploadTusThresholdBytes: 12345`,
+		`fileUploadTusChunkBytes: 6789`,
+		`fileUploadTusRetryCount: 7`,
+		`client_max_body_size 128m;`,
+	} {
+		if !strings.Contains(renderedChart, expected) {
+			t.Fatalf("rendered chart missing user-level value %q:\n%s", expected, renderedChart)
+		}
+	}
+
+	desktopDisabledChart := string(renderDeployChartWithArgs(t,
+		"-f", valuesPath,
+		"--set", "desktopApp.create=false",
+	))
+	if strings.Contains(desktopDisabledChart, "\nkind: App\n") {
+		t.Fatalf("desktopApp.create=false should not render App resource:\n%s", desktopDisabledChart)
+	}
+}
+
 func TestDeployChartDerivesPublicHostsFromCloudDomain(t *testing.T) {
 	t.Parallel()
 
 	viewerYAML := deployViewerYAML(t,
 		"--set", "cloudDomain=cloud.sealos.test",
 		"--set", "cloudPort=7443",
-		"--set", "web.publicHost=storage.cloud.sealos.test",
-		"--set", "backend.config.viewer.ingress.hostPrefix=pvc-viewer",
+		"--set", "config.web.publicHost=storage.cloud.sealos.test",
+		"--set", "config.viewer.hostPrefix=pvc-viewer",
 	)
 	if !strings.Contains(viewerYAML, `backend_verify_url: "http://viewer-backend.storage-manager.svc.cluster.local/internal/filebrowser-hook/verify"`) {
 		t.Fatalf("viewer.yaml missing derived backend verify URL:\n%s", viewerYAML)
@@ -619,7 +853,7 @@ func TestDeployChartAllowsBackendVerifyURLOverride(t *testing.T) {
 	t.Parallel()
 
 	viewerYAML := deployViewerYAML(t,
-		"--set", "backend.config.viewer.backendVerifyUrl=https://storage.cloud.sealos.test/internal/filebrowser-hook/verify",
+		"--set", "config.viewer.backendVerifyUrl=https://storage.cloud.sealos.test/internal/filebrowser-hook/verify",
 	)
 	if !strings.Contains(viewerYAML, `backend_verify_url: "https://storage.cloud.sealos.test/internal/filebrowser-hook/verify"`) {
 		t.Fatalf("viewer.yaml missing overridden backend verify URL:\n%s", viewerYAML)
@@ -712,6 +946,55 @@ func renderDeployChart(t *testing.T) []byte {
 	return renderDeployChartWithArgs(t)
 }
 
+func loadYAMLMap(t *testing.T, path string) map[string]any {
+	t.Helper()
+
+	body, err := os.ReadFile(path) //nolint:gosec // Test reads committed repo fixture paths.
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return parseYAMLStringMap(t, path, string(body))
+}
+
+func parseYAMLStringMap(t *testing.T, name string, body string) map[string]any {
+	t.Helper()
+
+	var out map[string]any
+	if err := yaml.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatalf("parse %s: %v", name, err)
+	}
+	return out
+}
+
+func requiredYAMLMap(t *testing.T, parent map[string]any, key string) map[string]any {
+	t.Helper()
+
+	value, ok := parent[key]
+	if !ok {
+		t.Fatalf("missing YAML map key %q", key)
+	}
+	nested, ok := value.(map[string]any)
+	if !ok {
+		t.Fatalf("YAML key %q is %T, want map[string]any", key, value)
+	}
+	return nested
+}
+
+func hasYAMLPath(root map[string]any, path ...string) bool {
+	var current any = root
+	for _, key := range path {
+		m, ok := current.(map[string]any)
+		if !ok {
+			return false
+		}
+		current, ok = m[key]
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+
 func renderDeployChartWithArgs(t *testing.T, args ...string) []byte {
 	t.Helper()
 
@@ -724,9 +1007,12 @@ func renderDeployChartWithArgs(t *testing.T, args ...string) []byte {
 	helmArgs = append(helmArgs, "template", "storage-manager", chartDir, "--namespace", "storage-manager")
 	helmArgs = append(helmArgs, args...)
 	cmd := exec.Command("helm", helmArgs...) //nolint:gosec // Test renders committed chart path.
-	output, err := cmd.CombinedOutput()
+	output, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("render deploy chart: %v\n%s", err, output)
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			t.Fatalf("render deploy chart: %v\n%s", err, exitErr.Stderr)
+		}
+		t.Fatalf("render deploy chart: %v", err)
 	}
 	return output
 }

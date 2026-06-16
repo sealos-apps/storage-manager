@@ -3,7 +3,7 @@
 {{- end -}}
 
 {{- define "storage-manager.namespace" -}}
-{{- default .Release.Namespace .Values.namespace.name -}}
+{{- .Release.Namespace -}}
 {{- end -}}
 
 {{- define "storage-manager.labels" -}}
@@ -67,7 +67,10 @@ app.kubernetes.io/instance: {{ .Release.Name | quote }}
 {{- end -}}
 
 {{- define "storage-manager.webHost" -}}
-{{- default (printf "storage-manager.%s" (default "127.0.0.1.nip.io" .Values.cloudDomain)) .Values.web.publicHost -}}
+{{- $config := default dict .Values.config -}}
+{{- $configWeb := default dict (get $config "web") -}}
+{{- $publicHost := get $configWeb "publicHost" -}}
+{{- default (printf "storage-manager.%s" (default "127.0.0.1.nip.io" .Values.cloudDomain)) $publicHost -}}
 {{- end -}}
 
 {{- define "storage-manager.webOrigin" -}}
@@ -75,20 +78,24 @@ app.kubernetes.io/instance: {{ .Release.Name | quote }}
 {{- end -}}
 
 {{- define "storage-manager.viewerHostTemplate" -}}
-{{- printf "%s-{{ .PodSessionID }}.%s" .Values.backend.config.viewer.ingress.hostPrefix (default "127.0.0.1.nip.io" .Values.cloudDomain) -}}
+{{- $config := default dict .Values.config -}}
+{{- $configViewer := default dict (get $config "viewer") -}}
+{{- $hostPrefix := get $configViewer "hostPrefix" -}}
+{{- printf "%s-{{ .PodSessionID }}.%s" $hostPrefix (default "127.0.0.1.nip.io" .Values.cloudDomain) -}}
 {{- end -}}
 
 {{- define "storage-manager.viewerTLSSecretName" -}}
-{{- if .Values.backend.config.viewer.ingress.tlsSecretName -}}
-{{- .Values.backend.config.viewer.ingress.tlsSecretName -}}
-{{- else if not (eq (toString (default false .Values.disableHttps)) "true") -}}
+{{- if not (eq (toString (default false .Values.disableHttps)) "true") -}}
 {{- (default "wildcard-cert" .Values.certSecretName) -}}
 {{- end -}}
 {{- end -}}
 
 {{- define "storage-manager.backendVerifyURL" -}}
-{{- if .Values.backend.config.viewer.backendVerifyUrl -}}
-{{- .Values.backend.config.viewer.backendVerifyUrl -}}
+{{- $config := default dict .Values.config -}}
+{{- $configViewer := default dict (get $config "viewer") -}}
+{{- $backendVerifyURL := get $configViewer "backendVerifyUrl" -}}
+{{- if $backendVerifyURL -}}
+{{- $backendVerifyURL -}}
 {{- else -}}
 {{- include "storage-manager.backendURL" . -}}/internal/filebrowser-hook/verify
 {{- end -}}

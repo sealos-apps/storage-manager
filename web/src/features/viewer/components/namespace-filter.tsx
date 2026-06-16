@@ -40,13 +40,21 @@ export function NamespaceFilter({
 	const [value, setValue] = useState<string | null>(null)
 	const selectedNamespace = namespace || value || ''
 	const optionLabel = (item: string) => item === ALL_NAMESPACES ? t('viewer.allNamespaces') : item
+	const filterOption = (item: string, query: string) => {
+		if (item === ALL_NAMESPACES) {
+			return true
+		}
+
+		const normalizedQuery = query.trim().toLowerCase()
+		return normalizedQuery === '' || optionLabel(item).toLowerCase().includes(normalizedQuery)
+	}
 
 	return (
 		<div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center md:justify-end">
 			{canSelectNamespaces
 				? (
 						<Combobox
-							filter={null}
+							filter={filterOption}
 							itemToStringLabel={optionLabel}
 							onValueChange={(nextNamespace) => {
 								if (nextNamespace) {

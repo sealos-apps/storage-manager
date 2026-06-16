@@ -31,6 +31,6 @@ spec:
   tls:
     - hosts:
         - {{ include "storage-manager.webHost" . | quote }}
-      secretName: {{ default (default "wildcard-cert" .Values.certSecretName) .Values.web.ingress.tls.secretName | quote }}
+      secretName: {{ default "wildcard-cert" .Values.certSecretName | quote }}
   {{- end }}
 {{- end }}
