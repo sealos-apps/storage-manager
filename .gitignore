@@ -12,6 +12,7 @@ config/viewer.debug.yaml
 config/viewer.integration.yaml
 config/*.local.yaml
 coverage.out
+openapi.json
 dist/
 tmp/
 .encore/
