@@ -46,6 +46,7 @@ export function NamespaceFilter({
 			{canSelectNamespaces
 				? (
 						<Combobox
+							filter={null}
 							itemToStringLabel={optionLabel}
 							onValueChange={(nextNamespace) => {
 								if (nextNamespace) {
