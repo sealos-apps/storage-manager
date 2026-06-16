@@ -33,6 +33,7 @@ type Interface interface {
 	UpdateStorageClass(ctx context.Context, storageClass *storagev1.StorageClass) (*storagev1.StorageClass, error)
 	DeleteStorageClass(ctx context.Context, name string) error
 	ListPods(ctx context.Context, namespace string) ([]corev1.Pod, error)
+	ListAllPods(ctx context.Context) ([]corev1.Pod, error)
 	ListViewerPods(ctx context.Context, namespace string, labels map[string]string) ([]corev1.Pod, error)
 	GetPod(ctx context.Context, namespace string, name string) (*corev1.Pod, error)
 	CreatePod(ctx context.Context, pod *corev1.Pod) (*corev1.Pod, error)
@@ -173,11 +174,25 @@ func (c *Client) DeleteStorageClass(ctx context.Context, name string) error {
 }
 
 func (c *Client) ListPods(ctx context.Context, namespace string) ([]corev1.Pod, error) {
-	list, err := c.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
+	list, err := c.clientset.CoreV1().Pods(namespace).List(ctx, activePodsListOptions())
 	if err != nil {
 		return nil, fmt.Errorf("listing pods in %s: %w", namespace, err)
 	}
 	return list.Items, nil
+}
+
+func (c *Client) ListAllPods(ctx context.Context) ([]corev1.Pod, error) {
+	list, err := c.clientset.CoreV1().Pods("").List(ctx, activePodsListOptions())
+	if err != nil {
+		return nil, fmt.Errorf("listing all pods: %w", err)
+	}
+	return list.Items, nil
+}
+
+func activePodsListOptions() metav1.ListOptions {
+	return metav1.ListOptions{
+		FieldSelector: "status.phase!=Succeeded,status.phase!=Failed",
+	}
 }
 
 func (c *Client) ListViewerPods(

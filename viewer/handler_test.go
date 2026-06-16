@@ -3,6 +3,8 @@ package viewer
 import (
 	"context"
 	"errors"
+	"slices"
+	"strings"
 	"sync"
 
 	"github.com/nixieboluo/sealos-storage-manager/internal/accountquota"
@@ -16,23 +18,25 @@ import (
 )
 
 type fakeViewerService struct {
-	pvcs           []domain.PVC
-	pvc            *domain.PVC
-	namespaces     []corev1.Namespace
-	storageClasses []domain.StorageClass
-	created        *domain.ViewerSession
-	createInput    *session.CreateViewerSessionInput
-	deleteInput    *session.DeletePVCInput
-	expandInput    *session.ExpandPVCInput
-	pvcInput       *session.CreatePVCInput
-	token          *domain.ViewerToken
-	tokenInput     *viewerSessionCall
-	heartbeat      *domain.Heartbeat
-	heartbeatInput *viewerSessionCall
-	closed         *domain.ViewerSession
-	closeInput     *viewerSessionCall
-	podSession     *domain.PodSession
-	podSessionErr  error
+	pvcs            []domain.PVC
+	pvcBatchInput   *[]string
+	pvcsByNamespace map[string][]domain.PVC
+	pvc             *domain.PVC
+	namespaces      []corev1.Namespace
+	storageClasses  []domain.StorageClass
+	created         *domain.ViewerSession
+	createInput     *session.CreateViewerSessionInput
+	deleteInput     *session.DeletePVCInput
+	expandInput     *session.ExpandPVCInput
+	pvcInput        *session.CreatePVCInput
+	token           *domain.ViewerToken
+	tokenInput      *viewerSessionCall
+	heartbeat       *domain.Heartbeat
+	heartbeatInput  *viewerSessionCall
+	closed          *domain.ViewerSession
+	closeInput      *viewerSessionCall
+	podSession      *domain.PodSession
+	podSessionErr   error
 }
 
 type viewerSessionCall struct {
@@ -140,12 +144,52 @@ contexts:
 `
 
 func (f *fakeViewerService) ListPVCs(_ context.Context, namespace string) ([]domain.PVC, error) {
+	if f.pvcsByNamespace != nil {
+		items := append([]domain.PVC(nil), f.pvcsByNamespace[namespace]...)
+		for i := range items {
+			if items[i].Namespace == "" {
+				items[i].Namespace = namespace
+			}
+		}
+		return items, nil
+	}
 	if len(f.pvcs) > 0 {
 		for i := range f.pvcs {
 			f.pvcs[i].Namespace = namespace
 		}
 	}
 	return f.pvcs, nil
+}
+
+func (f *fakeViewerService) ListPVCsInNamespaces(_ context.Context, namespaces []string) ([]domain.PVC, error) {
+	if f.pvcBatchInput != nil {
+		*f.pvcBatchInput = append((*f.pvcBatchInput)[:0], namespaces...)
+	}
+	if f.pvcsByNamespace != nil {
+		var items []domain.PVC
+		for _, namespace := range namespaces {
+			namespaceItems := append([]domain.PVC(nil), f.pvcsByNamespace[namespace]...)
+			for i := range namespaceItems {
+				if namespaceItems[i].Namespace == "" {
+					namespaceItems[i].Namespace = namespace
+				}
+			}
+			items = append(items, namespaceItems...)
+		}
+		slices.SortFunc(items, compareFakePVCs)
+		return items, nil
+	}
+	return f.pvcs, nil
+}
+
+func compareFakePVCs(a domain.PVC, b domain.PVC) int {
+	if a.Namespace != b.Namespace {
+		return strings.Compare(a.Namespace, b.Namespace)
+	}
+	if a.Name != b.Name {
+		return strings.Compare(a.Name, b.Name)
+	}
+	return strings.Compare(a.UID, b.UID)
 }
 
 func (f *fakeViewerService) ListNamespaces(_ context.Context) ([]corev1.Namespace, error) {

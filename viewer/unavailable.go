@@ -21,6 +21,10 @@ func (unavailableViewerService) ListPVCs(_ context.Context, _ string) ([]domain.
 	return nil, errRuntimeUnavailable
 }
 
+func (unavailableViewerService) ListPVCsInNamespaces(_ context.Context, _ []string) ([]domain.PVC, error) {
+	return nil, errRuntimeUnavailable
+}
+
 func (unavailableViewerService) CreatePVC(_ context.Context, _ session.CreatePVCInput) (*domain.PVC, error) {
 	return nil, errRuntimeUnavailable
 }

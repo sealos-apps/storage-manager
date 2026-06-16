@@ -93,6 +93,7 @@ export const en = {
 	viewer: {
 		accessModes: 'Access modes',
 		activeSession: 'Active session',
+		allNamespaces: 'All spaces',
 		capacity: 'Capacity',
 		filterNamespaces: 'Filter namespaces',
 		heartbeat: 'Heartbeat',
@@ -230,6 +231,7 @@ export const en = {
 		expand: 'Expand PVC',
 		expanded: 'PVC expanded',
 		expandHint: 'Kubernetes only supports increasing PVC size. Shrinking is not supported.',
+		mountDetectionUnavailable: 'Mount detection off',
 		mountedCount: 'Mounted volumes',
 		name: 'Name',
 		nameRequired: 'Name is required.',
@@ -237,6 +239,7 @@ export const en = {
 		storageClass: 'Storage class',
 		storageQuotaAvailable: 'Storage quota available: {{quantity}}.',
 		targetCapacity: 'Target capacity',
+		targetNamespace: 'Target namespace',
 		totalAllocated: 'Total allocated',
 		typeNameToConfirm: 'Type PVC name to confirm',
 		unusedCount: 'Unused volumes',

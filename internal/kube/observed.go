@@ -164,6 +164,16 @@ func (c observedClient) ListPods(ctx context.Context, namespace string) ([]corev
 	return pods, err
 }
 
+func (c observedClient) ListAllPods(ctx context.Context) ([]corev1.Pod, error) {
+	var pods []corev1.Pod
+	err := c.observe(ctx, "list", "pods", "", "", func(ctx context.Context) error {
+		var err error
+		pods, err = c.next.ListAllPods(ctx)
+		return err
+	})
+	return pods, err
+}
+
 func (c observedClient) ListViewerPods(
 	ctx context.Context,
 	namespace string,

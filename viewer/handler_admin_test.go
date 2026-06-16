@@ -468,6 +468,96 @@ func TestHandlerAdminImplicitPVCOperationsUseRequestedSystemNamespace(t *testing
 	}
 }
 
+func TestHandlerAdminListAllPVCsAggregatesAllowedNamespaces(t *testing.T) {
+	t.Parallel()
+
+	var batchInput []string
+	handler := NewHandler(
+		&fakeViewerService{
+			pvcBatchInput: &batchInput,
+			namespaces: []corev1.Namespace{
+				{ObjectMeta: metav1.ObjectMeta{Name: "z-system"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "ns-other-user"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "kube-system"}},
+			},
+			pvcsByNamespace: map[string][]domain.PVC{
+				"ns-admin": {
+					{Name: "user-data", UID: "uid-user", MountedPods: []domain.MountedPod{}},
+				},
+				"kube-system": {
+					{Name: "kube-data", UID: "uid-kube", MountedPods: []domain.MountedPod{}},
+				},
+				"z-system": {
+					{Name: "z-data", UID: "uid-z", MountedPods: []domain.MountedPod{}},
+				},
+			},
+		},
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+		WithAdminAuthorizer(allowAdminAuthorizer{}),
+	)
+	req := httptest.NewRequest(http.MethodGet, "/pvcs?namespace=__all__", nil)
+	req.Header.Set("Authorization", url.QueryEscape(testUserNamespaceKubeconfig))
+	recorder := httptest.NewRecorder()
+
+	handler.ListPVCs(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	body := recorder.Body.String()
+	for _, want := range []string{
+		`"namespace":"kube-system","name":"kube-data"`,
+		`"namespace":"ns-admin","name":"user-data"`,
+		`"namespace":"z-system","name":"z-data"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %s in body %s", want, body)
+		}
+	}
+	if strings.Contains(body, "ns-other-user") {
+		t.Fatalf("user namespace leaked: %s", body)
+	}
+	if strings.Join(batchInput, ",") != "ns-admin,kube-system,z-system" {
+		t.Fatalf("batch namespaces = %#v", batchInput)
+	}
+	kubeIndex := strings.Index(body, `"namespace":"kube-system"`)
+	userIndex := strings.Index(body, `"namespace":"ns-admin"`)
+	zIndex := strings.Index(body, `"namespace":"z-system"`)
+	if kubeIndex >= userIndex || userIndex >= zIndex {
+		t.Fatalf("PVCs are not sorted by namespace/name: %s", body)
+	}
+}
+
+func TestHandlerAdminListAllPVCsRequiresAdmin(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(
+		&fakeViewerService{},
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+		WithAdminAuthorizer(denyTestAdminAuthorizer{}),
+	)
+	req := httptest.NewRequest(http.MethodGet, "/pvcs?namespace=__all__", nil)
+	req.Header.Set("Authorization", url.QueryEscape(testUserNamespaceKubeconfig))
+	recorder := httptest.NewRecorder()
+
+	handler.ListPVCs(recorder, req)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), string(apienv.CodeAdminAccessDenied)) {
+		t.Fatalf("body = %s", recorder.Body.String())
+	}
+}
+
 func TestHandlerAdminImplicitPVCRequiresOwnNamespaceContext(t *testing.T) {
 	t.Parallel()
 

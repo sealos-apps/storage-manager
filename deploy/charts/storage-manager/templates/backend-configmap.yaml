@@ -18,6 +18,7 @@ kind: ConfigMap
 {{- $pvcCreationEnabled := get $configFeatures "pvcCreation" }}
 {{- $storageQuotaEnabled := get $configFeatures "storageQuota" }}
 {{- $pvcMetricsEnabled := get $configFeatures "pvcMetrics" }}
+{{- $pvcMountDetectionEnabled := get $configFeatures "pvcMountDetection" }}
 {{- $accountBaseURL := default "" (get $configIntegrations "accountBaseUrl") }}
 {{- $prometheusBaseURL := default "" (get $configIntegrations "prometheusBaseUrl") }}
 metadata:
@@ -122,6 +123,8 @@ data:
         enabled: {{ $pvcMetricsEnabled }}
         prometheus_base_url: {{ $prometheusBaseURL | quote }}
         query_timeout: {{ get $configPVCMetrics "queryTimeout" | quote }}
+      pvc_mount_detection:
+        enabled: {{ $pvcMountDetectionEnabled }}
       pod:
         service_account_name: {{ get $configFilebrowserPod "serviceAccountName" | quote }}
         mount_path: {{ get $configFilebrowserPod "mountPath" | quote }}

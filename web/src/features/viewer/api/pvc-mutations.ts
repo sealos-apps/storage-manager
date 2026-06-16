@@ -4,6 +4,7 @@ import type { CreatePVCInput, DeletePVCInput, ExpandPVCInput, PVC, ViewerAPI } f
 import { mutationOptions } from '@tanstack/react-query'
 
 import { viewerApi } from '@/features/viewer/api/viewer-api'
+import { ALL_NAMESPACES } from '@/features/viewer/api/viewer-constants'
 import { viewerKeys } from '@/features/viewer/api/viewer-query-keys'
 
 export function createPVCMutationOptions(
@@ -25,6 +26,7 @@ export function createPVCMutationOptions(
 				capacity: input.capacity,
 				access_modes: input.accessModes,
 				storage_class_name: input.storageClassName,
+				mount_status: '',
 				mounted: false,
 				mounted_pods: [],
 				viewer_supported: true,
@@ -61,6 +63,9 @@ export function createPVCMutationOptions(
 				queryKey: viewerKeys.pvcs(variables.namespace),
 			})
 			void queryClient.invalidateQueries({
+				queryKey: viewerKeys.pvcs(ALL_NAMESPACES),
+			})
+			void queryClient.invalidateQueries({
 				queryKey: viewerKeys.storageQuota(variables.namespace),
 			})
 		},
@@ -92,6 +97,9 @@ export function deletePVCMutationOptions(
 		onSettled: (_data, _error, variables) => {
 			void queryClient.invalidateQueries({
 				queryKey: viewerKeys.pvcs(variables.namespace),
+			})
+			void queryClient.invalidateQueries({
+				queryKey: viewerKeys.pvcs(ALL_NAMESPACES),
 			})
 			void queryClient.invalidateQueries({
 				queryKey: viewerKeys.storageQuota(variables.namespace),
@@ -141,6 +149,9 @@ export function expandPVCMutationOptions(
 		onSettled: (_data, _error, variables) => {
 			void queryClient.invalidateQueries({
 				queryKey: viewerKeys.pvcs(variables.namespace),
+			})
+			void queryClient.invalidateQueries({
+				queryKey: viewerKeys.pvcs(ALL_NAMESPACES),
 			})
 		},
 	})

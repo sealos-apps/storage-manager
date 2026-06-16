@@ -36,6 +36,7 @@ import { canLaunchViewer } from '@/features/viewer/utils/viewer-status'
 interface VolumesViewProps {
 	actions: ReactNode
 	fileManagementEnabled: boolean
+	showNamespaceColumn?: boolean
 	onDelete: (pvc: PVC) => void
 	onExpand: (pvc: PVC) => void
 	onOpenFiles: (pvc: PVC) => void
@@ -47,6 +48,7 @@ interface VolumesViewProps {
 export function VolumesView({
 	actions,
 	fileManagementEnabled,
+	showNamespaceColumn = false,
 	onDelete,
 	onExpand,
 	onOpenFiles,
@@ -63,8 +65,9 @@ export function VolumesView({
 			})
 		: pvcs
 	const capacity = pvcs.reduce((total, pvc) => total + pvc.capacity_bytes, 0)
-	const mounted = pvcs.filter(pvc => pvc.mounted).length
-	const unused = pvcs.length - mounted
+	const mountDetectionAvailable = pvcs.every(pvc => pvc.mount_status !== 'unknown')
+	const mounted = mountDetectionAvailable ? pvcs.filter(pvc => pvc.mounted).length : null
+	const unused = mounted === null ? null : pvcs.length - mounted
 
 	return (
 		<section className="flex flex-col gap-4">
@@ -79,8 +82,8 @@ export function VolumesView({
 
 			<div className="grid gap-3 md:grid-cols-3">
 				<MetricCard label={t('volumes.totalAllocated')} value={formatBytes(capacity)} />
-				<MetricCard label={t('volumes.mountedCount')} value={String(mounted)} />
-				<MetricCard label={t('volumes.unusedCount')} value={String(unused)} />
+				<MetricCard label={t('volumes.mountedCount')} value={mounted === null ? t('volumes.mountDetectionUnavailable') : String(mounted)} />
+				<MetricCard label={t('volumes.unusedCount')} value={unused === null ? t('volumes.mountDetectionUnavailable') : String(unused)} />
 			</div>
 
 			{pvcQuery.isLoading ? <PVCListSkeleton /> : null}
@@ -98,6 +101,7 @@ export function VolumesView({
 								<TableHeader>
 									<TableRow>
 										<TableHead>{t('viewer.pvc')}</TableHead>
+										{showNamespaceColumn ? <TableHead>{t('common.namespace')}</TableHead> : null}
 										<TableHead>{t('volumes.usage')}</TableHead>
 										<TableHead>{t('viewer.storageClass')}</TableHead>
 										<TableHead>{t('viewer.accessModes')}</TableHead>
@@ -113,12 +117,13 @@ export function VolumesView({
 											onOpenFiles={onOpenFiles}
 											fileManagementEnabled={fileManagementEnabled}
 											pvc={pvc}
+											showNamespaceColumn={showNamespaceColumn}
 										/>
 									))}
 									{filteredPVCs.length === 0
 										? (
 												<TableRow>
-													<TableCell className="py-12 text-center text-muted-foreground" colSpan={5}>
+													<TableCell className="py-12 text-center text-muted-foreground" colSpan={showNamespaceColumn ? 6 : 5}>
 														{storageClasses.length === 0 ? t('common.empty') : t('volumes.empty')}
 													</TableCell>
 												</TableRow>
@@ -148,9 +153,10 @@ interface PVCRowProps {
 	onExpand: (pvc: PVC) => void
 	onOpenFiles: (pvc: PVC) => void
 	pvc: PVC
+	showNamespaceColumn: boolean
 }
 
-function PVCRow({ fileManagementEnabled, onDelete, onExpand, onOpenFiles, pvc }: PVCRowProps) {
+function PVCRow({ fileManagementEnabled, onDelete, onExpand, onOpenFiles, pvc, showNamespaceColumn }: PVCRowProps) {
 	const { t } = useTranslation()
 	const mountedTarget = pvc.mounted_pods[0]
 	const canDelete = !pvc.mounted
@@ -166,11 +172,18 @@ function PVCRow({ fileManagementEnabled, onDelete, onExpand, onOpenFiles, pvc }:
 						<span className="truncate font-medium">{pvc.name}</span>
 						<div className="flex shrink-0 items-center gap-1">
 							<PVCStatusBadge pvc={pvc} />
-							<PVCMountedBadge mounted={pvc.mounted} mountedPodName={mountedTarget?.name} />
+							<PVCMountedBadge mounted={pvc.mounted} mountedPodName={mountedTarget?.name} mountStatus={pvc.mount_status} />
 						</div>
 					</div>
 				</div>
 			</TableCell>
+			{showNamespaceColumn
+				? (
+						<TableCell>
+							<span className="text-sm">{pvc.namespace}</span>
+						</TableCell>
+					)
+				: null}
 			<TableCell>
 				<PVCUsageCell pvc={pvc} />
 			</TableCell>
@@ -225,8 +238,19 @@ function PVCRow({ fileManagementEnabled, onDelete, onExpand, onOpenFiles, pvc }:
 	)
 }
 
-function PVCMountedBadge({ mounted, mountedPodName }: { mounted: boolean, mountedPodName?: string }) {
+function PVCMountedBadge({
+	mounted,
+	mountedPodName,
+	mountStatus,
+}: {
+	mounted: boolean
+	mountedPodName?: string
+	mountStatus?: string
+}) {
 	const { t } = useTranslation()
+	if (mountStatus === 'unknown') {
+		return <Badge variant="outline">{t('volumes.mountDetectionUnavailable')}</Badge>
+	}
 	const badge = (
 		<Badge variant={mounted ? 'default' : 'outline'}>
 			{mounted ? t('status.mounted') : t('status.ready')}

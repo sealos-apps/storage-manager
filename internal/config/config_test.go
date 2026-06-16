@@ -93,6 +93,8 @@ viewer:
     enabled: true
     prometheus_base_url: http://vmselect.vm.svc:8481/select/0/prometheus
     query_timeout: 4s
+  pvc_mount_detection:
+    enabled: false
 observability:
   logs:
     level: debug
@@ -177,6 +179,9 @@ admin:
 	if cfg.Viewer.PVCMetrics.QueryTimeout != 4*time.Second {
 		t.Fatalf("viewer pvc metrics query timeout = %s", cfg.Viewer.PVCMetrics.QueryTimeout)
 	}
+	if cfg.Viewer.PVCMountDetection.Enabled {
+		t.Fatal("viewer.pvc_mount_detection.enabled = true")
+	}
 	if cfg.Observability.Traces.Endpoint != "http://otel-collector:4318/v1/traces" {
 		t.Fatalf("trace endpoint = %q", cfg.Observability.Traces.Endpoint)
 	}
@@ -200,6 +205,9 @@ func TestDefaultOmitsDeploymentValues(t *testing.T) {
 	}
 	if !cfg.Viewer.PVCCreation.Enabled {
 		t.Fatal("viewer.pvc_creation.enabled default = false")
+	}
+	if !cfg.Viewer.PVCMountDetection.Enabled {
+		t.Fatal("viewer.pvc_mount_detection.enabled default = false")
 	}
 	if cfg.Viewer.BackendVerifyURL != "" ||
 		cfg.Viewer.HookClientToken != "" ||
@@ -516,6 +524,9 @@ func TestDeployChartValuesEmbedValidViewerConfig(t *testing.T) {
 	}
 	if !strings.Contains(viewerYAML, "pvc_metrics:\n    enabled: true\n    prometheus_base_url: \"http://vmselect-vm-stack-victoria-metrics-k8s-stack.vm.svc.cluster.local:8481/select/0/prometheus\"\n    query_timeout: \"3s\"") {
 		t.Fatalf("viewer.yaml missing pvc_metrics configuration:\n%s", viewerYAML)
+	}
+	if !strings.Contains(viewerYAML, "pvc_mount_detection:\n    enabled: true") {
+		t.Fatalf("viewer.yaml missing pvc_mount_detection configuration:\n%s", viewerYAML)
 	}
 	for _, forbidden := range []string{
 		"namespace_allowlist",

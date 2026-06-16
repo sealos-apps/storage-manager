@@ -10,12 +10,16 @@ import (
 )
 
 type StorageClassYAML struct {
+	// Name is the Kubernetes StorageClass name represented by the YAML.
 	Name string `json:"name"`
+	// YAML is an editable storage.k8s.io/v1 StorageClass manifest with server-managed fields removed.
 	YAML string `json:"yaml"`
 }
 
 type StorageClassDescribe struct {
-	Name     string `json:"name"`
+	// Name is the Kubernetes StorageClass name described by the text output.
+	Name string `json:"name"`
+	// Describe is kubectl-style diagnostic text for the StorageClass.
 	Describe string `json:"describe"`
 }
 
