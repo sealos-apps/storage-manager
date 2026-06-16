@@ -1,10 +1,11 @@
 import type { AdminNamespace } from '@/features/viewer/types/viewer'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
 	Combobox,
+	ComboboxCollection,
 	ComboboxContent,
 	ComboboxInput,
 	ComboboxItem,
@@ -39,15 +40,20 @@ export function NamespaceFilter({
 	)
 	const [value, setValue] = useState<string | null>(null)
 	const selectedNamespace = namespace || value || ''
-	const optionLabel = (item: string) => item === ALL_NAMESPACES ? t('viewer.allNamespaces') : item
-	const filterOption = (item: string, query: string) => {
+	const optionLabel = useCallback((item: string) => item === ALL_NAMESPACES ? t('viewer.allNamespaces') : item, [t])
+	const selectedLabel = selectedNamespace ? optionLabel(selectedNamespace) : ''
+	const [isSearching, setIsSearching] = useState(false)
+	const [searchValue, setSearchValue] = useState('')
+	const inputValue = isSearching ? searchValue : selectedLabel
+	const filterOption = useCallback((item: string, query: string, itemToString?: (item: string) => string) => {
 		if (item === ALL_NAMESPACES) {
 			return true
 		}
 
 		const normalizedQuery = query.trim().toLowerCase()
-		return normalizedQuery === '' || optionLabel(item).toLowerCase().includes(normalizedQuery)
-	}
+		const label = itemToString ? itemToString(item) : optionLabel(item)
+		return normalizedQuery === '' || label.toLowerCase().includes(normalizedQuery)
+	}, [optionLabel])
 
 	return (
 		<div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center md:justify-end">
@@ -55,9 +61,14 @@ export function NamespaceFilter({
 				? (
 						<Combobox
 							filter={filterOption}
+							inputValue={inputValue}
+							items={options}
 							itemToStringLabel={optionLabel}
+							onInputValueChange={setSearchValue}
 							onValueChange={(nextNamespace) => {
 								if (nextNamespace) {
+									setIsSearching(false)
+									setSearchValue('')
 									setValue(nextNamespace)
 									onNamespaceChange(nextNamespace)
 								}
@@ -68,18 +79,18 @@ export function NamespaceFilter({
 								aria-label={t('viewer.systemNamespace')}
 								className="w-full md:w-60"
 								disabled={isLoadingNamespaces || namespaces.length === 0}
-								onFocus={event => event.currentTarget.select()}
+								onBlur={() => {
+									setIsSearching(false)
+									setSearchValue('')
+								}}
+								onFocus={() => {
+									setIsSearching(true)
+									setSearchValue('')
+								}}
 								placeholder={isLoadingNamespaces ? t('common.loading') : t('viewer.filterNamespaces')}
 							/>
 							<ComboboxContent align="end">
-								<ComboboxList>
-									{options.map((item, index) => (
-										<ComboboxItem index={index} key={item} value={item}>
-											<span className="min-w-0 flex-1 truncate">{optionLabel(item)}</span>
-											{currentContextNames.has(item) ? <span className="text-xs text-muted-foreground">{t('common.current')}</span> : null}
-										</ComboboxItem>
-									))}
-								</ComboboxList>
+								<NamespaceOptionList currentContextNames={currentContextNames} optionLabel={optionLabel} />
 							</ComboboxContent>
 						</Combobox>
 					)
@@ -94,5 +105,27 @@ export function NamespaceFilter({
 						</div>
 					)}
 		</div>
+	)
+}
+
+interface NamespaceOptionListProps {
+	currentContextNames: Set<string>
+	optionLabel: (item: string) => string
+}
+
+function NamespaceOptionList({ currentContextNames, optionLabel }: NamespaceOptionListProps) {
+	const { t } = useTranslation()
+
+	return (
+		<ComboboxList>
+			<ComboboxCollection>
+				{(item: string, index: number) => (
+					<ComboboxItem index={index} key={item} value={item}>
+						<span className="min-w-0 flex-1 truncate">{optionLabel(item)}</span>
+						{currentContextNames.has(item) ? <span className="text-xs text-muted-foreground">{t('common.current')}</span> : null}
+					</ComboboxItem>
+				)}
+			</ComboboxCollection>
+		</ComboboxList>
 	)
 }

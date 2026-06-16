@@ -411,8 +411,8 @@ describe('storageAppShell', () => {
 		renderWithProviders(<StorageAppShell api={api} />)
 
 		const namespaceCombobox = await screen.findByRole('combobox', { name: /system namespace/i })
-		await user.type(namespaceCombobox, 'ns-admin')
 		await user.click(namespaceCombobox)
+		await user.type(namespaceCombobox, 'ns-admin')
 		expect(await screen.findByText('All spaces')).toBeInTheDocument()
 		expect(screen.queryByRole('option', { name: /kube-system/i })).not.toBeInTheDocument()
 		await user.click(await screen.findByText('All spaces'))
