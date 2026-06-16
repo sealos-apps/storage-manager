@@ -1,5 +1,5 @@
 import type { UseMutationResult } from '@tanstack/react-query'
-import type { PVC, StorageClass, StorageQuota } from '@/features/viewer/types/viewer'
+import type { AdminNamespace, PVC, StorageClass, StorageQuota } from '@/features/viewer/types/viewer'
 
 import { useForm } from '@tanstack/react-form'
 import { useState } from 'react'
@@ -68,8 +68,11 @@ export interface DeletePVCState {
 interface CreatePVCDialogProps {
 	mutation: UseMutationResult<PVC, Error, CreatePVCVariables>
 	namespace: string
+	namespaceOptions?: AdminNamespace[]
 	onOpenChange: (open: boolean) => void
+	onNamespaceChange?: (namespace: string) => void
 	open: boolean
+	selectedNamespace?: string
 	storageClasses: StorageClass[]
 	storageQuota: StorageQuota | null
 }
@@ -77,14 +80,18 @@ interface CreatePVCDialogProps {
 export function CreatePVCDialog({
 	mutation,
 	namespace,
+	namespaceOptions = [],
 	onOpenChange,
+	onNamespaceChange,
 	open,
+	selectedNamespace = namespace,
 	storageClasses,
 	storageQuota,
 }: CreatePVCDialogProps) {
 	const { t } = useTranslation()
 	const firstStorageClass = storageClasses[0]
 	const [selection, setSelection] = useState({ accessMode: '', storageClassName: '' })
+	const targetNamespace = namespaceOptions.length > 0 ? selectedNamespace : namespace
 	const activeStorageClassName = storageClasses.some(storageClass => storageClass.name === selection.storageClassName)
 		? selection.storageClassName
 		: firstStorageClass?.name ?? ''
@@ -107,7 +114,7 @@ export function CreatePVCDialog({
 				return
 			}
 			mutation.mutate({
-				namespace,
+				namespace: targetNamespace,
 				name: value.name.trim(),
 				capacity: `${capacityGi}Gi`,
 				capacityBytes: capacityGi * bytesPerGi,
@@ -167,14 +174,36 @@ export function CreatePVCDialog({
 							</FormField>
 						)}
 					</form.Field>
-					<div className="rounded-md border bg-muted px-3 py-2 text-sm">
-						<span className="text-muted-foreground">
-							{t('common.namespace')}
-							:
-							{' '}
-						</span>
-						<span className="font-medium">{namespace || t('common.loading')}</span>
-					</div>
+					{namespaceOptions.length > 0
+						? (
+								<FormField id="pvc-target-namespace" label={t('volumes.targetNamespace')}>
+									<Select onValueChange={value => onNamespaceChange?.(value)} value={targetNamespace}>
+										<SelectTrigger className="w-full" id="pvc-target-namespace">
+											<SelectValue placeholder={t('volumes.targetNamespace')} />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectGroup>
+												{namespaceOptions.map(item => (
+													<SelectItem key={item.name} value={item.name}>
+														{item.name}
+														{item.is_current_context ? ` · ${t('common.current')}` : ''}
+													</SelectItem>
+												))}
+											</SelectGroup>
+										</SelectContent>
+									</Select>
+								</FormField>
+							)
+						: (
+								<div className="rounded-md border bg-muted px-3 py-2 text-sm">
+									<span className="text-muted-foreground">
+										{t('common.namespace')}
+										:
+										{' '}
+									</span>
+									<span className="font-medium">{namespace || t('common.loading')}</span>
+								</div>
+							)}
 					<form.Field
 						name="capacityGi"
 						validators={{
@@ -252,7 +281,7 @@ export function CreatePVCDialog({
 									disabled={
 										mutation.isPending
 										|| !canSubmit
-										|| !namespace
+										|| !targetNamespace
 										|| values.name.trim().length === 0
 										|| parseCapacityGi(values.capacityGi) === null
 										|| exceedsStorageQuota((parseCapacityGi(values.capacityGi) ?? 0) * bytesPerGi, storageQuota)

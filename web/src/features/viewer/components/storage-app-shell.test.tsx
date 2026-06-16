@@ -5,6 +5,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ALL_NAMESPACES } from '@/features/viewer/api/viewer-constants'
 import { ViewerApiError } from '@/features/viewer/api/viewer-error'
 import { StorageAppShell } from '@/features/viewer/components/storage-app-shell'
 import { viewerUIStore } from '@/features/viewer/stores/viewer-ui-store'
@@ -379,6 +380,110 @@ describe('storageAppShell', () => {
 		await waitFor(() => expect(createViewerSession).toHaveBeenCalledWith({
 			namespace: 'kube-system',
 			pvcName: 'system-data',
+		}))
+	})
+
+	it('lets admins view all namespaces through the backend all token', async () => {
+		const user = userEvent.setup()
+		const listPVCs = vi.fn().mockImplementation(async ({ namespace }: { namespace: string }) => {
+			if (namespace === ALL_NAMESPACES) {
+				return [
+					pvcFixture({ name: 'user-data', namespace: 'ns-admin', uid: 'uid-user' }),
+					pvcFixture({ name: 'system-data', namespace: 'kube-system', uid: 'uid-system' }),
+				]
+			}
+			return []
+		})
+		const api = createFakeViewerAPI({
+			adminCapabilities: vi.fn().mockResolvedValue({
+				can_manage_pvcs: true,
+				can_manage_storage_classes: false,
+				file_management_enabled: true,
+				user_namespace: 'ns-admin',
+			}),
+			adminListNamespaces: vi.fn().mockResolvedValue([
+				{ is_current_context: true, name: 'ns-admin' },
+				{ is_current_context: false, name: 'kube-system' },
+			]),
+			listPVCs,
+		})
+
+		renderWithProviders(<StorageAppShell api={api} />)
+
+		const namespaceCombobox = await screen.findByRole('combobox', { name: /system namespace/i })
+		await user.click(namespaceCombobox)
+		await user.click(await screen.findByText('All spaces'))
+
+		await waitFor(() => expect(listPVCs).toHaveBeenCalledWith({ namespace: ALL_NAMESPACES }))
+		expect(namespaceCombobox).toHaveValue('All spaces')
+		expect(await screen.findByText('user-data')).toBeInTheDocument()
+		expect(screen.getByRole('columnheader', { name: 'Namespace' })).toBeInTheDocument()
+		expect(screen.getByRole('row', { name: /user-data.*ns-admin/i })).toBeInTheDocument()
+		expect(screen.getByRole('row', { name: /system-data.*kube-system/i })).toBeInTheDocument()
+		expect(screen.getByText('system-data')).toBeInTheDocument()
+	})
+
+	it('shows unknown mount state when mount detection is disabled', async () => {
+		const api = createFakeViewerAPI({
+			listPVCs: vi.fn().mockResolvedValue([
+				pvcFixture({
+					mount_status: 'unknown',
+					name: 'archive',
+					uid: 'archive-uid',
+				}),
+			]),
+		})
+
+		renderWithProviders(<StorageAppShell api={api} />)
+
+		expect(await screen.findByText('archive')).toBeInTheDocument()
+		expect(screen.getAllByText('Mount detection off')).toHaveLength(3)
+	})
+
+	it('requires a concrete namespace when creating PVCs from the all namespaces view', async () => {
+		const user = userEvent.setup()
+		const createPVC = vi.fn().mockResolvedValue(pvcFixture({
+			name: 'system-cache',
+			namespace: 'kube-system',
+			uid: 'system-cache-uid',
+		}))
+		const getStorageQuota = vi.fn().mockResolvedValue(storageQuotaFixture())
+		const api = createFakeViewerAPI({
+			adminCapabilities: vi.fn().mockResolvedValue({
+				can_manage_pvcs: true,
+				can_manage_storage_classes: false,
+				file_management_enabled: true,
+				user_namespace: 'ns-admin',
+			}),
+			adminListNamespaces: vi.fn().mockResolvedValue([
+				{ is_current_context: true, name: 'ns-admin' },
+				{ is_current_context: false, name: 'kube-system' },
+			]),
+			createPVC,
+			getStorageQuota,
+			listPVCs: vi.fn().mockResolvedValue([]),
+			listStorageClasses: vi.fn().mockResolvedValue([
+				storageClassFixture({ name: 'standard' }),
+			]),
+		})
+
+		renderWithProviders(<StorageAppShell api={api} />)
+
+		const namespaceCombobox = await screen.findByRole('combobox', { name: /system namespace/i })
+		await user.click(namespaceCombobox)
+		await user.click(await screen.findByText('All spaces'))
+		await user.click(await screen.findByRole('button', { name: /^create pvc$/i }))
+		await user.click(screen.getByRole('combobox', { name: /^target namespace$/i }))
+		await user.click(await screen.findByRole('option', { name: /kube-system/i }))
+		await user.type(screen.getByLabelText(/^name$/i), 'system-cache')
+		await user.clear(screen.getByLabelText(/^capacity$/i))
+		await user.type(screen.getByLabelText(/^capacity$/i), '5')
+		await user.click(screen.getByRole('button', { name: /^create$/i }))
+
+		await waitFor(() => expect(getStorageQuota).toHaveBeenCalledWith({ namespace: 'kube-system' }))
+		expect(createPVC).toHaveBeenCalledWith(expect.objectContaining({
+			name: 'system-cache',
+			namespace: 'kube-system',
 		}))
 	})
 

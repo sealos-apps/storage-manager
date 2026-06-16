@@ -93,6 +93,7 @@ export const zh = {
 	viewer: {
 		accessModes: '访问模式',
 		activeSession: '当前会话',
+		allNamespaces: '全部空间',
 		capacity: '容量',
 		filterNamespaces: '筛选命名空间',
 		heartbeat: '心跳',
@@ -230,6 +231,7 @@ export const zh = {
 		expand: '扩容存储卷',
 		expanded: 'PVC 已扩容',
 		expandHint: 'Kubernetes 仅支持扩大 PVC 容量，不支持缩容。',
+		mountDetectionUnavailable: '挂载检测已关闭',
 		mountedCount: '已挂载',
 		name: '名称',
 		nameRequired: '名称不能为空。',
@@ -237,6 +239,7 @@ export const zh = {
 		storageClass: '存储类',
 		storageQuotaAvailable: '可用存储配额：{{quantity}}。',
 		targetCapacity: '目标容量',
+		targetNamespace: '目标命名空间',
 		totalAllocated: '总分配容量',
 		typeNameToConfirm: '输入 PVC 名称确认',
 		unusedCount: '未使用存储卷',

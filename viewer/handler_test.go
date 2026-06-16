@@ -16,23 +16,24 @@ import (
 )
 
 type fakeViewerService struct {
-	pvcs           []domain.PVC
-	pvc            *domain.PVC
-	namespaces     []corev1.Namespace
-	storageClasses []domain.StorageClass
-	created        *domain.ViewerSession
-	createInput    *session.CreateViewerSessionInput
-	deleteInput    *session.DeletePVCInput
-	expandInput    *session.ExpandPVCInput
-	pvcInput       *session.CreatePVCInput
-	token          *domain.ViewerToken
-	tokenInput     *viewerSessionCall
-	heartbeat      *domain.Heartbeat
-	heartbeatInput *viewerSessionCall
-	closed         *domain.ViewerSession
-	closeInput     *viewerSessionCall
-	podSession     *domain.PodSession
-	podSessionErr  error
+	pvcs            []domain.PVC
+	pvcsByNamespace map[string][]domain.PVC
+	pvc             *domain.PVC
+	namespaces      []corev1.Namespace
+	storageClasses  []domain.StorageClass
+	created         *domain.ViewerSession
+	createInput     *session.CreateViewerSessionInput
+	deleteInput     *session.DeletePVCInput
+	expandInput     *session.ExpandPVCInput
+	pvcInput        *session.CreatePVCInput
+	token           *domain.ViewerToken
+	tokenInput      *viewerSessionCall
+	heartbeat       *domain.Heartbeat
+	heartbeatInput  *viewerSessionCall
+	closed          *domain.ViewerSession
+	closeInput      *viewerSessionCall
+	podSession      *domain.PodSession
+	podSessionErr   error
 }
 
 type viewerSessionCall struct {
@@ -140,6 +141,15 @@ contexts:
 `
 
 func (f *fakeViewerService) ListPVCs(_ context.Context, namespace string) ([]domain.PVC, error) {
+	if f.pvcsByNamespace != nil {
+		items := append([]domain.PVC(nil), f.pvcsByNamespace[namespace]...)
+		for i := range items {
+			if items[i].Namespace == "" {
+				items[i].Namespace = namespace
+			}
+		}
+		return items, nil
+	}
 	if len(f.pvcs) > 0 {
 		for i := range f.pvcs {
 			f.pvcs[i].Namespace = namespace

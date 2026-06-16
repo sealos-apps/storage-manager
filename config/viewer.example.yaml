@@ -86,6 +86,8 @@ viewer:
     enabled: false
     prometheus_base_url: ""
     query_timeout: 3s
+  pvc_mount_detection:
+    enabled: true
   pod:
     service_account_name: ""
     mount_path: /srv

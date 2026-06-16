@@ -36,17 +36,18 @@ type AdminConfig struct {
 }
 
 type ViewerConfig struct {
-	BackendVerifyURL string               `yaml:"backend_verify_url"`
-	HookClientToken  string               `yaml:"hook_client_token"`
-	HookScript       string               `yaml:"hook_script"`
-	FileManagement   FileManagementConfig `yaml:"file_management"`
-	PVCCreation      PVCCreationConfig    `yaml:"pvc_creation"`
-	StorageQuota     StorageQuotaConfig   `yaml:"storage_quota"`
-	PVCMetrics       PVCMetricsConfig     `yaml:"pvc_metrics"`
-	FileBrowser      FileBrowserConfig    `yaml:"filebrowser"`
-	Pod              PodConfig            `yaml:"pod"`
-	Service          ServiceConfig        `yaml:"service"`
-	Ingress          IngressConfig        `yaml:"ingress"`
+	BackendVerifyURL  string                  `yaml:"backend_verify_url"`
+	HookClientToken   string                  `yaml:"hook_client_token"`
+	HookScript        string                  `yaml:"hook_script"`
+	FileManagement    FileManagementConfig    `yaml:"file_management"`
+	PVCCreation       PVCCreationConfig       `yaml:"pvc_creation"`
+	StorageQuota      StorageQuotaConfig      `yaml:"storage_quota"`
+	PVCMetrics        PVCMetricsConfig        `yaml:"pvc_metrics"`
+	PVCMountDetection PVCMountDetectionConfig `yaml:"pvc_mount_detection"`
+	FileBrowser       FileBrowserConfig       `yaml:"filebrowser"`
+	Pod               PodConfig               `yaml:"pod"`
+	Service           ServiceConfig           `yaml:"service"`
+	Ingress           IngressConfig           `yaml:"ingress"`
 }
 
 type FileManagementConfig struct {
@@ -70,10 +71,15 @@ type PVCMetricsConfig struct {
 	QueryTimeout      time.Duration `yaml:"query_timeout"`
 }
 
+type PVCMountDetectionConfig struct {
+	Enabled bool `yaml:"enabled"`
+}
+
 type FeatureConfig struct {
-	FileManagement FileManagementConfig
-	PVCCreation    PVCCreationConfig
-	StorageQuota   StorageQuotaConfig
+	FileManagement    FileManagementConfig
+	PVCCreation       PVCCreationConfig
+	PVCMountDetection PVCMountDetectionConfig
+	StorageQuota      StorageQuotaConfig
 }
 
 type FileBrowserConfig struct {
@@ -210,6 +216,9 @@ func Default() Config {
 			},
 			PVCMetrics: PVCMetricsConfig{
 				QueryTimeout: 3 * time.Second,
+			},
+			PVCMountDetection: PVCMountDetectionConfig{
+				Enabled: true,
 			},
 			FileBrowser: FileBrowserConfig{
 				LoginURLMode: "internal",
@@ -405,9 +414,10 @@ func (cfg Config) Validate() error {
 
 func (cfg Config) Features() FeatureConfig {
 	return FeatureConfig{
-		FileManagement: cfg.Viewer.FileManagement,
-		PVCCreation:    cfg.Viewer.PVCCreation,
-		StorageQuota:   cfg.Viewer.StorageQuota,
+		FileManagement:    cfg.Viewer.FileManagement,
+		PVCCreation:       cfg.Viewer.PVCCreation,
+		PVCMountDetection: cfg.Viewer.PVCMountDetection,
+		StorageQuota:      cfg.Viewer.StorageQuota,
 	}
 }
 
@@ -420,17 +430,18 @@ func (cfg Config) Redacted() map[string]any {
 		"server": cfg.Server,
 		"admin":  cfg.Admin,
 		"viewer": map[string]any{
-			"backend_verify_url": cfg.Viewer.BackendVerifyURL,
-			"hook_client_token":  "redacted",
-			"hook_script":        "redacted",
-			"file_management":    cfg.Viewer.FileManagement,
-			"pvc_creation":       cfg.Viewer.PVCCreation,
-			"storage_quota":      cfg.Viewer.StorageQuota,
-			"pvc_metrics":        cfg.Viewer.PVCMetrics,
-			"filebrowser":        cfg.Viewer.FileBrowser,
-			"pod":                cfg.Viewer.Pod,
-			"service":            cfg.Viewer.Service,
-			"ingress":            cfg.Viewer.Ingress,
+			"backend_verify_url":  cfg.Viewer.BackendVerifyURL,
+			"hook_client_token":   "redacted",
+			"hook_script":         "redacted",
+			"file_management":     cfg.Viewer.FileManagement,
+			"pvc_creation":        cfg.Viewer.PVCCreation,
+			"storage_quota":       cfg.Viewer.StorageQuota,
+			"pvc_metrics":         cfg.Viewer.PVCMetrics,
+			"pvc_mount_detection": cfg.Viewer.PVCMountDetection,
+			"filebrowser":         cfg.Viewer.FileBrowser,
+			"pod":                 cfg.Viewer.Pod,
+			"service":             cfg.Viewer.Service,
+			"ingress":             cfg.Viewer.Ingress,
 		},
 		"sessions":      cfg.Sessions,
 		"cache":         cfg.Cache,

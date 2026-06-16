@@ -18,6 +18,7 @@ export function pvcFixture(overrides: Partial<PVC> = {}): PVC {
 		access_modes: ['ReadWriteOnce'],
 		capacity: '10Gi',
 		capacity_bytes: 10 * 1024 * 1024 * 1024,
+		mount_status: '',
 		mounted: false,
 		mounted_pods: [],
 		name: 'data',

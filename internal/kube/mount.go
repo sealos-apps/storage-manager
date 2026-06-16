@@ -26,29 +26,60 @@ func (d *PVCMountDetector) DetectPVCMounts(
 		return nil, err
 	}
 
-	info := &domain.PVCMountInfo{
-		MountedPods: []domain.MountedPod{},
-		Nodes:       []string{},
+	info := DetectPVCMountsFromPods(pods)[pvcName]
+	if info == nil {
+		info = &domain.PVCMountInfo{
+			MountedPods: []domain.MountedPod{},
+			Nodes:       []string{},
+		}
 	}
+	return info, nil
+}
+
+func DetectPVCMountsFromPods(pods []corev1.Pod) map[string]*domain.PVCMountInfo {
+	mounts := map[string]*domain.PVCMountInfo{}
 	for _, pod := range pods {
 		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
 			continue
 		}
-		readOnly, ok := podUsesPVC(pod, pvcName)
-		if !ok {
-			continue
+		for _, volume := range pod.Spec.Volumes {
+			if volume.PersistentVolumeClaim == nil {
+				continue
+			}
+			pvcName := volume.PersistentVolumeClaim.ClaimName
+			if pvcName == "" {
+				continue
+			}
+			info := mounts[pvcName]
+			if info == nil {
+				info = &domain.PVCMountInfo{
+					MountedPods: []domain.MountedPod{},
+					Nodes:       []string{},
+				}
+				mounts[pvcName] = info
+			}
+			mounted := domain.MountedPod{
+				Namespace: pod.Namespace,
+				Name:      pod.Name,
+				NodeName:  pod.Spec.NodeName,
+				Phase:     string(pod.Status.Phase),
+				ReadOnly:  volume.PersistentVolumeClaim.ReadOnly,
+			}
+			info.MountedPods = append(info.MountedPods, mounted)
+			if pod.Spec.NodeName != "" && !slices.Contains(info.Nodes, pod.Spec.NodeName) {
+				info.Nodes = append(info.Nodes, pod.Spec.NodeName)
+			}
 		}
-		mounted := domain.MountedPod{
-			Namespace: pod.Namespace,
-			Name:      pod.Name,
-			NodeName:  pod.Spec.NodeName,
-			Phase:     string(pod.Status.Phase),
-			ReadOnly:  readOnly,
-		}
-		info.MountedPods = append(info.MountedPods, mounted)
-		if pod.Spec.NodeName != "" && !slices.Contains(info.Nodes, pod.Spec.NodeName) {
-			info.Nodes = append(info.Nodes, pod.Spec.NodeName)
-		}
+	}
+	for _, info := range mounts {
+		completeMountInfo(info)
+	}
+	return mounts
+}
+
+func completeMountInfo(info *domain.PVCMountInfo) {
+	if info == nil {
+		return
 	}
 	info.Mounted = len(info.MountedPods) > 0
 	if len(info.Nodes) > 1 {
@@ -58,17 +89,6 @@ func (d *PVCMountDetector) DetectPVCMounts(
 	if len(info.Nodes) == 0 && len(info.MountedPods) > 0 {
 		info.Reason = "PVC_MOUNT_PENDING"
 	}
-	return info, nil
-}
-
-func podUsesPVC(pod corev1.Pod, pvcName string) (bool, bool) {
-	for _, volume := range pod.Spec.Volumes {
-		if volume.PersistentVolumeClaim == nil || volume.PersistentVolumeClaim.ClaimName != pvcName {
-			continue
-		}
-		return volume.PersistentVolumeClaim.ReadOnly, true
-	}
-	return false, false
 }
 
 func SchedulingForPVC(accessModes []string, mountInfo *domain.PVCMountInfo) domain.ViewerScheduling {

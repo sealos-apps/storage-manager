@@ -4,7 +4,7 @@ import type { FileSortState } from '@/features/file-manager/utils/file-tree'
 import type { ViewerFlowSnapshot } from '@/features/viewer/components/viewer-launch-panel'
 import type { DeletePVCState } from '@/features/viewer/components/volume-dialogs'
 import type { ViewerView } from '@/features/viewer/stores/viewer-ui-store'
-import type { PVC, ViewerAPI, ViewerSession, ViewerToken } from '@/features/viewer/types/viewer'
+import type { AdminNamespace, PVC, ViewerAPI, ViewerSession, ViewerToken } from '@/features/viewer/types/viewer'
 import type { ManualCloseKind, ViewerFlowStatus } from '@/features/viewer/utils/session-capability'
 import { FileBrowserClient } from '@sealos-storage-manager/filebrowser-client'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -26,6 +26,7 @@ import { FileManagerView } from '@/features/file-manager/components/file-manager
 import { RecycleBinView } from '@/features/file-manager/components/recycle-bin-view'
 import { trashRootPath } from '@/features/file-manager/utils/file-tree'
 import { viewerApi } from '@/features/viewer/api/viewer-api'
+import { ALL_NAMESPACES } from '@/features/viewer/api/viewer-constants'
 import { translateViewerError } from '@/features/viewer/api/viewer-error'
 import {
 	adminCreateStorageClassMutationOptions,
@@ -80,6 +81,8 @@ const idleViewerFlowState: ViewerFlowState = {
 	status: 'idle',
 }
 
+const emptyAdminNamespaces: AdminNamespace[] = []
+
 function isSealosUserNamespace(namespace: string) {
 	return namespace.trim().startsWith('ns-')
 }
@@ -119,12 +122,27 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 	const canManageStorageClasses = adminCapabilitiesQuery.data?.can_manage_storage_classes ?? false
 	const pvcCreationEnabled = adminCapabilitiesQuery.data?.pvc_creation_enabled ?? true
 	const effectiveNamespace = canSelectAdminNamespace ? (namespace || ownNamespace) : fallbackNamespace
+	const isAllNamespaces = canSelectAdminNamespace && effectiveNamespace === ALL_NAMESPACES
 	const fileManagementEnabled = adminCapabilitiesQuery.data?.file_management_enabled ?? true
 	const adminNamespacesQuery = useQuery(adminNamespaceListQueryOptions(api, canSelectAdminNamespace))
-	const adminNamespaces = adminNamespacesQuery.data ?? []
+	const adminNamespaces = adminNamespacesQuery.data ?? emptyAdminNamespaces
 	const pvcQuery = useQuery(pvcListQueryOptions(effectiveNamespace, api))
 	const storageClassesQuery = useQuery(storageClassListQueryOptions(api))
-	const storageQuotaQuery = useQuery(storageQuotaQueryOptions(effectiveNamespace, api))
+	const [createTargetNamespace, setCreateTargetNamespace] = useState('')
+	const activeCreateNamespace = useMemo(() => {
+		if (!isAllNamespaces) {
+			return effectiveNamespace
+		}
+		if (createTargetNamespace && adminNamespaces.some(item => item.name === createTargetNamespace)) {
+			return createTargetNamespace
+		}
+		if (adminNamespaces.some(item => item.name === ownNamespace)) {
+			return ownNamespace
+		}
+		return adminNamespaces[0]?.name ?? ''
+	}, [adminNamespaces, createTargetNamespace, effectiveNamespace, isAllNamespaces, ownNamespace])
+	const quotaNamespace = expandPVC?.namespace ?? activeCreateNamespace
+	const storageQuotaQuery = useQuery(storageQuotaQueryOptions(quotaNamespace, api))
 	const adminStorageClassesQuery = useQuery(adminStorageClassListQueryOptions(api, canManageStorageClasses))
 	const pvcs = useMemo(() => pvcQuery.data ?? [], [pvcQuery.data])
 	const activePVC = useMemo(() => {
@@ -199,6 +217,9 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 			return
 		}
 		resetFileSessionState()
+		if (nextNamespace !== ALL_NAMESPACES) {
+			setCreateTargetNamespace('')
+		}
 		viewerUIStore.actions.setNamespace(nextNamespace)
 	}
 
@@ -314,7 +335,11 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 				: null}
 			{view === 'volumes' && pvcCreationEnabled
 				? (
-						<Button disabled={!effectiveNamespace} onClick={() => setCreateOpen(true)} type="button">
+						<Button
+							disabled={!effectiveNamespace || (isAllNamespaces && adminNamespaces.length === 0)}
+							onClick={() => setCreateOpen(true)}
+							type="button"
+						>
 							<Plus data-icon="inline-start" />
 							{t('volumes.create')}
 						</Button>
@@ -383,6 +408,7 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 									fileManagementEnabled={fileManagementEnabled}
 									pvcQuery={pvcQuery}
 									pvcs={pvcs}
+									showNamespaceColumn={isAllNamespaces}
 									storageClasses={storageClassesQuery.data ?? []}
 								/>
 							</TabsContent>
@@ -440,8 +466,11 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 			<CreatePVCDialog
 				namespace={effectiveNamespace}
 				mutation={createPVC}
+				namespaceOptions={isAllNamespaces ? adminNamespaces : []}
 				onOpenChange={setCreateOpen}
 				open={createOpen && pvcCreationEnabled}
+				onNamespaceChange={setCreateTargetNamespace}
+				selectedNamespace={activeCreateNamespace}
 				storageClasses={storageClassesQuery.data ?? []}
 				storageQuota={storageQuotaQuery.data ?? null}
 			/>

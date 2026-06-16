@@ -22,6 +22,8 @@ const (
 	ViewerStatusClosed  = "closed"
 	ViewerStatusExpired = "expired"
 	ViewerStatusFailed  = "failed"
+
+	PVCMountStatusUnknown = "unknown"
 )
 
 type PodSession struct {
@@ -169,6 +171,8 @@ type PVC struct {
 	StorageClassName string `json:"storage_class_name"`
 	// Mounted reports whether active pods currently mount this PVC.
 	Mounted bool `json:"mounted"`
+	// MountStatus reports whether mounted pod detection is ready or unavailable.
+	MountStatus string `json:"mount_status"`
 	// MountedPods lists active pods that currently mount this PVC.
 	MountedPods []MountedPod `json:"mounted_pods"`
 	// ViewerSupported reports whether storage-manager can open a File Browser viewer for this PVC.

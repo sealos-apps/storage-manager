@@ -86,6 +86,96 @@ func TestViewerServiceListPVCs(t *testing.T) {
 	}
 }
 
+func TestViewerServiceListPVCsDetectsMountsInOnePodList(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	clientset := fake.NewSimpleClientset(
+		&corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "data-a", UID: types.UID("uid-a")},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")},
+				},
+			},
+		},
+		&corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "data-b", UID: types.UID("uid-b")},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")},
+				},
+			},
+		},
+		testMountedPod("default", "app-a", "node-a", "data-a"),
+		testMountedPod("default", "app-b", "node-b", "data-b"),
+	)
+	podListCalls := 0
+	clientset.PrependReactor("list", "pods", func(action ktesting.Action) (bool, runtime.Object, error) {
+		podListCalls++
+		return false, nil, nil
+	})
+	client := kube.New(clientset)
+	store := state.New(cfg.Cache)
+	pods := NewPodService(cfg, store, client, observability.MustNew(cfg.Observability, nil))
+	service := NewViewerService(cfg, store, client, pods, nil, observability.MustNew(cfg.Observability, nil))
+
+	items, err := service.ListPVCs(t.Context(), "default")
+	if err != nil {
+		t.Fatalf("ListPVCs() error = %v", err)
+	}
+	if podListCalls != 1 {
+		t.Fatalf("pod list calls = %d, want 1", podListCalls)
+	}
+	if len(items) != 2 || !items[0].Mounted || !items[1].Mounted {
+		t.Fatalf("items = %#v", items)
+	}
+}
+
+func TestViewerServiceListPVCsSkipsMountDetectionWhenDisabled(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	cfg.Viewer.PVCMountDetection.Enabled = false
+	clientset := fake.NewSimpleClientset(
+		&corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "data", UID: types.UID("uid")},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")},
+				},
+			},
+		},
+		testMountedPod("default", "app", "node-a", "data"),
+	)
+	podListCalls := 0
+	clientset.PrependReactor("list", "pods", func(action ktesting.Action) (bool, runtime.Object, error) {
+		podListCalls++
+		return false, nil, nil
+	})
+	client := kube.New(clientset)
+	store := state.New(cfg.Cache)
+	pods := NewPodService(cfg, store, client, observability.MustNew(cfg.Observability, nil))
+	service := NewViewerService(cfg, store, client, pods, nil, observability.MustNew(cfg.Observability, nil))
+
+	items, err := service.ListPVCs(t.Context(), "default")
+	if err != nil {
+		t.Fatalf("ListPVCs() error = %v", err)
+	}
+	if podListCalls != 0 {
+		t.Fatalf("pod list calls = %d, want 0", podListCalls)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items = %d", len(items))
+	}
+	if items[0].Mounted || items[0].MountStatus != domain.PVCMountStatusUnknown || len(items[0].MountedPods) != 0 {
+		t.Fatalf("item = %#v", items[0])
+	}
+}
+
 func TestViewerServiceListPVCsAddsReadyPVCVolumeStats(t *testing.T) {
 	t.Parallel()
 

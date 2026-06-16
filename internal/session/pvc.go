@@ -59,15 +59,23 @@ func (s *ViewerService) ListPVCs(ctx context.Context, namespace string) (items [
 		return nil, err
 	}
 	volumeStats := s.listPVCVolumeStats(ctx, namespace)
+	mounts, mountDetectionEnabled, err := s.listPVCMounts(ctx, namespace)
+	if err != nil {
+		return nil, err
+	}
 	items = make([]domain.PVC, 0, len(pvcs))
 	for _, pvc := range pvcs {
 		accessModes := make([]string, 0, len(pvc.Spec.AccessModes))
 		for _, mode := range pvc.Spec.AccessModes {
 			accessModes = append(accessModes, string(mode))
 		}
-		mountInfo, err := s.detectPVCMounts(ctx, pvc.Namespace, pvc.Name)
-		if err != nil {
-			return nil, err
+		mountInfo := mounts[pvc.Name]
+		mountStatus := ""
+		if mountInfo == nil {
+			mountInfo = &domain.PVCMountInfo{MountedPods: []domain.MountedPod{}, Nodes: []string{}}
+		}
+		if !mountDetectionEnabled {
+			mountStatus = domain.PVCMountStatusUnknown
 		}
 		supported, viewerMode, reason := kube.ViewerSupportForAccessModes(accessModes)
 		capacityBytes := pvc.Spec.Resources.Requests.Storage().Value()
@@ -80,6 +88,7 @@ func (s *ViewerService) ListPVCs(ctx context.Context, namespace string) (items [
 			AccessModes:      accessModes,
 			StorageClassName: pvcStorageClassName(&pvc),
 			Mounted:          mountInfo.Mounted,
+			MountStatus:      mountStatus,
 			MountedPods:      mountInfo.MountedPods,
 			ViewerSupported:  supported,
 			ViewerMode:       viewerMode,
@@ -93,6 +102,27 @@ func (s *ViewerService) ListPVCs(ctx context.Context, namespace string) (items [
 		slog.Int("pvc_count", len(items)),
 	)
 	return items, nil
+}
+
+func (s *ViewerService) listPVCMounts(
+	ctx context.Context,
+	namespace string,
+) (mounts map[string]*domain.PVCMountInfo, enabled bool, err error) {
+	if !s.cfg.Viewer.PVCMountDetection.Enabled {
+		return nil, false, nil
+	}
+	ctx, finish := s.recorder.TraceOperation(ctx,
+		"pvc.detect_mounts_batch",
+		slog.String("namespace", namespace),
+	)
+	defer func() {
+		finish(err)
+	}()
+	pods, err := s.kube.ListPods(ctx, namespace)
+	if err != nil {
+		return nil, true, err
+	}
+	return kube.DetectPVCMountsFromPods(pods), true, nil
 }
 
 func (s *ViewerService) listPVCVolumeStats(ctx context.Context, namespace string) map[string]domain.PVCVolumeStats {

@@ -50,6 +50,8 @@ backend:
         enabled: true
         prometheusBaseUrl: "http://vmselect-vm-stack-victoria-metrics-k8s-stack.vm.svc.cluster.local:8481/select/0/prometheus"
         queryTimeout: 3s
+      pvcMountDetection:
+        enabled: true
       pod:
         serviceAccountName: ""
         mountPath: /srv

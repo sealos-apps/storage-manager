@@ -1,6 +1,8 @@
 import { QueryClient } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
 
+import { createPVCMutationOptions, deletePVCMutationOptions, expandPVCMutationOptions } from '@/features/viewer/api/pvc-mutations'
+import { ALL_NAMESPACES } from '@/features/viewer/api/viewer-constants'
 import { createViewerSessionMutationOptions, heartbeatViewerSessionMutationOptions } from '@/features/viewer/api/viewer-mutations'
 import { viewerKeys } from '@/features/viewer/api/viewer-query-keys'
 import {
@@ -42,6 +44,22 @@ describe('viewer query options', () => {
 
 		expect(options.queryKey).toEqual(viewerKeys.pvcs(''))
 		expect(options.enabled).toBe(false)
+	})
+
+	it('uses the backend all-namespaces token for admin PVC aggregation', async () => {
+		const listPVCs = vi.fn().mockResolvedValue([])
+		const api = createFakeViewerAPI({ listPVCs })
+		const options = pvcListQueryOptions(ALL_NAMESPACES, api)
+
+		expect(options.queryKey).toEqual(viewerKeys.pvcs(ALL_NAMESPACES))
+		expect(options.enabled).toBe(true)
+		await options.queryFn?.({
+			client: mutationContext.client,
+			meta: undefined,
+			queryKey: options.queryKey,
+			signal: new AbortController().signal,
+		})
+		expect(listPVCs).toHaveBeenCalledWith({ namespace: ALL_NAMESPACES })
 	})
 
 	it('uses a stable backend-owned context query key', async () => {
@@ -154,6 +172,33 @@ describe('viewer query options', () => {
 
 		expect(queryClient.getQueryData(viewerKeys.viewerSession(session.id))).toEqual(session)
 		expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: viewerKeys.all })
+	})
+
+	it('invalidates the aggregated PVC list after PVC mutations', async () => {
+		const queryClient = new QueryClient()
+		const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+		const api = createFakeViewerAPI()
+
+		await createPVCMutationOptions(queryClient, api).onSettled?.(undefined, null, {
+			accessModes: ['ReadWriteOnce'],
+			capacity: '10Gi',
+			capacityBytes: 10,
+			name: 'data',
+			namespace: 'ns-admin',
+			storageClassName: 'standard',
+		}, undefined, mutationContext)
+		await deletePVCMutationOptions(queryClient, api).onSettled?.(undefined, null, {
+			name: 'data',
+			namespace: 'ns-admin',
+		}, undefined, mutationContext)
+		await expandPVCMutationOptions(queryClient, api).onSettled?.(undefined, null, {
+			capacity: '20Gi',
+			capacityBytes: 20,
+			name: 'data',
+			namespace: 'ns-admin',
+		}, undefined, mutationContext)
+
+		expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: viewerKeys.pvcs(ALL_NAMESPACES) })
 	})
 
 	it('optimistically records heartbeat timestamps and rolls back on error', async () => {

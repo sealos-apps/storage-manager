@@ -3,6 +3,7 @@ package viewer
 import (
 	"context"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -14,6 +15,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
+const allNamespacesToken = "__all__"
+
 func (h *Handler) listPVCs(ctx context.Context, req *ListPVCsRequest) (*ListPVCsResponse, *apienv.Error) {
 	start := time.Now()
 	principal, err := h.authenticateRequest(req)
@@ -22,6 +25,9 @@ func (h *Handler) listPVCs(ctx context.Context, req *ListPVCsRequest) (*ListPVCs
 		return nil, err
 	}
 	ctx = authn.WithPrincipal(ctx, principal)
+	if strings.TrimSpace(req.Namespace) == allNamespacesToken {
+		return h.listAllPVCs(ctx, principal, start)
+	}
 	op, apiErr := h.resolvePVCOperationContext(ctx, principal, req.Namespace, "/pvcs", "")
 	if apiErr != nil {
 		h.observe(ctx, http.MethodGet, "/pvcs", apiErr.Status, start)
@@ -66,6 +72,77 @@ func (h *Handler) listPVCs(ctx context.Context, req *ListPVCsRequest) (*ListPVCs
 	if items == nil {
 		items = []domain.PVC{}
 	}
+	h.observe(ctx, http.MethodGet, "/pvcs", http.StatusOK, start)
+	return &ListPVCsResponse{PVCList: PVCList{Items: items}}, nil
+}
+
+func (h *Handler) listAllPVCs(
+	ctx context.Context,
+	principal *authn.Principal,
+	start time.Time,
+) (*ListPVCsResponse, *apienv.Error) {
+	adminResult, adminErr := h.checkAdmin(ctx, principal)
+	namespaceAllowed := adminErr == nil && isAdminInOwnNamespace(principal, adminResult)
+	if adminErr != nil || !namespaceAllowed {
+		h.recordAudit(ctx, auditDecision{
+			adminAllowed:       adminErr == nil && adminResult.Allowed,
+			authorizationKind:  "kubeconfig",
+			decision:           "deny",
+			denyReason:         adminCapabilityDenyReason(adminErr, adminResult.Reason, namespaceAllowed),
+			executionKind:      "management_service_account",
+			identityMethod:     "kubeconfig_context+self_subject_review",
+			implicitElevation:  true,
+			kubernetesUsername: adminResult.KubernetesUsername,
+			mode:               operationModeAdmin,
+			namespace:          allNamespacesToken,
+			namespaceAllowed:   namespaceAllowed,
+			principal:          principal,
+			route:              "/pvcs",
+		})
+		apiErr := apienv.NewError(403, apienv.CodeAdminAccessDenied, "Admin access denied", nil)
+		h.observe(ctx, http.MethodGet, "/pvcs", apiErr.Status, start)
+		return nil, apiErr
+	}
+	namespaces, err := h.viewers.ListNamespaces(ctx)
+	if err != nil {
+		apiErr := apienv.FromError(err)
+		h.observe(ctx, http.MethodGet, "/pvcs", apiErr.Status, start)
+		return nil, apiErr
+	}
+	allowed := allowedAdminNamespaces(namespaces, principal.Namespace)
+	items := make([]domain.PVC, 0)
+	for _, namespace := range allowed {
+		namespacePVCs, listErr := h.viewers.ListPVCs(ctx, namespace.Name)
+		if listErr != nil {
+			apiErr := apienv.FromError(listErr)
+			h.observe(ctx, http.MethodGet, "/pvcs", apiErr.Status, start)
+			return nil, apiErr
+		}
+		items = append(items, namespacePVCs...)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Namespace != items[j].Namespace {
+			return items[i].Namespace < items[j].Namespace
+		}
+		if items[i].Name != items[j].Name {
+			return items[i].Name < items[j].Name
+		}
+		return items[i].UID < items[j].UID
+	})
+	h.recordAudit(ctx, auditDecision{
+		adminAllowed:       true,
+		authorizationKind:  "kubeconfig",
+		decision:           "allow",
+		executionKind:      "management_service_account",
+		identityMethod:     "kubeconfig_context+self_subject_review",
+		implicitElevation:  true,
+		kubernetesUsername: adminResult.KubernetesUsername,
+		mode:               operationModeAdmin,
+		namespace:          allNamespacesToken,
+		namespaceAllowed:   true,
+		principal:          principal,
+		route:              "/pvcs",
+	})
 	h.observe(ctx, http.MethodGet, "/pvcs", http.StatusOK, start)
 	return &ListPVCsResponse{PVCList: PVCList{Items: items}}, nil
 }
