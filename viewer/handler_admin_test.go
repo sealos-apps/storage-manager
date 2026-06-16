@@ -471,8 +471,10 @@ func TestHandlerAdminImplicitPVCOperationsUseRequestedSystemNamespace(t *testing
 func TestHandlerAdminListAllPVCsAggregatesAllowedNamespaces(t *testing.T) {
 	t.Parallel()
 
+	var batchInput []string
 	handler := NewHandler(
 		&fakeViewerService{
+			pvcBatchInput: &batchInput,
 			namespaces: []corev1.Namespace{
 				{ObjectMeta: metav1.ObjectMeta{Name: "z-system"}},
 				{ObjectMeta: metav1.ObjectMeta{Name: "ns-other-user"}},
@@ -518,6 +520,9 @@ func TestHandlerAdminListAllPVCsAggregatesAllowedNamespaces(t *testing.T) {
 	}
 	if strings.Contains(body, "ns-other-user") {
 		t.Fatalf("user namespace leaked: %s", body)
+	}
+	if strings.Join(batchInput, ",") != "ns-admin,kube-system,z-system" {
+		t.Fatalf("batch namespaces = %#v", batchInput)
 	}
 	kubeIndex := strings.Index(body, `"namespace":"kube-system"`)
 	userIndex := strings.Index(body, `"namespace":"ns-admin"`)

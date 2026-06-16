@@ -21,6 +21,7 @@ var kubernetesClientsetForConfig = func(c *rest.Config) (kubernetes.Interface, e
 type viewerService interface {
 	ListNamespaces(ctx context.Context) ([]corev1.Namespace, error)
 	ListPVCs(ctx context.Context, namespace string) ([]domain.PVC, error)
+	ListPVCsInNamespaces(ctx context.Context, namespaces []string) ([]domain.PVC, error)
 	CreatePVC(ctx context.Context, input session.CreatePVCInput) (*domain.PVC, error)
 	DeletePVC(ctx context.Context, input session.DeletePVCInput) (*domain.PVC, error)
 	ExpandPVC(ctx context.Context, input session.ExpandPVCInput) (*domain.PVC, error)

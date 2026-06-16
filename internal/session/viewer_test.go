@@ -176,6 +176,84 @@ func TestViewerServiceListPVCsSkipsMountDetectionWhenDisabled(t *testing.T) {
 	}
 }
 
+func TestViewerServiceListPVCsInNamespacesUsesClusterScopedLists(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	clientset := fake.NewSimpleClientset(
+		&corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "kube-system", Name: "kube-data", UID: types.UID("uid-kube")},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")},
+				},
+			},
+		},
+		&corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "ns-admin", Name: "user-data", UID: types.UID("uid-user")},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")},
+				},
+			},
+		},
+		&corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "ns-other", Name: "other-data", UID: types.UID("uid-other")},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")},
+				},
+			},
+		},
+		testMountedPod("kube-system", "kube-app", "node-a", "kube-data"),
+		testMountedPod("ns-admin", "user-app", "node-b", "user-data"),
+		testMountedPod("ns-other", "other-app", "node-c", "other-data"),
+	)
+	podListCalls := 0
+	pvcListCalls := 0
+	clientset.PrependReactor("list", "pods", func(action ktesting.Action) (bool, runtime.Object, error) {
+		podListCalls++
+		if action.GetNamespace() != "" {
+			t.Fatalf("pod list namespace = %q, want cluster scoped", action.GetNamespace())
+		}
+		return false, nil, nil
+	})
+	clientset.PrependReactor("list", "persistentvolumeclaims", func(action ktesting.Action) (bool, runtime.Object, error) {
+		pvcListCalls++
+		if action.GetNamespace() != "" {
+			t.Fatalf("pvc list namespace = %q, want cluster scoped", action.GetNamespace())
+		}
+		return false, nil, nil
+	})
+	client := kube.New(clientset)
+	store := state.New(cfg.Cache)
+	pods := NewPodService(cfg, store, client, observability.MustNew(cfg.Observability, nil))
+	service := NewViewerService(cfg, store, client, pods, nil, observability.MustNew(cfg.Observability, nil))
+
+	items, err := service.ListPVCsInNamespaces(t.Context(), []string{"kube-system", "ns-admin"})
+	if err != nil {
+		t.Fatalf("ListPVCsInNamespaces() error = %v", err)
+	}
+	if podListCalls != 1 {
+		t.Fatalf("pod list calls = %d, want 1", podListCalls)
+	}
+	if pvcListCalls != 1 {
+		t.Fatalf("pvc list calls = %d, want 1", pvcListCalls)
+	}
+	if len(items) != 2 {
+		t.Fatalf("items = %#v", items)
+	}
+	if items[0].Namespace != "kube-system" || items[0].Name != "kube-data" || !items[0].Mounted {
+		t.Fatalf("first item = %#v", items[0])
+	}
+	if items[1].Namespace != "ns-admin" || items[1].Name != "user-data" || !items[1].Mounted {
+		t.Fatalf("second item = %#v", items[1])
+	}
+}
+
 func TestViewerServiceListPVCsAddsReadyPVCVolumeStats(t *testing.T) {
 	t.Parallel()
 

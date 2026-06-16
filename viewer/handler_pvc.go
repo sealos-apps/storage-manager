@@ -3,7 +3,6 @@ package viewer
 import (
 	"context"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
@@ -110,25 +109,16 @@ func (h *Handler) listAllPVCs(
 		return nil, apiErr
 	}
 	allowed := allowedAdminNamespaces(namespaces, principal.Namespace)
-	items := make([]domain.PVC, 0)
+	allowedNames := make([]string, 0, len(allowed))
 	for _, namespace := range allowed {
-		namespacePVCs, listErr := h.viewers.ListPVCs(ctx, namespace.Name)
-		if listErr != nil {
-			apiErr := apienv.FromError(listErr)
-			h.observe(ctx, http.MethodGet, "/pvcs", apiErr.Status, start)
-			return nil, apiErr
-		}
-		items = append(items, namespacePVCs...)
+		allowedNames = append(allowedNames, namespace.Name)
 	}
-	sort.Slice(items, func(i, j int) bool {
-		if items[i].Namespace != items[j].Namespace {
-			return items[i].Namespace < items[j].Namespace
-		}
-		if items[i].Name != items[j].Name {
-			return items[i].Name < items[j].Name
-		}
-		return items[i].UID < items[j].UID
-	})
+	items, listErr := h.viewers.ListPVCsInNamespaces(ctx, allowedNames)
+	if listErr != nil {
+		apiErr := apienv.FromError(listErr)
+		h.observe(ctx, http.MethodGet, "/pvcs", apiErr.Status, start)
+		return nil, apiErr
+	}
 	h.recordAudit(ctx, auditDecision{
 		adminAllowed:       true,
 		authorizationKind:  "kubeconfig",

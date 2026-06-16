@@ -65,40 +65,70 @@ func (s *ViewerService) ListPVCs(ctx context.Context, namespace string) (items [
 	}
 	items = make([]domain.PVC, 0, len(pvcs))
 	for _, pvc := range pvcs {
-		accessModes := make([]string, 0, len(pvc.Spec.AccessModes))
-		for _, mode := range pvc.Spec.AccessModes {
-			accessModes = append(accessModes, string(mode))
-		}
-		mountInfo := mounts[pvc.Name]
-		mountStatus := ""
-		if mountInfo == nil {
-			mountInfo = &domain.PVCMountInfo{MountedPods: []domain.MountedPod{}, Nodes: []string{}}
-		}
-		if !mountDetectionEnabled {
-			mountStatus = domain.PVCMountStatusUnknown
-		}
-		supported, viewerMode, reason := kube.ViewerSupportForAccessModes(accessModes)
-		capacityBytes := pvc.Spec.Resources.Requests.Storage().Value()
-		items = append(items, domain.PVC{
-			Namespace:        pvc.Namespace,
-			Name:             pvc.Name,
-			UID:              string(pvc.UID),
-			CapacityBytes:    capacityBytes,
-			Capacity:         pvc.Spec.Resources.Requests.Storage().String(),
-			AccessModes:      accessModes,
-			StorageClassName: pvcStorageClassName(&pvc),
-			Mounted:          mountInfo.Mounted,
-			MountStatus:      mountStatus,
-			MountedPods:      mountInfo.MountedPods,
-			ViewerSupported:  supported,
-			ViewerMode:       viewerMode,
-			ViewerScheduling: kube.SchedulingForPVC(accessModes, mountInfo),
-			Reason:           reason,
-			VolumeStats:      normalizedPVCVolumeStats(capacityBytes, volumeStats[pvc.Name]),
-		})
+		items = append(items, s.domainPVCFromKubePVC(pvc, volumeStats, mounts, mountDetectionEnabled))
 	}
 	s.recorder.Logger().LogAttrs(ctx, slog.LevelDebug, "viewer.list_pvcs.result",
 		slog.String("namespace", namespace),
+		slog.Int("pvc_count", len(items)),
+	)
+	return items, nil
+}
+
+func (s *ViewerService) ListPVCsInNamespaces(
+	ctx context.Context,
+	namespaces []string,
+) (items []domain.PVC, err error) {
+	ctx, finish := s.recorder.TraceOperation(ctx,
+		"viewer.list_pvcs_batch",
+		slog.Int("namespace_count", len(namespaces)),
+	)
+	defer func() {
+		finish(err)
+	}()
+
+	allowed := make(map[string]struct{}, len(namespaces))
+	for _, namespace := range namespaces {
+		namespace = strings.TrimSpace(namespace)
+		if namespace == "" {
+			continue
+		}
+		allowed[namespace] = struct{}{}
+	}
+	if len(allowed) == 0 {
+		return []domain.PVC{}, nil
+	}
+	pvcs, err := s.kube.ListAllPVCs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	pods, mountDetectionEnabled, err := s.listAllPVCMountPods(ctx)
+	if err != nil {
+		return nil, err
+	}
+	mountsByNamespace := map[string]map[string]*domain.PVCMountInfo{}
+	if mountDetectionEnabled {
+		podsByNamespace := map[string][]corev1.Pod{}
+		for _, pod := range pods {
+			if _, ok := allowed[pod.Namespace]; !ok {
+				continue
+			}
+			podsByNamespace[pod.Namespace] = append(podsByNamespace[pod.Namespace], pod)
+		}
+		for namespace, namespacePods := range podsByNamespace {
+			mountsByNamespace[namespace] = kube.DetectPVCMountsFromPods(namespacePods)
+		}
+	}
+	items = make([]domain.PVC, 0, len(pvcs))
+	for _, pvc := range pvcs {
+		if _, ok := allowed[pvc.Namespace]; !ok {
+			continue
+		}
+		mounts := mountsByNamespace[pvc.Namespace]
+		items = append(items, s.domainPVCFromKubePVC(pvc, nil, mounts, mountDetectionEnabled))
+	}
+	slices.SortFunc(items, comparePVCs)
+	s.recorder.Logger().LogAttrs(ctx, slog.LevelDebug, "viewer.list_pvcs_batch.result",
+		slog.Int("namespace_count", len(allowed)),
 		slog.Int("pvc_count", len(items)),
 	)
 	return items, nil
@@ -125,6 +155,23 @@ func (s *ViewerService) listPVCMounts(
 	return kube.DetectPVCMountsFromPods(pods), true, nil
 }
 
+func (s *ViewerService) listAllPVCMountPods(
+	ctx context.Context,
+) (pods []corev1.Pod, enabled bool, err error) {
+	if !s.cfg.Viewer.PVCMountDetection.Enabled {
+		return nil, false, nil
+	}
+	ctx, finish := s.recorder.TraceOperation(ctx, "pvc.detect_mounts_batch_all")
+	defer func() {
+		finish(err)
+	}()
+	pods, err = s.kube.ListAllPods(ctx)
+	if err != nil {
+		return nil, true, err
+	}
+	return pods, true, nil
+}
+
 func (s *ViewerService) listPVCVolumeStats(ctx context.Context, namespace string) map[string]domain.PVCVolumeStats {
 	if s.pvcMetrics == nil {
 		return nil
@@ -138,6 +185,55 @@ func (s *ViewerService) listPVCVolumeStats(ctx context.Context, namespace string
 		return nil
 	}
 	return stats
+}
+
+func (s *ViewerService) domainPVCFromKubePVC(
+	pvc corev1.PersistentVolumeClaim,
+	volumeStats map[string]domain.PVCVolumeStats,
+	mounts map[string]*domain.PVCMountInfo,
+	mountDetectionEnabled bool,
+) domain.PVC {
+	accessModes := make([]string, 0, len(pvc.Spec.AccessModes))
+	for _, mode := range pvc.Spec.AccessModes {
+		accessModes = append(accessModes, string(mode))
+	}
+	mountInfo := mounts[pvc.Name]
+	mountStatus := ""
+	if mountInfo == nil {
+		mountInfo = &domain.PVCMountInfo{MountedPods: []domain.MountedPod{}, Nodes: []string{}}
+	}
+	if !mountDetectionEnabled {
+		mountStatus = domain.PVCMountStatusUnknown
+	}
+	supported, viewerMode, reason := kube.ViewerSupportForAccessModes(accessModes)
+	capacityBytes := pvc.Spec.Resources.Requests.Storage().Value()
+	return domain.PVC{
+		Namespace:        pvc.Namespace,
+		Name:             pvc.Name,
+		UID:              string(pvc.UID),
+		CapacityBytes:    capacityBytes,
+		Capacity:         pvc.Spec.Resources.Requests.Storage().String(),
+		AccessModes:      accessModes,
+		StorageClassName: pvcStorageClassName(&pvc),
+		Mounted:          mountInfo.Mounted,
+		MountStatus:      mountStatus,
+		MountedPods:      mountInfo.MountedPods,
+		ViewerSupported:  supported,
+		ViewerMode:       viewerMode,
+		ViewerScheduling: kube.SchedulingForPVC(accessModes, mountInfo),
+		Reason:           reason,
+		VolumeStats:      normalizedPVCVolumeStats(capacityBytes, volumeStats[pvc.Name]),
+	}
+}
+
+func comparePVCs(a domain.PVC, b domain.PVC) int {
+	if a.Namespace != b.Namespace {
+		return strings.Compare(a.Namespace, b.Namespace)
+	}
+	if a.Name != b.Name {
+		return strings.Compare(a.Name, b.Name)
+	}
+	return strings.Compare(a.UID, b.UID)
 }
 
 func normalizedPVCVolumeStats(capacityBytes int64, stats domain.PVCVolumeStats) *domain.PVCVolumeStats {
