@@ -1,49 +1,8 @@
 import postcssIsPseudoClass from '@csstools/postcss-is-pseudo-class'
 import tailwindcss from '@tailwindcss/postcss'
 import postcssPresetEnv from 'postcss-preset-env'
+import postcssTransformShortcut from 'postcss-transform-shortcut'
 import valueParser from 'postcss-value-parser'
-
-function fallbackTransformProperties() {
-	return {
-		postcssPlugin: 'fallback-transform-properties',
-		Rule(rule) {
-			const transformDeclarations = []
-
-			rule.walkDecls((declaration) => {
-				if (!['translate', 'scale', 'rotate'].includes(declaration.prop)) {
-					return
-				}
-
-				transformDeclarations.push(declaration)
-			})
-
-			if (!transformDeclarations.length) {
-				return
-			}
-
-			const transformValue = transformDeclarations
-				.map((declaration) => {
-					if (declaration.prop === 'rotate') {
-						return `rotate(${declaration.value})`
-					}
-
-					if (declaration.prop === 'scale') {
-						return `scale(${declaration.value})`
-					}
-
-					return `translate(${declaration.value})`
-				})
-				.join(' ')
-
-			transformDeclarations[transformDeclarations.length - 1].after({
-				prop: 'transform',
-				value: transformValue,
-			})
-		},
-	}
-}
-
-fallbackTransformProperties.postcss = true
 
 function fixEmptyCssVariableFallbacks() {
 	return {
@@ -160,7 +119,7 @@ export default {
 			base: './src',
 			optimize: false,
 		}),
-		fallbackTransformProperties(),
+		postcssTransformShortcut(),
 		fixEmptyCssVariableFallbacks(),
 		resolveRootVariablesInColorMix(),
 		fallbackGradientColorSpaces(),
