@@ -40,7 +40,7 @@ const sealosAuthorizationMockState = vi.hoisted(() => ({
 	} as SealosAuthorizationState,
 }))
 
-vi.mock('@monaco-editor/react', () => ({
+vi.mock('@/components/monaco-editor', () => ({
 	default: ({
 		onChange,
 		value,

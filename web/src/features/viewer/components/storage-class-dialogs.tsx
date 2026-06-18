@@ -21,7 +21,7 @@ import { Label } from '@/components/ui/label'
 import { formatViewerErrorToast } from '@/features/viewer/api/viewer-error'
 import { adminStorageClassDescribeQueryOptions, adminStorageClassYAMLQueryOptions } from '@/features/viewer/api/viewer-query-options'
 
-const MonacoEditor = lazy(() => import('@monaco-editor/react'))
+const MonacoEditor = lazy(() => import('@/components/monaco-editor'))
 const largeEditorDialogClassName = 'h-[88vh] max-h-[88vh] w-[min(96vw,90rem)] sm:max-w-[min(96vw,90rem)]'
 
 type StorageClassEditorState

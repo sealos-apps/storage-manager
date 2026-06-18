@@ -31,7 +31,7 @@ import { editorLanguage } from '@/features/file-manager/utils/file-manager-forma
 import { formatBytes } from '@/features/viewer/utils/format-capacity'
 import { cn } from '@/utils/cn'
 
-const MonacoEditor = lazy(() => import('@monaco-editor/react'))
+const MonacoEditor = lazy(() => import('@/components/monaco-editor'))
 const largeEditorDialogClassName = 'h-[88vh] max-h-[88vh] w-[min(96vw,90rem)] sm:max-w-[min(96vw,90rem)]'
 const emptyEntries: FileEntry[] = []
 

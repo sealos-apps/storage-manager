@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { uploadActions } from '@/features/file-manager/stores/upload-store'
 import { renderFileManager, resource, sessionWithClient } from '@/features/file-manager/test/file-manager-view-helpers'
 
-vi.mock('@monaco-editor/react', () => ({
+vi.mock('@/components/monaco-editor', () => ({
 	default: ({
 		onChange,
 		value,

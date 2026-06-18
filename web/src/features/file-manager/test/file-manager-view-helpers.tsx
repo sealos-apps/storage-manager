@@ -11,7 +11,7 @@ import { pvcFixture, viewerSessionFixture, viewerTokenFixture } from '@/features
 import { deriveSessionCapability } from '@/features/viewer/utils/session-capability'
 import { renderWithProviders } from '@/test/render'
 
-vi.mock('@monaco-editor/react', () => ({
+vi.mock('@/components/monaco-editor', () => ({
 	default: ({
 		onChange,
 		value,

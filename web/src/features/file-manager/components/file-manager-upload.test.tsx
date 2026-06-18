@@ -8,7 +8,7 @@ import { readyCapability, renderFileManager, resource, sessionWithClient } from 
 import { pvcFixture } from '@/features/viewer/test/fakes'
 import { renderWithProviders } from '@/test/render'
 
-vi.mock('@monaco-editor/react', () => ({
+vi.mock('@/components/monaco-editor', () => ({
 	default: ({
 		onChange,
 		value,
