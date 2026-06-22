@@ -30,7 +30,7 @@ func TestKubernetesAdminAuthorizerUsesManagementHostForSelfSubjectReview(t *test
 		&rest.Config{Host: "https://management.example.invalid", BearerToken: "management-token"},
 	)
 	clientset := fake.NewSimpleClientset()
-	clientset.Fake.PrependReactor("create", "selfsubjectreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
+	clientset.PrependReactor("create", "selfsubjectreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		return true, &authenticationv1.SelfSubjectReview{
 			Status: authenticationv1.SelfSubjectReviewStatus{
 				UserInfo: authenticationv1.UserInfo{

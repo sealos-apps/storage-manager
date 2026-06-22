@@ -29,7 +29,7 @@ func TestKubernetesAuthorizerUsesManagementHostForStorageClassSSAR(t *testing.T)
 		&rest.Config{Host: "https://management.example.invalid", BearerToken: "management-token"},
 	)
 	clientset := fake.NewSimpleClientset()
-	clientset.Fake.PrependReactor("create", "selfsubjectaccessreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
+	clientset.PrependReactor("create", "selfsubjectaccessreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		return true, &authorizationv1.SelfSubjectAccessReview{
 			Status: authorizationv1.SubjectAccessReviewStatus{Allowed: true},
 		}, nil
