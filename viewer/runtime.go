@@ -144,10 +144,11 @@ func newRuntimeFromConfig(cfg config.Config) (*Runtime, error) {
 		recorder,
 		nil,
 		WithDebugConfig(cfg.Debug),
+		WithManagementRESTConfig(restConfig),
 		WithFeatureConfig(cfg.Features()),
 		WithStorageQuotaService(newStorageQuotaService(cfg.Viewer.StorageQuota, recorder)),
 		WithStorageClassService(storageClasses),
-		WithAdminAuthorizer(newKubernetesAdminAuthorizer(cfg.Admin, recorder)),
+		WithAdminAuthorizer(newKubernetesAdminAuthorizer(cfg.Admin, recorder, restConfig)),
 	)
 	return &Runtime{
 		Handler:  handler,

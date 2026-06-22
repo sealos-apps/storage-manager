@@ -12,6 +12,8 @@ spec:
       {{- include "storage-manager.webSelectorLabels" . | nindent 6 }}
   template:
     metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/web-configmap.yaml") . | sha256sum }}
       labels:
         {{- include "storage-manager.webSelectorLabels" . | nindent 8 }}
     spec:

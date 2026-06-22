@@ -11,22 +11,26 @@ import (
 	authorizationv1 "k8s.io/api/authorization/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
 var errRuntimeUnavailable = errors.New("viewer runtime is not configured")
 
 type kubernetesAuthorizer struct {
-	management kubernetes.Interface
-	recorder   *observability.Recorder
+	management           kubernetes.Interface
+	recorder             *observability.Recorder
+	managementRESTConfig *rest.Config
 }
 
 func newKubernetesAuthorizer(
 	management kubernetes.Interface,
 	recorder *observability.Recorder,
+	managementRESTConfig *rest.Config,
 ) kubernetesAuthorizer {
 	return kubernetesAuthorizer{
-		management: management,
-		recorder:   recorder,
+		management:           management,
+		recorder:             recorder,
+		managementRESTConfig: managementRESTConfig,
 	}
 }
 
@@ -44,7 +48,7 @@ func (a kubernetesAuthorizer) CanListPVCs(
 		finish(err)
 	}()
 
-	clientset, err := kubernetesClientsetForConfig(principal.ClientConfig)
+	clientset, err := a.clientsetForPrincipal(principal)
 	if err != nil {
 		return err
 	}
@@ -75,7 +79,7 @@ func (a kubernetesAuthorizer) CanGetPVC(
 		finish(err)
 	}()
 
-	clientset, err := kubernetesClientsetForConfig(principal.ClientConfig)
+	clientset, err := a.clientsetForPrincipal(principal)
 	if err != nil {
 		return err
 	}
@@ -126,7 +130,7 @@ func (a kubernetesAuthorizer) CanCreatePVC(
 		finish(err)
 	}()
 
-	clientset, err := kubernetesClientsetForConfig(principal.ClientConfig)
+	clientset, err := a.clientsetForPrincipal(principal)
 	if err != nil {
 		return err
 	}
@@ -157,7 +161,7 @@ func (a kubernetesAuthorizer) CanDeletePVC(
 	if err := a.CanGetPVC(ctx, principal, namespace, name); err != nil {
 		return err
 	}
-	clientset, err := kubernetesClientsetForConfig(principal.ClientConfig)
+	clientset, err := a.clientsetForPrincipal(principal)
 	if err != nil {
 		return err
 	}
@@ -183,7 +187,7 @@ func (a kubernetesAuthorizer) CanUpdatePVC(
 	if err := a.CanGetPVC(ctx, principal, namespace, name); err != nil {
 		return err
 	}
-	clientset, err := kubernetesClientsetForConfig(principal.ClientConfig)
+	clientset, err := a.clientsetForPrincipal(principal)
 	if err != nil {
 		return err
 	}
@@ -199,7 +203,7 @@ func (a kubernetesAuthorizer) CanListStorageClasses(
 		finish(err)
 	}()
 
-	clientset, err := kubernetesClientsetForConfig(principal.ClientConfig)
+	clientset, err := a.clientsetForPrincipal(principal)
 	if err != nil {
 		return err
 	}
@@ -239,6 +243,10 @@ func (a kubernetesAuthorizer) sameNamespace(
 		return errors.New("user kubeconfig and management kubeconfig resolved different namespaces")
 	}
 	return nil
+}
+
+func (a kubernetesAuthorizer) clientsetForPrincipal(principal *authn.Principal) (kubernetes.Interface, error) {
+	return kubernetesClientsetForConfig(clientConfigForPrincipal(a.managementRESTConfig, principal))
 }
 
 func (a kubernetesAuthorizer) observeKubernetes(

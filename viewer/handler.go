@@ -70,16 +70,17 @@ type adminAuthorizer interface {
 }
 
 type Handler struct {
-	viewers        viewerService
-	storageClasses storageClassService
-	pods           podService
-	auth           authService
-	storageQuota   storageQuotaService
-	recorder       *observability.Recorder
-	authz          authorizer
-	adminAuthz     adminAuthorizer
-	debug          config.DebugConfig
-	features       config.FeatureConfig
+	viewers              viewerService
+	storageClasses       storageClassService
+	pods                 podService
+	auth                 authService
+	storageQuota         storageQuotaService
+	recorder             *observability.Recorder
+	authz                authorizer
+	adminAuthz           adminAuthorizer
+	managementRESTConfig *rest.Config
+	debug                config.DebugConfig
+	features             config.FeatureConfig
 }
 
 type HandlerOption func(*Handler)
@@ -151,6 +152,12 @@ func WithAdminAuthorizer(authz adminAuthorizer) HandlerOption {
 	}
 }
 
+func WithManagementRESTConfig(restConfig *rest.Config) HandlerOption {
+	return func(h *Handler) {
+		h.managementRESTConfig = restConfig
+	}
+}
+
 func NewHandler(
 	viewers viewerService,
 	pods podService,
@@ -160,9 +167,6 @@ func NewHandler(
 	authz authorizer,
 	options ...HandlerOption,
 ) *Handler {
-	if authz == nil {
-		authz = newKubernetesAuthorizer(managementClient, recorder)
-	}
 	handler := &Handler{
 		viewers:        viewers,
 		storageClasses: unavailableStorageClassService{},
@@ -177,5 +181,34 @@ func NewHandler(
 	for _, option := range options {
 		option(handler)
 	}
+	if authz == nil {
+		authz = newKubernetesAuthorizer(managementClient, recorder, handler.managementRESTConfig)
+	}
+	handler.authz = authz
 	return handler
+}
+
+func clientConfigForPrincipal(canonical *rest.Config, principal *authn.Principal) *rest.Config {
+	if principal == nil {
+		return nil
+	}
+	if principal.ClientConfig == nil || canonical == nil {
+		return principal.ClientConfig
+	}
+
+	user := principal.ClientConfig
+	merged := rest.CopyConfig(canonical)
+	merged.Username = user.Username
+	merged.Password = user.Password
+	merged.BearerToken = user.BearerToken
+	merged.BearerTokenFile = user.BearerTokenFile
+	merged.CertFile = user.CertFile
+	merged.KeyFile = user.KeyFile
+	merged.CertData = append([]byte(nil), user.CertData...)
+	merged.KeyData = append([]byte(nil), user.KeyData...)
+	merged.Impersonate = user.Impersonate
+	merged.AuthProvider = user.AuthProvider
+	merged.AuthConfigPersister = user.AuthConfigPersister
+	merged.ExecProvider = user.ExecProvider
+	return merged
 }

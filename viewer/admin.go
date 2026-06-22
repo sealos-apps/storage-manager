@@ -13,13 +13,15 @@ import (
 	"github.com/nixieboluo/sealos-storage-manager/internal/observability"
 	authenticationv1 "k8s.io/api/authentication/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/rest"
 )
 
 const sealosUserServiceAccountNamespace = "user-system"
 
 type kubernetesAdminAuthorizer struct {
-	allowedUserIDs []string
-	recorder       *observability.Recorder
+	allowedUserIDs       []string
+	recorder             *observability.Recorder
+	managementRESTConfig *rest.Config
 }
 
 type denyAdminAuthorizer struct{}
@@ -31,10 +33,15 @@ type AdminAuthorizationResult struct {
 	Reason             string
 }
 
-func newKubernetesAdminAuthorizer(cfg config.AdminConfig, recorder *observability.Recorder) kubernetesAdminAuthorizer {
+func newKubernetesAdminAuthorizer(
+	cfg config.AdminConfig,
+	recorder *observability.Recorder,
+	managementRESTConfig *rest.Config,
+) kubernetesAdminAuthorizer {
 	return kubernetesAdminAuthorizer{
-		allowedUserIDs: cfg.AllowedUserIDs,
-		recorder:       recorder,
+		allowedUserIDs:       cfg.AllowedUserIDs,
+		recorder:             recorder,
+		managementRESTConfig: managementRESTConfig,
 	}
 }
 
@@ -59,7 +66,7 @@ func (a kubernetesAdminAuthorizer) CanAdmin(
 		result.Reason = "no_admin_users_configured"
 		return result, errors.New("no admin users configured")
 	}
-	clientset, err := kubernetesClientsetForConfig(principal.ClientConfig)
+	clientset, err := kubernetesClientsetForConfig(clientConfigForPrincipal(a.managementRESTConfig, principal))
 	if err != nil {
 		result.Reason = "client_config_error"
 		return result, err
