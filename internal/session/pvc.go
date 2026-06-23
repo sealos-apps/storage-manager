@@ -101,6 +101,19 @@ func (s *ViewerService) ListPVCsInNamespaces(
 	if err != nil {
 		return nil, err
 	}
+	pvcNamespaces := map[string]struct{}{}
+	filteredPVCs := make([]corev1.PersistentVolumeClaim, 0, len(pvcs))
+	for _, pvc := range pvcs {
+		if _, ok := allowed[pvc.Namespace]; !ok {
+			continue
+		}
+		filteredPVCs = append(filteredPVCs, pvc)
+		pvcNamespaces[pvc.Namespace] = struct{}{}
+	}
+	statsByNamespace := map[string]map[string]domain.PVCVolumeStats{}
+	for namespace := range pvcNamespaces {
+		statsByNamespace[namespace] = s.listPVCVolumeStats(ctx, namespace)
+	}
 	pods, mountDetectionEnabled, err := s.listAllPVCMountPods(ctx)
 	if err != nil {
 		return nil, err
@@ -118,13 +131,11 @@ func (s *ViewerService) ListPVCsInNamespaces(
 			mountsByNamespace[namespace] = kube.DetectPVCMountsFromPods(namespacePods)
 		}
 	}
-	items = make([]domain.PVC, 0, len(pvcs))
-	for _, pvc := range pvcs {
-		if _, ok := allowed[pvc.Namespace]; !ok {
-			continue
-		}
+	items = make([]domain.PVC, 0, len(filteredPVCs))
+	for _, pvc := range filteredPVCs {
 		mounts := mountsByNamespace[pvc.Namespace]
-		items = append(items, s.domainPVCFromKubePVC(pvc, nil, mounts, mountDetectionEnabled))
+		volumeStats := statsByNamespace[pvc.Namespace]
+		items = append(items, s.domainPVCFromKubePVC(pvc, volumeStats, mounts, mountDetectionEnabled))
 	}
 	slices.SortFunc(items, comparePVCs)
 	s.recorder.Logger().LogAttrs(ctx, slog.LevelDebug, "viewer.list_pvcs_batch.result",

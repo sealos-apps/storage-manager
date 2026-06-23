@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -251,6 +252,110 @@ func TestViewerServiceListPVCsInNamespacesUsesClusterScopedLists(t *testing.T) {
 	}
 	if items[1].Namespace != "ns-admin" || items[1].Name != "user-data" || !items[1].Mounted {
 		t.Fatalf("second item = %#v", items[1])
+	}
+}
+
+func TestViewerServiceListPVCsInNamespacesAddsPVCVolumeStatsOnlyForNamespacesWithPVCs(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	client := kube.New(fake.NewSimpleClientset(
+		&corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "kube-system", Name: "shared-data", UID: types.UID("uid-kube")},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("10Gi")},
+				},
+			},
+		},
+		&corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "ns-admin", Name: "shared-data", UID: types.UID("uid-admin")},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("20Gi")},
+				},
+			},
+		},
+		&corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "ns-other", Name: "other-data", UID: types.UID("uid-other")},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("30Gi")},
+				},
+			},
+		},
+	))
+	store := state.New(cfg.Cache)
+	recorder := observability.MustNew(cfg.Observability, nil)
+	pods := NewPodService(cfg, store, client, recorder)
+	var metricNamespaces []string
+	service := NewViewerService(cfg, store, client, pods, nil, recorder, WithPVCMetrics(fakePVCMetrics{
+		namespaces: &metricNamespaces,
+		statsByNamespace: map[string]map[string]domain.PVCVolumeStats{
+			"kube-system": {
+				"shared-data": {
+					Source:              "kubelet",
+					Status:              "ready",
+					UsedBytes:           4 * 1024 * 1024 * 1024,
+					MetricCapacityBytes: 10 * 1024 * 1024 * 1024,
+					AvailableBytes:      6 * 1024 * 1024 * 1024,
+				},
+			},
+			"ns-admin": {
+				"shared-data": {
+					Source:              "kubelet",
+					Status:              "ready",
+					UsedBytes:           7 * 1024 * 1024 * 1024,
+					MetricCapacityBytes: 20 * 1024 * 1024 * 1024,
+					AvailableBytes:      13 * 1024 * 1024 * 1024,
+				},
+			},
+			"ns-other": {
+				"other-data": {
+					Source:              "kubelet",
+					Status:              "ready",
+					UsedBytes:           9 * 1024 * 1024 * 1024,
+					MetricCapacityBytes: 30 * 1024 * 1024 * 1024,
+					AvailableBytes:      21 * 1024 * 1024 * 1024,
+				},
+			},
+			"z-system": {
+				"unused": {
+					Source:              "kubelet",
+					Status:              "ready",
+					UsedBytes:           1,
+					MetricCapacityBytes: 1,
+					AvailableBytes:      0,
+				},
+			},
+		},
+	}))
+
+	items, err := service.ListPVCsInNamespaces(t.Context(), []string{"kube-system", "ns-admin", "z-system"})
+	if err != nil {
+		t.Fatalf("ListPVCsInNamespaces() error = %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("items = %#v", items)
+	}
+	if items[0].Namespace != "kube-system" || items[0].Name != "shared-data" {
+		t.Fatalf("first item = %#v", items[0])
+	}
+	if items[0].VolumeStats == nil || items[0].VolumeStats.UsedBytes != 4*1024*1024*1024 {
+		t.Fatalf("first volume stats = %#v", items[0].VolumeStats)
+	}
+	if items[1].Namespace != "ns-admin" || items[1].Name != "shared-data" {
+		t.Fatalf("second item = %#v", items[1])
+	}
+	if items[1].VolumeStats == nil || items[1].VolumeStats.UsedBytes != 7*1024*1024*1024 {
+		t.Fatalf("second volume stats = %#v", items[1].VolumeStats)
+	}
+	slices.Sort(metricNamespaces)
+	if strings.Join(metricNamespaces, ",") != "kube-system,ns-admin" {
+		t.Fatalf("metric namespaces = %#v", metricNamespaces)
 	}
 }
 
@@ -753,13 +858,21 @@ func TestViewerServiceReturnsPodSessionNotFoundCode(t *testing.T) {
 }
 
 type fakePVCMetrics struct {
-	err   error
-	stats map[string]domain.PVCVolumeStats
+	err              error
+	namespaces       *[]string
+	stats            map[string]domain.PVCVolumeStats
+	statsByNamespace map[string]map[string]domain.PVCVolumeStats
 }
 
-func (f fakePVCMetrics) ListPVCVolumeStats(context.Context, string) (map[string]domain.PVCVolumeStats, error) {
+func (f fakePVCMetrics) ListPVCVolumeStats(_ context.Context, namespace string) (map[string]domain.PVCVolumeStats, error) {
+	if f.namespaces != nil {
+		*f.namespaces = append(*f.namespaces, namespace)
+	}
 	if f.err != nil {
 		return nil, f.err
+	}
+	if f.statsByNamespace != nil {
+		return f.statsByNamespace[namespace], nil
 	}
 	return f.stats, nil
 }
