@@ -32,6 +32,12 @@ for (const file of cssFiles) {
 		failed = true
 		console.error(`${file} contains independent transform properties without transform fallback`)
 	}
+
+	if (css.includes('box-shadow:var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow)')
+		&& !css.includes('--tw-inset-shadow:0 0 #0000;--tw-inset-ring-shadow:0 0 #0000;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000')) {
+		failed = true
+		console.error(`${file} contains Tailwind box-shadow variables without Chrome 86 defaults`)
+	}
 }
 
 if (failed) {
