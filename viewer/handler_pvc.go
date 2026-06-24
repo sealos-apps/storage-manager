@@ -349,6 +349,111 @@ func (h *Handler) deletePVC(
 	return &PVCResponse{PVC: pvc}, nil
 }
 
+func (h *Handler) getPVCYAML(
+	ctx context.Context,
+	namespace string,
+	name string,
+	req *AuthenticatedRequest,
+) (*PVCYAMLResponse, *apienv.Error) {
+	start := time.Now()
+	principal, err := h.authenticateRequest(req)
+	if err != nil {
+		h.observe(ctx, http.MethodGet, "/pvcs/:namespace/:name/yaml", err.Status, start)
+		return nil, err
+	}
+	ctx = authn.WithPrincipal(ctx, principal)
+	op, apiErr := h.resolvePVCOperationContext(ctx, principal, namespace, "/pvcs/:namespace/:name/yaml", name)
+	if apiErr != nil {
+		h.observe(ctx, http.MethodGet, "/pvcs/:namespace/:name/yaml", apiErr.Status, start)
+		return nil, apiErr
+	}
+	if op.mode == operationModeUser {
+		if err := h.authz.CanGetPVC(ctx, principal, op.namespace, name); err != nil {
+			apiErr := apienv.NewError(403, apienv.CodePVCAccessDenied, "PVC access denied", nil)
+			h.observe(ctx, http.MethodGet, "/pvcs/:namespace/:name/yaml", apiErr.Status, start)
+			return nil, apiErr
+		}
+	}
+	result, getErr := op.kubeService.GetPVCYAML(ctx, op.namespace, name)
+	if getErr != nil {
+		apiErr := apienv.FromError(getErr)
+		h.observe(ctx, http.MethodGet, "/pvcs/:namespace/:name/yaml", apiErr.Status, start)
+		return nil, apiErr
+	}
+	h.observe(ctx, http.MethodGet, "/pvcs/:namespace/:name/yaml", http.StatusOK, start)
+	return &PVCYAMLResponse{PVCYAML: result}, nil
+}
+
+func (h *Handler) updatePVC(
+	ctx context.Context,
+	namespace string,
+	name string,
+	req *PVCYAMLRequest,
+) (*PVCResponse, *apienv.Error) {
+	start := time.Now()
+	principal, err := h.authenticateRequest(req)
+	if err != nil {
+		h.observe(ctx, http.MethodPut, "/pvcs/:namespace/:name", err.Status, start)
+		return nil, err
+	}
+	ctx = authn.WithPrincipal(ctx, principal)
+	op, apiErr := h.resolvePVCOperationContext(ctx, principal, namespace, "/pvcs/:namespace/:name", name)
+	if apiErr != nil {
+		h.observe(ctx, http.MethodPut, "/pvcs/:namespace/:name", apiErr.Status, start)
+		return nil, apiErr
+	}
+	if op.mode == operationModeUser {
+		if err := h.authz.CanUpdatePVC(ctx, principal, op.namespace, name); err != nil {
+			apiErr := apienv.NewError(403, apienv.CodePVCExpandForbidden, "PVC update access denied", nil)
+			h.observe(ctx, http.MethodPut, "/pvcs/:namespace/:name", apiErr.Status, start)
+			return nil, apiErr
+		}
+	}
+	pvc, updateErr := op.kubeService.UpdatePVC(ctx, op.namespace, name, req.YAML)
+	if updateErr != nil {
+		apiErr := apienv.FromError(updateErr)
+		h.observe(ctx, http.MethodPut, "/pvcs/:namespace/:name", apiErr.Status, start)
+		return nil, apiErr
+	}
+	h.observe(ctx, http.MethodPut, "/pvcs/:namespace/:name", http.StatusOK, start)
+	return &PVCResponse{PVC: pvc}, nil
+}
+
+func (h *Handler) describePVC(
+	ctx context.Context,
+	namespace string,
+	name string,
+	req *AuthenticatedRequest,
+) (*PVCDescribeResponse, *apienv.Error) {
+	start := time.Now()
+	principal, err := h.authenticateRequest(req)
+	if err != nil {
+		h.observe(ctx, http.MethodGet, "/pvcs/:namespace/:name/describe", err.Status, start)
+		return nil, err
+	}
+	ctx = authn.WithPrincipal(ctx, principal)
+	op, apiErr := h.resolvePVCOperationContext(ctx, principal, namespace, "/pvcs/:namespace/:name/describe", name)
+	if apiErr != nil {
+		h.observe(ctx, http.MethodGet, "/pvcs/:namespace/:name/describe", apiErr.Status, start)
+		return nil, apiErr
+	}
+	if op.mode == operationModeUser {
+		if err := h.authz.CanGetPVC(ctx, principal, op.namespace, name); err != nil {
+			apiErr := apienv.NewError(403, apienv.CodePVCAccessDenied, "PVC access denied", nil)
+			h.observe(ctx, http.MethodGet, "/pvcs/:namespace/:name/describe", apiErr.Status, start)
+			return nil, apiErr
+		}
+	}
+	result, describeErr := op.kubeService.DescribePVC(ctx, op.namespace, name)
+	if describeErr != nil {
+		apiErr := apienv.FromError(describeErr)
+		h.observe(ctx, http.MethodGet, "/pvcs/:namespace/:name/describe", apiErr.Status, start)
+		return nil, apiErr
+	}
+	h.observe(ctx, http.MethodGet, "/pvcs/:namespace/:name/describe", http.StatusOK, start)
+	return &PVCDescribeResponse{PVCDescribe: result}, nil
+}
+
 func (h *Handler) expandPVC(
 	ctx context.Context,
 	namespace string,

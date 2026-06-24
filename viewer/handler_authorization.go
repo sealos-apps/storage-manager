@@ -276,7 +276,21 @@ func (req *ExpandPVCRequest) authorizationHeader() string {
 	return req.Authorization
 }
 
+func (req *PVCYAMLRequest) authorizationHeader() string {
+	if req == nil {
+		return ""
+	}
+	return req.Authorization
+}
+
 func (req *StorageClassYAMLRequest) authorizationHeader() string {
+	if req == nil {
+		return ""
+	}
+	return req.Authorization
+}
+
+func (req *StorageClassMetadataRequest) authorizationHeader() string {
 	if req == nil {
 		return ""
 	}
@@ -467,6 +481,23 @@ func pvcPathParams(path string) (string, string) {
 
 func expandPVCPathParams(path string) (string, string) {
 	remainder := strings.TrimSuffix(strings.Trim(strings.TrimPrefix(path, "/pvcs/"), "/"), "/expand")
+	parts := strings.SplitN(remainder, "/", 2)
+	if len(parts) != 2 {
+		return "", ""
+	}
+	return parts[0], parts[1]
+}
+
+func pvcYAMLPathParams(path string) (string, string) {
+	return pvcSuffixedPathParams(path, "/yaml")
+}
+
+func pvcDescribePathParams(path string) (string, string) {
+	return pvcSuffixedPathParams(path, "/describe")
+}
+
+func pvcSuffixedPathParams(path string, suffix string) (string, string) {
+	remainder := strings.TrimSuffix(strings.Trim(strings.TrimPrefix(path, "/pvcs/"), "/"), suffix)
 	parts := strings.SplitN(remainder, "/", 2)
 	if len(parts) != 2 {
 		return "", ""

@@ -24,7 +24,8 @@ interface StorageClassAdminViewProps {
 	deleteMutation: UseMutationResult<StorageClass, Error, string>
 	onDelete: (name: string) => void
 	onDescribe: (name: string) => void
-	onEdit: (name: string) => void
+	onEditMetadata: (name: string) => void
+	onEditYAML: (name: string) => void
 	query: UseQueryResult<StorageClass[], Error>
 }
 
@@ -32,10 +33,11 @@ export function StorageClassAdminView({
 	actions,
 	onDelete,
 	onDescribe,
-	onEdit,
+	onEditMetadata,
+	onEditYAML,
 	query,
 }: StorageClassAdminViewProps) {
-	const { t } = useTranslation()
+	const { i18n, t } = useTranslation()
 	const items = query.data ?? []
 
 	return (
@@ -60,6 +62,7 @@ export function StorageClassAdminView({
 					<TableHeader>
 						<TableRow>
 							<TableHead>{t('storageClasses.name')}</TableHead>
+							<TableHead>{t('storageClasses.displayName')}</TableHead>
 							<TableHead>{t('storageClasses.provisioner')}</TableHead>
 							<TableHead>{t('storageClasses.reclaimPolicy')}</TableHead>
 							<TableHead>{t('storageClasses.volumeBindingMode')}</TableHead>
@@ -71,9 +74,14 @@ export function StorageClassAdminView({
 					<TableBody>
 						{items.map(storageClass => (
 							<TableRow key={storageClass.name}>
-								<TableCell className="flex items-center gap-1">
-									<div className="font-medium">{storageClass.name}</div>
-									{storageClass.is_default ? <Badge variant="secondary">{t('common.default')}</Badge> : null}
+								<TableCell>
+									<div className="flex items-center gap-1">
+										<div className="font-medium">{storageClass.name}</div>
+										{storageClass.is_default ? <Badge variant="secondary">{t('common.default')}</Badge> : null}
+									</div>
+								</TableCell>
+								<TableCell>
+									<StorageClassDisplayName storageClass={storageClass} locale={i18n.language} />
 								</TableCell>
 								<TableCell>{storageClass.provisioner}</TableCell>
 								<TableCell>{storageClass.reclaim_policy || '-'}</TableCell>
@@ -85,7 +93,10 @@ export function StorageClassAdminView({
 										<Button onClick={() => onDescribe(storageClass.name)} size="sm" type="button" variant="outline">
 											{t('storageClasses.describe')}
 										</Button>
-										<Button onClick={() => onEdit(storageClass.name)} size="sm" type="button" variant="outline">
+										<Button onClick={() => onEditYAML(storageClass.name)} size="sm" type="button" variant="outline">
+											{t('storageClasses.yaml')}
+										</Button>
+										<Button onClick={() => onEditMetadata(storageClass.name)} size="sm" type="button" variant="outline">
 											{t('actions.edit')}
 										</Button>
 										<DeleteButton
@@ -99,7 +110,7 @@ export function StorageClassAdminView({
 						{items.length === 0
 							? (
 									<TableRow>
-										<TableCell className="py-12 text-center text-muted-foreground" colSpan={7}>
+										<TableCell className="py-12 text-center text-muted-foreground" colSpan={8}>
 											{query.isLoading ? t('common.loading') : t('common.empty')}
 										</TableCell>
 									</TableRow>
@@ -109,6 +120,28 @@ export function StorageClassAdminView({
 				</Table>
 			</div>
 		</section>
+	)
+}
+
+function StorageClassDisplayName({ locale, storageClass }: { locale: string, storageClass: StorageClass }) {
+	const names = storageClass.display_names ?? {}
+	const display = names[locale] ?? names[locale.split('-')[0] ?? ''] ?? storageClass.name
+	const entries = Object.entries(names).sort(([left], [right]) => left.localeCompare(right))
+	const text = <span className="text-sm">{display}</span>
+	if (entries.length === 0) {
+		return text
+	}
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<span className="inline-flex cursor-default">{text}</span>
+			</TooltipTrigger>
+			<TooltipContent>
+				<div className="grid gap-1">
+					{entries.map(([key, value]) => <div key={key}>{`${key}: ${value}`}</div>)}
+				</div>
+			</TooltipContent>
+		</Tooltip>
 	)
 }
 

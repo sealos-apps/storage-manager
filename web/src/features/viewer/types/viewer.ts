@@ -1,10 +1,19 @@
 import type { domain, session, viewer } from '@sealos-storage-manager/encore-client'
+import type { Quantity } from '@/utils/quantities'
 
 export type MountedPod = domain.MountedPod
-export type PVCVolumeStats = Omit<domain.PVCVolumeStats, 'sample_time'> & {
+export type RawPVC = domain.PVC
+export type RawPVCVolumeStats = domain.PVCVolumeStats
+export type RawStorageQuota = viewer.StorageQuota
+
+export type PVCVolumeStats = Omit<domain.PVCVolumeStats, 'available_bytes' | 'metric_capacity_bytes' | 'sample_time' | 'used_bytes'> & {
+	available: Quantity
+	metricCapacity: Quantity
 	sample_time?: string
+	used: Quantity
 }
-export type PVC = Omit<domain.PVC, 'volume_stats'> & {
+export type PVC = Omit<domain.PVC, 'capacity' | 'capacity_bytes' | 'volume_stats'> & {
+	capacity: Quantity
 	volume_stats?: PVCVolumeStats
 }
 export type PodSession = domain.PodSession
@@ -13,11 +22,17 @@ export type ViewerSession = domain.ViewerSession
 export type ViewerToken = domain.ViewerToken
 export type Heartbeat = domain.Heartbeat
 export type StorageClass = domain.StorageClass
+export type PVCDescribe = session.PVCDescribe
+export type PVCYAML = session.PVCYAML
 export type StorageClassDescribe = session.StorageClassDescribe
 export type StorageClassYAML = session.StorageClassYAML
 export type AdminNamespace = domain.Namespace
 export type ViewerContext = viewer.ViewerContext
-export type StorageQuota = viewer.StorageQuota
+export type StorageQuota = Omit<viewer.StorageQuota, 'available_bytes' | 'available_quantity' | 'limit_bytes' | 'limit_quantity' | 'used_bytes' | 'used_quantity'> & {
+	available: Quantity
+	limit: Quantity
+	used: Quantity
+}
 
 export type ViewerMode = 'readonly' | 'readwrite' | string
 export type ViewerStatus = 'active' | 'ready' | 'creating' | 'closed' | 'expired' | 'failed' | string
@@ -75,8 +90,7 @@ export interface CreateViewerSessionInput {
 
 export interface CreatePVCInput {
 	accessModes: string[]
-	capacity: string
-	capacityBytes: number
+	capacity: Quantity
 	name: string
 	namespace: string
 	storageClassName: string
@@ -94,14 +108,18 @@ export interface StorageClassYAMLInput {
 	yaml: string
 }
 
+export interface StorageClassMetadataInput {
+	availableToUsers: boolean
+	displayNames: Record<string, string>
+}
+
 export interface DeletePVCInput {
 	name: string
 	namespace: string
 }
 
 export interface ExpandPVCInput {
-	capacity: string
-	capacityBytes: number
+	capacity: Quantity
 	name: string
 	namespace: string
 }
@@ -123,20 +141,24 @@ export interface ViewerAPI {
 	adminListNamespaces: () => Promise<AdminNamespace[]>
 	adminListStorageClasses: () => Promise<StorageClass[]>
 	adminUpdateStorageClass: (name: string, input: StorageClassYAMLInput) => Promise<StorageClass>
+	adminUpdateStorageClassMetadata: (name: string, input: StorageClassMetadataInput) => Promise<StorageClass>
 	closePodSession: (podSessionID: string) => Promise<PodSession>
 	closeViewerSession: (viewerSessionID: string) => Promise<ViewerSession>
 	createPVC: (input: CreatePVCInput) => Promise<PVC>
 	createViewerSession: (input: CreateViewerSessionInput) => Promise<ViewerSession>
 	deletePVC: (input: DeletePVCInput) => Promise<PVC>
+	describePVC: (input: DeletePVCInput) => Promise<PVCDescribe>
 	expandPVC: (input: ExpandPVCInput) => Promise<PVC>
 	getPodSession: (podSessionID: string) => Promise<PodSession>
 	getContext: () => Promise<ViewerContext>
 	getStorageQuota: (input: GetStorageQuotaInput) => Promise<StorageQuota>
+	getPVCYAML: (input: DeletePVCInput) => Promise<PVCYAML>
 	getViewerSession: (viewerSessionID: string) => Promise<ViewerSession>
 	heartbeatViewerSession: (viewerSessionID: string) => Promise<Heartbeat>
 	issueViewerToken: (viewerSessionID: string) => Promise<ViewerToken>
 	listPVCs: (input: ListPVCsInput) => Promise<PVC[]>
 	listStorageClasses: () => Promise<StorageClass[]>
+	updatePVC: (input: DeletePVCInput & StorageClassYAMLInput) => Promise<PVC>
 }
 
 export interface ViewerSelection {

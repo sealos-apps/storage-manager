@@ -13,6 +13,7 @@ import {
 } from '@/features/viewer/api/viewer-mutations'
 import { viewerKeys } from '@/features/viewer/api/viewer-query-keys'
 import { createFakeViewerAPI, pvcFixture, storageClassFixture, viewerSessionFixture } from '@/features/viewer/test/fakes'
+import { Quantity } from '@/utils/quantities'
 
 const mutationContext = {
 	client: new QueryClient(),
@@ -57,8 +58,7 @@ describe('viewer mutation options', () => {
 		const input = {
 			namespace: 'default',
 			name: 'cache-data',
-			capacity: '5Gi',
-			capacityBytes: 5 * 1024 * 1024 * 1024,
+			capacity: Quantity.parse('5Gi'),
 			accessModes: ['ReadWriteOnce'],
 			storageClassName: 'standard',
 		}
@@ -149,13 +149,12 @@ describe('viewer mutation options', () => {
 		const input = {
 			namespace: 'default',
 			name: 'mysql-data',
-			capacity: '20Gi',
-			capacityBytes: 20 * 1024 * 1024 * 1024,
+			capacity: Quantity.parse('20Gi'),
 		}
 
 		const context = await options.onMutate?.(input, mutationContext)
 
-		expect(queryClient.getQueryData<typeof original>(key)?.[0]?.capacity).toBe('20Gi')
+		expect(queryClient.getQueryData<typeof original>(key)?.[0]?.capacity.toString()).toBe('20Gi')
 
 		options.onError?.(new Error('failed'), input, context, mutationContext)
 

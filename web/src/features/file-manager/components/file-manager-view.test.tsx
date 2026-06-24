@@ -167,8 +167,7 @@ describe('fileManagerView', () => {
 		})
 
 		renderFileManager(session, {
-			pvc: {
-				...pvcFixture(),
+			pvc: pvcFixture({
 				name: 'data',
 				capacity: '20Gi',
 				capacity_bytes: 20 * 1024 * 1024 * 1024,
@@ -179,7 +178,7 @@ describe('fileManagerView', () => {
 					status: 'ready',
 					used_bytes: 5 * 1024 * 1024 * 1024,
 				},
-			},
+			}),
 		})
 
 		expect(await screen.findByText('readme.md')).toBeInTheDocument()

@@ -138,6 +138,25 @@ type PVCResponse struct {
 	PVC *domain.PVC `json:"pvc"`
 }
 
+type PVCYAMLResponse struct {
+	// PVCYAML contains editable YAML for a PersistentVolumeClaim.
+	PVCYAML *session.PVCYAML `json:"pvc_yaml"`
+}
+
+type PVCYAMLRequest struct {
+	// Authorization carries the caller's Sealos or Kubernetes bearer token.
+	Authorization string `header:"Authorization" encore:"sensitive"`
+	// SealosAccountAuthorization carries the Sealos account token used for quota checks.
+	SealosAccountAuthorization string `header:"X-Sealos-Account-Authorization" encore:"sensitive"`
+	// YAML is a v1 PersistentVolumeClaim manifest.
+	YAML string `json:"yaml"`
+}
+
+type PVCDescribeResponse struct {
+	// PVCDescribe contains kubectl-style PVC diagnostic text.
+	PVCDescribe *session.PVCDescribe `json:"pvc_describe"`
+}
+
 type StorageClassList struct {
 	// Items contains Kubernetes StorageClass summaries.
 	Items []domain.StorageClass `json:"items"`
@@ -181,6 +200,15 @@ type StorageClassYAMLRequest struct {
 	Authorization string `header:"Authorization" encore:"sensitive"`
 	// YAML is a storage.k8s.io/v1 StorageClass manifest.
 	YAML string `json:"yaml"`
+}
+
+type StorageClassMetadataRequest struct {
+	// Authorization carries the caller's Sealos or Kubernetes bearer token.
+	Authorization string `header:"Authorization" encore:"sensitive"`
+	// AvailableToUsers mirrors the storage-manager annotation for future user-facing policy.
+	AvailableToUsers bool `json:"available_to_users"`
+	// DisplayNames maps locale codes to UI display names.
+	DisplayNames map[string]string `json:"display_names"`
 }
 
 type StorageClassDescribeResponse struct {

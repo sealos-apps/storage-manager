@@ -100,6 +100,65 @@ func TestStorageClassServiceDeleteRequiresManagedLabel(t *testing.T) {
 	}
 }
 
+func TestStorageClassServiceUpdateMetadata(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	clientset := fake.NewSimpleClientset(&storagev1.StorageClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "standard",
+		},
+		Provisioner: "example.test/provisioner",
+	})
+	service := NewStorageClassService(
+		kube.New(clientset),
+		observability.MustNew(cfg.Observability, nil),
+	)
+
+	updated, err := service.UpdateStorageClassMetadata(t.Context(), "standard", StorageClassMetadataInput{
+		AvailableToUsers: true,
+		DisplayNames: map[string]string{
+			" zh ": " 高性能云盘 ",
+			"en":   "Fast Disk",
+			"":     "ignored",
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdateStorageClassMetadata() error = %v", err)
+	}
+	if !updated.AvailableToUsers || updated.DisplayNames["zh"] != "高性能云盘" || updated.DisplayNames["en"] != "Fast Disk" {
+		t.Fatalf("updated = %#v", updated)
+	}
+	kubeStorageClass, err := clientset.StorageV1().StorageClasses().Get(t.Context(), "standard", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get storageclass: %v", err)
+	}
+	if kubeStorageClass.Annotations[StorageClassAvailableToUsersAnnotation] != "true" {
+		t.Fatalf("annotations = %#v", kubeStorageClass.Annotations)
+	}
+	if !strings.Contains(kubeStorageClass.Annotations[StorageClassDisplayNameAnnotation], `"zh":"高性能云盘"`) {
+		t.Fatalf("display names annotation = %q", kubeStorageClass.Annotations[StorageClassDisplayNameAnnotation])
+	}
+
+	updated, err = service.UpdateStorageClassMetadata(t.Context(), "standard", StorageClassMetadataInput{})
+	if err != nil {
+		t.Fatalf("UpdateStorageClassMetadata(empty) error = %v", err)
+	}
+	if updated.AvailableToUsers || len(updated.DisplayNames) != 0 {
+		t.Fatalf("empty updated = %#v", updated)
+	}
+	kubeStorageClass, err = clientset.StorageV1().StorageClasses().Get(t.Context(), "standard", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get storageclass: %v", err)
+	}
+	if _, ok := kubeStorageClass.Annotations[StorageClassDisplayNameAnnotation]; ok {
+		t.Fatalf("display names annotation kept: %#v", kubeStorageClass.Annotations)
+	}
+	if kubeStorageClass.Annotations[StorageClassAvailableToUsersAnnotation] != "false" {
+		t.Fatalf("annotations = %#v", kubeStorageClass.Annotations)
+	}
+}
+
 func TestStorageClassServiceDeleteRejectsStorageClassInUseByAnyPVC(t *testing.T) {
 	t.Parallel()
 

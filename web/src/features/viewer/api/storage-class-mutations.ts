@@ -1,5 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query'
-import type { StorageClass, StorageClassYAMLInput, ViewerAPI } from '@/features/viewer/types/viewer'
+import type { StorageClass, StorageClassMetadataInput, StorageClassYAMLInput, ViewerAPI } from '@/features/viewer/types/viewer'
 
 import { mutationOptions } from '@tanstack/react-query'
 
@@ -52,6 +52,28 @@ export function adminDeleteStorageClassMutationOptions(
 				viewerKeys.adminStorageClasses(),
 				current => (current ?? []).filter(item => item.name !== storageClass.name),
 			)
+			void queryClient.invalidateQueries({ queryKey: viewerKeys.storageClasses() })
+		},
+	})
+}
+
+export function adminUpdateStorageClassMetadataMutationOptions(
+	queryClient: QueryClient,
+	api: ViewerAPI = viewerApi,
+) {
+	return mutationOptions({
+		mutationKey: viewerKeys.mutations.adminUpdateStorageClassMetadata(),
+		mutationFn: (input: { name: string } & StorageClassMetadataInput) =>
+			api.adminUpdateStorageClassMetadata(input.name, {
+				availableToUsers: input.availableToUsers,
+				displayNames: input.displayNames,
+			}),
+		onSuccess: (storageClass: StorageClass) => {
+			queryClient.setQueryData<StorageClass[]>(
+				viewerKeys.adminStorageClasses(),
+				current => (current ?? []).map(item => item.name === storageClass.name ? storageClass : item),
+			)
+			void queryClient.invalidateQueries({ queryKey: viewerKeys.adminStorageClasses() })
 			void queryClient.invalidateQueries({ queryKey: viewerKeys.storageClasses() })
 		},
 	})

@@ -211,6 +211,10 @@ type StorageClass struct {
 	CreationTimestampRFC3339 string `json:"creation_timestamp"`
 	// ManagedByStorageManager reports whether this class was created through storage-manager.
 	ManagedByStorageManager bool `json:"managed_by_storage_manager"`
+	// AvailableToUsers mirrors the storage-manager annotation for future user-facing policy.
+	AvailableToUsers bool `json:"available_to_users"`
+	// DisplayNames maps locale codes to UI display names.
+	DisplayNames map[string]string `json:"display_names"`
 	// DeleteBlockedReason explains why this StorageClass cannot currently be deleted.
 	DeleteBlockedReason string `json:"delete_blocked_reason"`
 	// InUsePVCCount is the number of PVCs currently referencing this StorageClass.

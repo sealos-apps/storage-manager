@@ -31,10 +31,12 @@ import { translateViewerError } from '@/features/viewer/api/viewer-error'
 import {
 	adminCreateStorageClassMutationOptions,
 	adminDeleteStorageClassMutationOptions,
+	adminUpdateStorageClassMetadataMutationOptions,
 	adminUpdateStorageClassMutationOptions,
 	createPVCMutationOptions,
 	deletePVCMutationOptions,
 	expandPVCMutationOptions,
+	updatePVCMutationOptions,
 } from '@/features/viewer/api/viewer-mutations'
 import {
 	adminCapabilitiesQueryOptions,
@@ -48,7 +50,7 @@ import {
 import { ErrorCallout } from '@/features/viewer/components/error-callout'
 import { NamespaceFilter } from '@/features/viewer/components/namespace-filter'
 import { StorageClassAdminView } from '@/features/viewer/components/storage-class-admin-view'
-import { DeleteStorageClassDialog, StorageClassDescribeDialog, StorageClassEditorDialog } from '@/features/viewer/components/storage-class-dialogs'
+import { DeleteStorageClassDialog, PVCDescribeDialog, PVCYAMLDialog, StorageClassDescribeDialog, StorageClassEditorDialog, StorageClassMetadataDialog } from '@/features/viewer/components/storage-class-dialogs'
 import { SidebarButton } from '@/features/viewer/components/storage-navigation'
 import { ViewerLaunchPanel } from '@/features/viewer/components/viewer-launch-panel'
 import { CreatePVCDialog, DeletePVCDialog, ExpandPVCDialog } from '@/features/viewer/components/volume-dialogs'
@@ -103,9 +105,12 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 	const [sort, setSort] = useState<FileSortState>({ field: 'name', direction: 'asc' })
 	const [createOpen, setCreateOpen] = useState(false)
 	const [storageClassEditor, setStorageClassEditor] = useState<StorageClassEditorState>(null)
+	const [metadataStorageClassName, setMetadataStorageClassName] = useState<string | null>(null)
 	const [describeStorageClassName, setDescribeStorageClassName] = useState<string | null>(null)
 	const [deleteStorageClassName, setDeleteStorageClassName] = useState<string | null>(null)
 	const [expandPVC, setExpandPVC] = useState<PVC | null>(null)
+	const [describePVC, setDescribePVC] = useState<PVC | null>(null)
+	const [yamlPVC, setYamlPVC] = useState<PVC | null>(null)
 	const [deleteState, setDeleteState] = useState<DeletePVCState | null>(null)
 	const { t } = useTranslation()
 
@@ -188,8 +193,10 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 	const createPVC = useMutation(createPVCMutationOptions(queryClient, api))
 	const createStorageClassMutation = useMutation(adminCreateStorageClassMutationOptions(queryClient, api))
 	const updateStorageClassMutation = useMutation(adminUpdateStorageClassMutationOptions(queryClient, api))
+	const updateStorageClassMetadataMutation = useMutation(adminUpdateStorageClassMetadataMutationOptions(queryClient, api))
 	const deleteStorageClassMutation = useMutation(adminDeleteStorageClassMutationOptions(queryClient, api))
 	const expandPVCMutation = useMutation(expandPVCMutationOptions(queryClient, api))
+	const updatePVCMutation = useMutation(updatePVCMutationOptions(queryClient, api))
 	const deletePVC = useMutation(deletePVCMutationOptions(queryClient, api))
 
 	useEffect(() => {
@@ -358,7 +365,6 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 						</div>
 						<div className="min-w-0">
 							<h1 className="truncate text-base font-semibold">{t('app.name')}</h1>
-							<p className="text-xs text-muted-foreground">{t('app.subtitle')}</p>
 						</div>
 					</div>
 					<nav className="mt-8 flex flex-col gap-2">
@@ -403,6 +409,8 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 								<VolumesView
 									actions={pageActions}
 									onDelete={pvc => setDeleteState({ pvc, confirmName: '' })}
+									onDescribe={setDescribePVC}
+									onEditYAML={setYamlPVC}
 									onExpand={setExpandPVC}
 									onOpenFiles={openFiles}
 									fileManagementEnabled={fileManagementEnabled}
@@ -454,7 +462,8 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 									deleteMutation={deleteStorageClassMutation}
 									onDelete={setDeleteStorageClassName}
 									onDescribe={setDescribeStorageClassName}
-									onEdit={name => setStorageClassEditor({ mode: 'edit', name })}
+									onEditMetadata={setMetadataStorageClassName}
+									onEditYAML={name => setStorageClassEditor({ mode: 'edit', name })}
 									query={adminStorageClassesQuery}
 								/>
 							</TabsContent>
@@ -481,6 +490,7 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 				storageQuota={storageQuotaQuery.data ?? null}
 			/>
 			<DeletePVCDialog
+				key={`delete-pvc-${deleteState?.pvc.uid ?? 'closed'}`}
 				deleteState={deleteState}
 				mutation={deletePVC}
 				onOpenChange={setDeleteState}
@@ -494,6 +504,17 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 					}
 				}}
 			/>
+			<PVCYAMLDialog
+				api={api}
+				mutation={updatePVCMutation}
+				onOpenChange={setYamlPVC}
+				pvc={yamlPVC}
+			/>
+			<PVCDescribeDialog
+				api={api}
+				onOpenChange={setDescribePVC}
+				pvc={describePVC}
+			/>
 			<StorageClassEditorDialog
 				createMutation={createStorageClassMutation}
 				editor={storageClassEditor}
@@ -505,6 +526,12 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 				api={api}
 				name={describeStorageClassName}
 				onOpenChange={setDescribeStorageClassName}
+			/>
+			<StorageClassMetadataDialog
+				key={metadataStorageClassName ?? 'closed'}
+				mutation={updateStorageClassMetadataMutation}
+				onOpenChange={setMetadataStorageClassName}
+				storageClass={(adminStorageClassesQuery.data ?? []).find(item => item.name === metadataStorageClassName) ?? null}
 			/>
 			<DeleteStorageClassDialog
 				mutation={deleteStorageClassMutation}

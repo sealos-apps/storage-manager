@@ -24,6 +24,9 @@ type viewerService interface {
 	ListPVCsInNamespaces(ctx context.Context, namespaces []string) ([]domain.PVC, error)
 	CreatePVC(ctx context.Context, input session.CreatePVCInput) (*domain.PVC, error)
 	DeletePVC(ctx context.Context, input session.DeletePVCInput) (*domain.PVC, error)
+	GetPVCYAML(ctx context.Context, namespace string, name string) (*session.PVCYAML, error)
+	UpdatePVC(ctx context.Context, namespace string, name string, body string) (*domain.PVC, error)
+	DescribePVC(ctx context.Context, namespace string, name string) (*session.PVCDescribe, error)
 	ExpandPVC(ctx context.Context, input session.ExpandPVCInput) (*domain.PVC, error)
 	ListStorageClasses(ctx context.Context) ([]domain.StorageClass, error)
 	CreateViewerSession(ctx context.Context, input session.CreateViewerSessionInput) (*domain.ViewerSession, error)
@@ -39,6 +42,7 @@ type storageClassService interface {
 	GetStorageClassYAML(ctx context.Context, name string) (*session.StorageClassYAML, error)
 	CreateStorageClass(ctx context.Context, body string) (*domain.StorageClass, error)
 	UpdateStorageClass(ctx context.Context, name string, body string) (*domain.StorageClass, error)
+	UpdateStorageClassMetadata(ctx context.Context, name string, input session.StorageClassMetadataInput) (*domain.StorageClass, error)
 	DeleteStorageClass(ctx context.Context, name string) (*domain.StorageClass, error)
 	DescribeStorageClass(ctx context.Context, name string) (*session.StorageClassDescribe, error)
 }

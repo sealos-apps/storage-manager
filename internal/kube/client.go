@@ -20,6 +20,7 @@ type Interface interface {
 	ListPVCs(ctx context.Context, namespace string) ([]corev1.PersistentVolumeClaim, error)
 	ListAllPVCs(ctx context.Context) ([]corev1.PersistentVolumeClaim, error)
 	CreatePVC(ctx context.Context, pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error)
+	UpdatePVC(ctx context.Context, pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error)
 	DeletePVC(ctx context.Context, namespace string, name string) error
 	UpdatePVCStorageRequest(
 		ctx context.Context,
@@ -98,6 +99,17 @@ func (c *Client) CreatePVC(
 		return nil, fmt.Errorf("creating pvc %s/%s: %w", pvc.Namespace, pvc.Name, err)
 	}
 	return created, nil
+}
+
+func (c *Client) UpdatePVC(
+	ctx context.Context,
+	pvc *corev1.PersistentVolumeClaim,
+) (*corev1.PersistentVolumeClaim, error) {
+	updated, err := c.clientset.CoreV1().PersistentVolumeClaims(pvc.Namespace).Update(ctx, pvc, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("updating pvc %s/%s: %w", pvc.Namespace, pvc.Name, err)
+	}
+	return updated, nil
 }
 
 func (c *Client) DeletePVC(ctx context.Context, namespace string, name string) error {

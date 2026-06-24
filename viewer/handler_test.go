@@ -28,6 +28,8 @@ type fakeViewerService struct {
 	createInput     *session.CreateViewerSessionInput
 	deleteInput     *session.DeletePVCInput
 	expandInput     *session.ExpandPVCInput
+	pvcYAML         *session.PVCYAML
+	pvcDescribe     *session.PVCDescribe
 	pvcInput        *session.CreatePVCInput
 	token           *domain.ViewerToken
 	tokenInput      *viewerSessionCall
@@ -210,6 +212,27 @@ func (f *fakeViewerService) DeletePVC(_ context.Context, input session.DeletePVC
 	return f.pvc, nil
 }
 
+func (f *fakeViewerService) GetPVCYAML(_ context.Context, namespace string, name string) (*session.PVCYAML, error) {
+	if f.pvcYAML != nil {
+		return f.pvcYAML, nil
+	}
+	return &session.PVCYAML{Namespace: namespace, Name: name, YAML: "kind: PersistentVolumeClaim\n"}, nil
+}
+
+func (f *fakeViewerService) UpdatePVC(_ context.Context, namespace string, name string, _ string) (*domain.PVC, error) {
+	if f.pvc != nil {
+		return f.pvc, nil
+	}
+	return &domain.PVC{Namespace: namespace, Name: name}, nil
+}
+
+func (f *fakeViewerService) DescribePVC(_ context.Context, namespace string, name string) (*session.PVCDescribe, error) {
+	if f.pvcDescribe != nil {
+		return f.pvcDescribe, nil
+	}
+	return &session.PVCDescribe{Namespace: namespace, Name: name, Describe: "Name: " + name}, nil
+}
+
 func (f *fakeViewerService) ExpandPVC(_ context.Context, input session.ExpandPVCInput) (*domain.PVC, error) {
 	if f.expandInput != nil {
 		*f.expandInput = input
@@ -283,6 +306,14 @@ func (f fakeStorageClassService) CreateStorageClass(_ context.Context, _ string)
 }
 
 func (f fakeStorageClassService) UpdateStorageClass(_ context.Context, _ string, _ string) (*domain.StorageClass, error) {
+	return f.item, nil
+}
+
+func (f fakeStorageClassService) UpdateStorageClassMetadata(
+	_ context.Context,
+	_ string,
+	_ session.StorageClassMetadataInput,
+) (*domain.StorageClass, error) {
 	return f.item, nil
 }
 

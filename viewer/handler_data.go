@@ -32,6 +32,36 @@ func (h *Handler) DeletePVCData(
 	return response, toEncoreError(apiErr)
 }
 
+func (h *Handler) GetPVCYAMLData(
+	ctx context.Context,
+	namespace string,
+	name string,
+	req *AuthenticatedRequest,
+) (*PVCYAMLResponse, error) {
+	response, apiErr := h.getPVCYAML(ctx, namespace, name, req)
+	return response, toEncoreError(apiErr)
+}
+
+func (h *Handler) UpdatePVCData(
+	ctx context.Context,
+	namespace string,
+	name string,
+	req *PVCYAMLRequest,
+) (*PVCResponse, error) {
+	response, apiErr := h.updatePVC(ctx, namespace, name, req)
+	return response, toEncoreError(apiErr)
+}
+
+func (h *Handler) DescribePVCData(
+	ctx context.Context,
+	namespace string,
+	name string,
+	req *AuthenticatedRequest,
+) (*PVCDescribeResponse, error) {
+	response, apiErr := h.describePVC(ctx, namespace, name, req)
+	return response, toEncoreError(apiErr)
+}
+
 func (h *Handler) ExpandPVCData(
 	ctx context.Context,
 	namespace string,
@@ -97,6 +127,15 @@ func (h *Handler) AdminUpdateStorageClassData(
 	req *StorageClassYAMLRequest,
 ) (*StorageClassResponse, error) {
 	response, apiErr := h.adminUpdateStorageClass(ctx, name, req)
+	return response, toEncoreError(apiErr)
+}
+
+func (h *Handler) AdminUpdateStorageClassMetadataData(
+	ctx context.Context,
+	name string,
+	req *StorageClassMetadataRequest,
+) (*StorageClassResponse, error) {
+	response, apiErr := h.adminUpdateStorageClassMetadata(ctx, name, req)
 	return response, toEncoreError(apiErr)
 }
 

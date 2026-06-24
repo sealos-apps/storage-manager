@@ -245,6 +245,65 @@ func TestHandlerCreatePVCUsesEnvelope(t *testing.T) {
 	}
 }
 
+func TestHandlerPVCYAMLAndDescribeUseEnvelope(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(
+		&fakeViewerService{
+			pvc:         &domain.PVC{Namespace: "ns", Name: "data", Capacity: "10Gi"},
+			pvcYAML:     &session.PVCYAML{Namespace: "ns", Name: "data", YAML: "kind: PersistentVolumeClaim\n"},
+			pvcDescribe: &session.PVCDescribe{Namespace: "ns", Name: "data", Describe: "Name: data"},
+		},
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+	)
+	tests := []struct {
+		name   string
+		req    *http.Request
+		handle func(*Handler, http.ResponseWriter, *http.Request)
+		want   string
+	}{
+		{
+			name:   "yaml",
+			req:    httptest.NewRequest(http.MethodGet, "/pvcs/ns/data/yaml", nil),
+			handle: (*Handler).GetPVCYAML,
+			want:   "pvc_yaml",
+		},
+		{
+			name:   "update",
+			req:    httptest.NewRequest(http.MethodPut, "/pvcs/ns/data", strings.NewReader(`{"yaml":"kind: PersistentVolumeClaim\n"}`)),
+			handle: (*Handler).UpdatePVC,
+			want:   "pvc",
+		},
+		{
+			name:   "describe",
+			req:    httptest.NewRequest(http.MethodGet, "/pvcs/ns/data/describe", nil),
+			handle: (*Handler).DescribePVC,
+			want:   "pvc_describe",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tt.req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
+			recorder := httptest.NewRecorder()
+
+			tt.handle(handler, recorder, tt.req)
+
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+			}
+			if !strings.Contains(recorder.Body.String(), tt.want) {
+				t.Fatalf("body = %s", recorder.Body.String())
+			}
+		})
+	}
+}
+
 func TestHandlerCreatePVCRejectsWhenFeatureDisabled(t *testing.T) {
 	t.Parallel()
 

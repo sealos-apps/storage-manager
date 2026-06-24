@@ -9,6 +9,7 @@ import (
 	"github.com/nixieboluo/sealos-storage-manager/internal/apienv"
 	"github.com/nixieboluo/sealos-storage-manager/internal/authn"
 	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
+	"github.com/nixieboluo/sealos-storage-manager/internal/session"
 )
 
 func (h *Handler) adminCapabilities(
@@ -191,6 +192,29 @@ func (h *Handler) adminUpdateStorageClass(
 		return nil, apiErr
 	}
 	h.observe(ctx, http.MethodPut, "/admin/storage-classes/:name", http.StatusOK, start)
+	return &StorageClassResponse{StorageClass: item}, nil
+}
+
+func (h *Handler) adminUpdateStorageClassMetadata(
+	ctx context.Context,
+	name string,
+	req *StorageClassMetadataRequest,
+) (*StorageClassResponse, *apienv.Error) {
+	start := time.Now()
+	if apiErr := h.authorizeStorageClassAdmin(ctx, req); apiErr != nil {
+		h.observe(ctx, http.MethodPut, "/admin/storage-classes/:name/metadata", apiErr.Status, start)
+		return nil, apiErr
+	}
+	item, updateErr := h.storageClasses.UpdateStorageClassMetadata(ctx, name, session.StorageClassMetadataInput{
+		AvailableToUsers: req.AvailableToUsers,
+		DisplayNames:     req.DisplayNames,
+	})
+	if updateErr != nil {
+		apiErr := apienv.FromError(updateErr)
+		h.observe(ctx, http.MethodPut, "/admin/storage-classes/:name/metadata", apiErr.Status, start)
+		return nil, apiErr
+	}
+	h.observe(ctx, http.MethodPut, "/admin/storage-classes/:name/metadata", http.StatusOK, start)
 	return &StorageClassResponse{StorageClass: item}, nil
 }
 

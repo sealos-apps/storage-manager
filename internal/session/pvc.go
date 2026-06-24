@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"sigs.k8s.io/yaml"
 )
 
 type CreatePVCInput struct {
@@ -368,6 +369,88 @@ func (s *ViewerService) DeletePVC(ctx context.Context, input DeletePVCInput) (pv
 		return nil, err
 	}
 	return deleted, nil
+}
+
+func (s *ViewerService) GetPVCYAML(ctx context.Context, namespace string, name string) (result *PVCYAML, err error) {
+	ctx, finish := s.recorder.TraceOperation(ctx,
+		"pvc.get_yaml",
+		slog.String("namespace", namespace),
+		slog.String("pvc_name", name),
+	)
+	defer func() {
+		finish(err)
+	}()
+
+	pvc, err := s.kube.GetPVC(ctx, namespace, name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, apienv.NewError(404, apienv.CodePVCNotFound, "PVC not found", nil)
+		}
+		return nil, err
+	}
+	clearPVCServerFields(pvc)
+	pvc.APIVersion = "v1"
+	pvc.Kind = "PersistentVolumeClaim"
+	body, err := yaml.Marshal(pvc)
+	if err != nil {
+		return nil, err
+	}
+	return &PVCYAML{Namespace: pvc.Namespace, Name: pvc.Name, YAML: string(body)}, nil
+}
+
+func (s *ViewerService) UpdatePVC(ctx context.Context, namespace string, name string, body string) (pvc *domain.PVC, err error) {
+	ctx, finish := s.recorder.TraceOperation(ctx,
+		"pvc.update",
+		slog.String("namespace", namespace),
+		slog.String("pvc_name", name),
+	)
+	defer func() {
+		finish(err)
+	}()
+
+	next, err := parsePVCYAML(body)
+	if err != nil {
+		return nil, err
+	}
+	if next.Namespace != namespace || next.Name != name {
+		return nil, apienv.NewError(400, apienv.CodeValidationError, "PVC YAML metadata must match path namespace and name", nil)
+	}
+	current, err := s.kube.GetPVC(ctx, namespace, name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, apienv.NewError(404, apienv.CodePVCNotFound, "PVC not found", nil)
+		}
+		return nil, err
+	}
+	next.ResourceVersion = current.ResourceVersion
+	updated, err := s.kube.UpdatePVC(ctx, next)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, apienv.NewError(404, apienv.CodePVCNotFound, "PVC not found", nil)
+		}
+		return nil, err
+	}
+	return s.pvcToDomain(ctx, updated)
+}
+
+func (s *ViewerService) DescribePVC(ctx context.Context, namespace string, name string) (result *PVCDescribe, err error) {
+	ctx, finish := s.recorder.TraceOperation(ctx,
+		"pvc.describe",
+		slog.String("namespace", namespace),
+		slog.String("pvc_name", name),
+	)
+	defer func() {
+		finish(err)
+	}()
+
+	pvc, err := s.kube.GetPVC(ctx, namespace, name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, apienv.NewError(404, apienv.CodePVCNotFound, "PVC not found", nil)
+		}
+		return nil, err
+	}
+	return &PVCDescribe{Namespace: pvc.Namespace, Name: pvc.Name, Describe: describePVC(*pvc)}, nil
 }
 
 func (s *ViewerService) ExpandPVC(ctx context.Context, input ExpandPVCInput) (pvc *domain.PVC, err error) {

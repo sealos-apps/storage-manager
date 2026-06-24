@@ -81,6 +81,19 @@ func (c observedClient) CreatePVC(
 	return created, err
 }
 
+func (c observedClient) UpdatePVC(
+	ctx context.Context,
+	pvc *corev1.PersistentVolumeClaim,
+) (*corev1.PersistentVolumeClaim, error) {
+	var updated *corev1.PersistentVolumeClaim
+	err := c.observe(ctx, "update", "persistentvolumeclaim", pvc.Namespace, pvc.Name, func(ctx context.Context) error {
+		var err error
+		updated, err = c.next.UpdatePVC(ctx, pvc)
+		return err
+	})
+	return updated, err
+}
+
 func (c observedClient) DeletePVC(ctx context.Context, namespace string, name string) error {
 	return c.observe(ctx, "delete", "persistentvolumeclaim", namespace, name, func(ctx context.Context) error {
 		return c.next.DeletePVC(ctx, namespace, name)

@@ -90,6 +90,24 @@ export function adminStorageClassDescribeQueryOptions(name: string | null, api: 
 	})
 }
 
+export function pvcYAMLQueryOptions(pvc: { name: string, namespace: string } | null, api: ViewerAPI = viewerApi) {
+	return queryOptions({
+		queryKey: viewerKeys.pvcYAML(pvc?.namespace ?? '', pvc?.name ?? ''),
+		queryFn: () => api.getPVCYAML({ namespace: pvc?.namespace ?? '', name: pvc?.name ?? '' }),
+		enabled: Boolean(pvc),
+		staleTime: 5_000,
+	})
+}
+
+export function pvcDescribeQueryOptions(pvc: { name: string, namespace: string } | null, api: ViewerAPI = viewerApi) {
+	return queryOptions({
+		queryKey: viewerKeys.pvcDescribe(pvc?.namespace ?? '', pvc?.name ?? ''),
+		queryFn: () => api.describePVC({ namespace: pvc?.namespace ?? '', name: pvc?.name ?? '' }),
+		enabled: Boolean(pvc),
+		staleTime: 5_000,
+	})
+}
+
 export function viewerSessionQueryOptions({
 	api = viewerApi,
 	enabled = true,

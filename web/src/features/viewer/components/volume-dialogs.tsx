@@ -1,10 +1,11 @@
 import type { UseMutationResult } from '@tanstack/react-query'
 import type { AdminNamespace, PVC, StorageClass, StorageQuota } from '@/features/viewer/types/viewer'
+import type { Quantity } from '@/utils/quantities'
 
 import { useForm } from '@tanstack/react-form'
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { z } from 'zod'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -25,6 +26,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatViewerErrorToast } from '@/features/viewer/api/viewer-error'
+import { capacityBytesToGiInput, formatQuantity, parseGiQuantityInput } from '@/features/viewer/utils/storage-quantity'
 
 interface CreatePVCForm {
 	capacityGi: string
@@ -37,20 +39,16 @@ const defaultCreatePVCForm: CreatePVCForm = {
 }
 
 const pvcAccessModes = ['ReadWriteOnce', 'ReadOnlyMany', 'ReadWriteMany'] as const
-const bytesPerGi = 1024 * 1024 * 1024
-
 interface CreatePVCVariables {
 	accessModes: string[]
-	capacity: string
-	capacityBytes: number
+	capacity: Quantity
 	name: string
 	namespace: string
 	storageClassName: string
 }
 
 interface ExpandPVCVariables {
-	capacity: string
-	capacityBytes: number
+	capacity: Quantity
 	name: string
 	namespace: string
 }
@@ -88,45 +86,45 @@ export function CreatePVCDialog({
 	storageClasses,
 	storageQuota,
 }: CreatePVCDialogProps) {
-	const { t } = useTranslation()
+	const { i18n, t } = useTranslation()
 	const firstStorageClass = storageClasses[0]
-	const [selection, setSelection] = useState({ accessMode: '', storageClassName: '' })
 	const targetNamespace = namespaceOptions.length > 0 ? selectedNamespace : namespace
-	const activeStorageClassName = storageClasses.some(storageClass => storageClass.name === selection.storageClassName)
-		? selection.storageClassName
-		: firstStorageClass?.name ?? ''
-	const activeAccessMode = (pvcAccessModes as readonly string[]).includes(selection.accessMode)
-		? selection.accessMode
-		: pvcAccessModes[0]
+	const defaultStorageClassName = firstStorageClass?.name ?? ''
 	const form = useForm({
 		defaultValues: {
+			accessMode: pvcAccessModes[0] as string,
 			...defaultCreatePVCForm,
+			storageClassName: defaultStorageClassName,
 		},
 		onSubmit: ({ value }) => {
-			const capacityGi = parseCapacityGi(value.capacityGi)
-			if (!activeStorageClassName || !activeAccessMode) {
+			const storageClassName = storageClasses.some(storageClass => storageClass.name === value.storageClassName)
+				? value.storageClassName
+				: defaultStorageClassName
+			const accessMode = (pvcAccessModes as readonly string[]).includes(value.accessMode)
+				? value.accessMode
+				: pvcAccessModes[0]
+			const parsed = createPVCSchema(t).safeParse({ ...value, accessMode, storageClassName })
+			if (!parsed.success) {
+				toast.error(parsed.error.issues[0]?.message ?? t('errors.validationError'))
 				return
 			}
-			if (capacityGi === null) {
-				return
-			}
-			if (exceedsStorageQuota(capacityGi * bytesPerGi, storageQuota)) {
+			if (exceedsStorageQuota(parsed.data.capacity, storageQuota)) {
 				return
 			}
 			mutation.mutate({
 				namespace: targetNamespace,
-				name: value.name.trim(),
-				capacity: `${capacityGi}Gi`,
-				capacityBytes: capacityGi * bytesPerGi,
-				accessModes: [activeAccessMode],
-				storageClassName: activeStorageClassName,
+				name: parsed.data.name,
+				capacity: parsed.data.capacity,
+				accessModes: [parsed.data.accessMode],
+				storageClassName: parsed.data.storageClassName,
 			}, {
 				onSuccess: () => {
 					toast.success(t('volumes.created'))
 					form.reset({
+						accessMode: pvcAccessModes[0],
 						...defaultCreatePVCForm,
+						storageClassName: defaultStorageClassName,
 					})
-					setSelection({ accessMode: '', storageClassName: '' })
 					onOpenChange(false)
 				},
 				onError: (error) => {
@@ -220,49 +218,46 @@ export function CreatePVCDialog({
 						)}
 					</form.Field>
 					<FormField id="pvc-storage-class" label={t('volumes.storageClass')}>
-						<Select
-							onValueChange={(value) => {
-								setSelection({
-									accessMode: activeAccessMode,
-									storageClassName: value,
-								})
-							}}
-							value={activeStorageClassName}
-						>
-							<SelectTrigger id="pvc-storage-class">
-								<SelectValue placeholder={t('volumes.storageClass')} />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectGroup>
-									{storageClasses.map(storageClass => (
-										<SelectItem key={storageClass.name} value={storageClass.name}>
-											{storageClass.name}
-											{storageClass.is_default ? ` · ${t('common.default')}` : ''}
-										</SelectItem>
-									))}
-								</SelectGroup>
-							</SelectContent>
-						</Select>
+						<form.Field name="storageClassName">
+							{field => (
+								<Select
+									onValueChange={field.handleChange}
+									value={storageClasses.some(storageClass => storageClass.name === field.state.value) ? field.state.value : defaultStorageClassName}
+								>
+									<SelectTrigger id="pvc-storage-class">
+										<SelectValue placeholder={t('volumes.storageClass')} />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectGroup>
+											{storageClasses.map(storageClass => (
+												<SelectItem key={storageClass.name} value={storageClass.name}>
+													{storageClassDisplayName(storageClass, i18n.language)}
+													{storageClass.is_default ? ` · ${t('common.default')}` : ''}
+												</SelectItem>
+											))}
+										</SelectGroup>
+									</SelectContent>
+								</Select>
+							)}
+						</form.Field>
 					</FormField>
 					<FormField id="pvc-access-mode" label={t('viewer.accessModes')}>
-						<Select
-							onValueChange={value => setSelection({
-								accessMode: value,
-								storageClassName: activeStorageClassName,
-							})}
-							value={activeAccessMode}
-						>
-							<SelectTrigger id="pvc-access-mode">
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectGroup>
-									{pvcAccessModes.map(mode => (
-										<SelectItem key={mode} value={mode}>{mode}</SelectItem>
-									))}
-								</SelectGroup>
-							</SelectContent>
-						</Select>
+						<form.Field name="accessMode">
+							{field => (
+								<Select onValueChange={field.handleChange} value={(pvcAccessModes as readonly string[]).includes(field.state.value) ? field.state.value : pvcAccessModes[0]}>
+									<SelectTrigger id="pvc-access-mode">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectGroup>
+											{pvcAccessModes.map(mode => (
+												<SelectItem key={mode} value={mode}>{mode}</SelectItem>
+											))}
+										</SelectGroup>
+									</SelectContent>
+								</Select>
+							)}
+						</form.Field>
 					</FormField>
 					{storageClasses.length === 0
 						? <p className="text-sm text-muted-foreground">{t('volumes.noAvailableStorageClasses')}</p>
@@ -283,10 +278,10 @@ export function CreatePVCDialog({
 										|| !canSubmit
 										|| !targetNamespace
 										|| values.name.trim().length === 0
-										|| parseCapacityGi(values.capacityGi) === null
-										|| exceedsStorageQuota((parseCapacityGi(values.capacityGi) ?? 0) * bytesPerGi, storageQuota)
-										|| activeStorageClassName.length === 0
-										|| activeAccessMode.length === 0
+										|| parseGiQuantityInput(values.capacityGi) === null
+										|| exceedsStorageQuota(parseGiQuantityInput(values.capacityGi), storageQuota)
+										|| !(storageClasses.some(storageClass => storageClass.name === values.storageClassName) ? values.storageClassName : defaultStorageClassName)
+										|| !((pvcAccessModes as readonly string[]).includes(values.accessMode) ? values.accessMode : pvcAccessModes[0])
 									}
 									type="submit"
 								>
@@ -339,8 +334,8 @@ function CreateCapacityField({
 	storageQuota: StorageQuota | null
 	t: ReturnType<typeof useTranslation>['t']
 }) {
-	const parsed = parseCapacityGi(field.state.value)
-	const quotaError = parsed !== null && exceedsStorageQuota(parsed * bytesPerGi, storageQuota)
+	const parsed = parseGiQuantityInput(field.state.value)
+	const quotaError = parsed !== null && exceedsStorageQuota(parsed, storageQuota)
 		? storageQuotaError(t, storageQuota)
 		: ''
 	const fieldError = quotaError || error
@@ -378,7 +373,7 @@ interface ExpandPVCDialogProps {
 
 export function ExpandPVCDialog({ mutation, onOpenChange, pvc, storageQuota }: ExpandPVCDialogProps) {
 	const { t } = useTranslation()
-	const currentGi = pvc ? Math.max(1, Math.ceil(pvc.capacity_bytes / 1024 / 1024 / 1024)) : 1
+	const currentGi = pvc ? Number(capacityBytesToGiInput(pvc.capacity)) : 1
 	return (
 		<ExpandPVCDialogContent
 			currentGi={currentGi}
@@ -403,12 +398,36 @@ function ExpandPVCDialogContent({
 	currentGi: number
 	t: ReturnType<typeof useTranslation>['t']
 }) {
-	const [nextGiInput, setNextGiInput] = useState(String(currentGi + 10))
-	const value = parseCapacityGi(nextGiInput)
-	const requestedDeltaBytes = value !== null ? (value - currentGi) * bytesPerGi : 0
-	const capacityError = value !== null && value > currentGi
-		? (exceedsStorageQuota(requestedDeltaBytes, storageQuota) ? storageQuotaError(t, storageQuota) : '')
-		: t('volumes.capacityRequired')
+	const form = useForm({
+		defaultValues: {
+			capacityGi: String(currentGi + 10),
+		},
+		onSubmit: ({ value }) => {
+			if (!pvc) {
+				return
+			}
+			const capacity = parseGiQuantityInput(value.capacityGi)
+			const current = parseGiQuantityInput(String(currentGi))
+			const delta = capacity !== null && current !== null ? capacity.sub(current) : null
+			if (capacity === null || current === null || capacity.cmp(current) <= 0 || exceedsStorageQuota(delta, storageQuota)) {
+				return
+			}
+			mutation.mutate({
+				namespace: pvc.namespace,
+				name: pvc.name,
+				capacity,
+			}, {
+				onSuccess: () => {
+					toast.success(t('volumes.expanded'))
+					onOpenChange(null)
+				},
+				onError: (error) => {
+					const formatted = formatViewerErrorToast(error, t)
+					toast.error(formatted.message, { description: formatted.description })
+				},
+			})
+		},
+	})
 
 	return (
 		<Dialog
@@ -424,7 +443,13 @@ function ExpandPVCDialogContent({
 					<DialogTitle>{t('volumes.expand')}</DialogTitle>
 					<DialogDescription>{pvc ? `${pvc.namespace}/${pvc.name}` : ''}</DialogDescription>
 				</DialogHeader>
-				<div className="grid gap-4">
+				<form
+					className="grid gap-4"
+					onSubmit={(event) => {
+						event.preventDefault()
+						void form.handleSubmit()
+					}}
+				>
 					<div className="flex justify-between gap-4 text-sm">
 						<span>{t('volumes.currentCapacity')}</span>
 						<span>
@@ -433,50 +458,37 @@ function ExpandPVCDialogContent({
 							Gi
 						</span>
 					</div>
-					<FormField error={capacityError} id="expand-capacity" label={t('volumes.targetCapacity')}>
-						<CapacityGiInput
-							aria-invalid={capacityError ? true : undefined}
-							id="expand-capacity"
-							onBlur={() => setNextGiInput(normalizeCapacityGi(nextGiInput))}
-							onChange={event => setNextGiInput(event.target.value)}
-							value={nextGiInput}
-						/>
-					</FormField>
+					<form.Subscribe selector={state => expandCapacityError(state.values.capacityGi, currentGi, storageQuota, t)}>
+						{error => (
+							<FormField error={error} id="expand-capacity" label={t('volumes.targetCapacity')}>
+								<form.Field name="capacityGi">
+									{field => (
+										<CapacityGiInput
+											aria-invalid={error ? true : undefined}
+											id="expand-capacity"
+											onBlur={() => field.handleChange(normalizeCapacityGi(field.state.value))}
+											onChange={event => field.handleChange(event.target.value)}
+											value={field.state.value}
+										/>
+									)}
+								</form.Field>
+							</FormField>
+						)}
+					</form.Subscribe>
 					<p className="text-sm text-muted-foreground">{t('volumes.expandHint')}</p>
-				</div>
-				<DialogFooter>
-					<Button onClick={() => onOpenChange(null)} variant="outline">
-						{t('actions.cancel')}
-					</Button>
-					<Button
-						disabled={!pvc || mutation.isPending || Boolean(capacityError)}
-						onClick={() => {
-							if (!pvc) {
-								return
-							}
-							if (value === null) {
-								return
-							}
-							mutation.mutate({
-								namespace: pvc.namespace,
-								name: pvc.name,
-								capacity: `${value}Gi`,
-								capacityBytes: value * bytesPerGi,
-							}, {
-								onSuccess: () => {
-									toast.success(t('volumes.expanded'))
-									onOpenChange(null)
-								},
-								onError: (error) => {
-									const formatted = formatViewerErrorToast(error, t)
-									toast.error(formatted.message, { description: formatted.description })
-								},
-							})
-						}}
-					>
-						{t('volumes.expand')}
-					</Button>
-				</DialogFooter>
+					<DialogFooter>
+						<Button onClick={() => onOpenChange(null)} type="button" variant="outline">
+							{t('actions.cancel')}
+						</Button>
+						<form.Subscribe selector={state => expandCapacityError(state.values.capacityGi, currentGi, storageQuota, t)}>
+							{error => (
+								<Button disabled={!pvc || mutation.isPending || Boolean(error)} type="submit">
+									{t('volumes.expand')}
+								</Button>
+							)}
+						</form.Subscribe>
+					</DialogFooter>
+				</form>
 			</DialogContent>
 		</Dialog>
 	)
@@ -497,6 +509,31 @@ export function DeletePVCDialog({
 }: DeletePVCDialogProps) {
 	const { t } = useTranslation()
 	const pvc = deleteState?.pvc
+	const form = useForm({
+		defaultValues: {
+			confirmName: deleteState?.confirmName ?? '',
+		},
+		onSubmit: ({ value }) => {
+			if (!pvc || !deleteConfirmSchema(pvc.name).safeParse(value.confirmName).success) {
+				return
+			}
+			mutation.mutate({
+				namespace: pvc.namespace,
+				name: pvc.name,
+			}, {
+				onSuccess: () => {
+					toast.success(t('volumes.deleted'))
+					onSuccess()
+					onOpenChange(null)
+				},
+				onError: (error) => {
+					const formatted = formatViewerErrorToast(error, t)
+					toast.error(formatted.message, { description: formatted.description })
+				},
+			})
+		},
+	})
+	const confirmName = form.state.values.confirmName
 
 	return (
 		<Dialog onOpenChange={open => !open && onOpenChange(null)} open={deleteState !== null}>
@@ -505,60 +542,61 @@ export function DeletePVCDialog({
 					<DialogTitle>{t('volumes.deleteTitle')}</DialogTitle>
 					<DialogDescription>{pvc ? t('volumes.deleteDescription', { name: pvc.name }) : ''}</DialogDescription>
 				</DialogHeader>
-				{pvc
-					? (
-							<div className="grid gap-2">
-								<Label htmlFor="delete-confirm">{t('volumes.typeNameToConfirm')}</Label>
-								<Input
-									id="delete-confirm"
-									onChange={event => onOpenChange({ pvc, confirmName: event.target.value })}
-									value={deleteState.confirmName}
-								/>
-							</div>
-						)
-					: null}
-				<DialogFooter>
-					<Button onClick={() => onOpenChange(null)} variant="outline">
-						{t('actions.cancel')}
-					</Button>
-					<Button
-						disabled={!pvc || mutation.isPending || deleteState?.confirmName !== pvc.name}
-						onClick={() => {
-							if (!pvc) {
-								return
-							}
-							mutation.mutate({
-								namespace: pvc.namespace,
-								name: pvc.name,
-							}, {
-								onSuccess: () => {
-									toast.success(t('volumes.deleted'))
-									onSuccess()
-									onOpenChange(null)
-								},
-								onError: (error) => {
-									const formatted = formatViewerErrorToast(error, t)
-									toast.error(formatted.message, { description: formatted.description })
-								},
-							})
-						}}
-						variant="destructive"
-					>
-						{t('actions.delete')}
-					</Button>
-				</DialogFooter>
+				<form
+					className="grid gap-4"
+					onSubmit={(event) => {
+						event.preventDefault()
+						void form.handleSubmit()
+					}}
+				>
+					{pvc
+						? (
+								<form.Field name="confirmName">
+									{field => (
+										<FormField id="delete-confirm" label={t('volumes.typeNameToConfirm')}>
+											<Input
+												id="delete-confirm"
+												onChange={event => field.handleChange(event.target.value)}
+												value={field.state.value}
+											/>
+										</FormField>
+									)}
+								</form.Field>
+							)
+						: null}
+					<DialogFooter>
+						<Button onClick={() => onOpenChange(null)} type="button" variant="outline">
+							{t('actions.cancel')}
+						</Button>
+						<Button disabled={!pvc || mutation.isPending || confirmName !== pvc.name} type="submit" variant="destructive">
+							{t('actions.delete')}
+						</Button>
+					</DialogFooter>
+				</form>
 			</DialogContent>
 		</Dialog>
 	)
 }
 
+function createPVCSchema(t: ReturnType<typeof useTranslation>['t']) {
+	return z.object({
+		accessMode: z.enum(pvcAccessModes),
+		capacityGi: z.string().transform((value, ctx) => {
+			const quantity = parseGiQuantityInput(value)
+			if (quantity === null) {
+				ctx.addIssue({ code: z.ZodIssueCode.custom, message: t('volumes.capacityRequired') })
+				return z.NEVER
+			}
+			return quantity
+		}),
+		name: z.string().trim().min(1, t('volumes.nameRequired')),
+		storageClassName: z.string().trim().min(1, t('volumes.noAvailableStorageClasses')),
+	}).transform(value => ({ ...value, capacity: value.capacityGi }))
+}
+
 function parseCapacityGi(value: string) {
-	const trimmed = value.trim()
-	if (!/^\d+$/.test(trimmed)) {
-		return null
-	}
-	const parsed = Number(trimmed)
-	return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null
+	const quantity = parseGiQuantityInput(value)
+	return quantity === null ? null : Number(value.trim())
 }
 
 function normalizeCapacityGi(value: string) {
@@ -566,14 +604,38 @@ function normalizeCapacityGi(value: string) {
 	return parsed === null ? value : String(parsed)
 }
 
-function exceedsStorageQuota(requiredBytes: number, storageQuota: StorageQuota | null) {
-	return storageQuota !== null && requiredBytes > storageQuota.available_bytes
+function exceedsStorageQuota(required: Quantity | null, storageQuota: StorageQuota | null) {
+	return storageQuota !== null && required !== null && required.cmp(storageQuota.available) > 0
 }
 
 function storageQuotaError(t: ReturnType<typeof useTranslation>['t'], storageQuota: StorageQuota | null) {
 	return t('volumes.storageQuotaAvailable', {
-		quantity: storageQuota?.available_quantity ?? '0',
+		quantity: storageQuota ? formatQuantity(storageQuota.available) : '0',
 	})
+}
+
+function expandCapacityError(
+	value: string,
+	currentGi: number,
+	storageQuota: StorageQuota | null,
+	t: ReturnType<typeof useTranslation>['t'],
+) {
+	const quantity = parseGiQuantityInput(value)
+	const currentQuantity = parseGiQuantityInput(String(currentGi))
+	const requestedDelta = quantity !== null && currentQuantity !== null ? quantity.sub(currentQuantity) : null
+	if (quantity !== null && currentQuantity !== null && quantity.cmp(currentQuantity) > 0) {
+		return exceedsStorageQuota(requestedDelta, storageQuota) ? storageQuotaError(t, storageQuota) : ''
+	}
+	return t('volumes.capacityRequired')
+}
+
+function deleteConfirmSchema(name: string) {
+	return z.literal(name)
+}
+
+function storageClassDisplayName(storageClass: StorageClass, locale: string) {
+	const names = storageClass.display_names ?? {}
+	return names[locale] ?? names[locale.split('-')[0] ?? ''] ?? storageClass.name
 }
 
 function CapacityGiInput({

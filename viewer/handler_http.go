@@ -61,6 +61,31 @@ func (h *Handler) DeletePVC(w http.ResponseWriter, req *http.Request) {
 	writeHTTPResponse(w, response, err)
 }
 
+func (h *Handler) GetPVCYAML(w http.ResponseWriter, req *http.Request) {
+	namespace, name := pvcYAMLPathParams(req.URL.Path)
+	response, err := h.getPVCYAML(req.Context(), namespace, name, authenticatedRequest(req))
+	writeHTTPResponse(w, response, err)
+}
+
+func (h *Handler) UpdatePVC(w http.ResponseWriter, req *http.Request) {
+	var body PVCYAMLRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeHTTPResponse(w, nil, apienv.NewError(400, apienv.CodeValidationError, "Invalid JSON request", nil))
+		return
+	}
+	body.Authorization = req.Header.Get("Authorization")
+	body.SealosAccountAuthorization = req.Header.Get("X-Sealos-Account-Authorization")
+	namespace, name := pvcPathParams(req.URL.Path)
+	response, err := h.updatePVC(req.Context(), namespace, name, &body)
+	writeHTTPResponse(w, response, err)
+}
+
+func (h *Handler) DescribePVC(w http.ResponseWriter, req *http.Request) {
+	namespace, name := pvcDescribePathParams(req.URL.Path)
+	response, err := h.describePVC(req.Context(), namespace, name, authenticatedRequest(req))
+	writeHTTPResponse(w, response, err)
+}
+
 func (h *Handler) ExpandPVC(w http.ResponseWriter, req *http.Request) {
 	var body ExpandPVCRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
@@ -120,6 +145,18 @@ func (h *Handler) AdminUpdateStorageClass(w http.ResponseWriter, req *http.Reque
 	body.Authorization = req.Header.Get("Authorization")
 	name := pathID(req.URL.Path, "/admin/storage-classes/")
 	response, err := h.adminUpdateStorageClass(req.Context(), name, &body)
+	writeHTTPResponse(w, response, err)
+}
+
+func (h *Handler) AdminUpdateStorageClassMetadata(w http.ResponseWriter, req *http.Request) {
+	var body StorageClassMetadataRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeHTTPResponse(w, nil, apienv.NewError(400, apienv.CodeValidationError, "Invalid JSON request", nil))
+		return
+	}
+	body.Authorization = req.Header.Get("Authorization")
+	name := strings.TrimSuffix(pathID(req.URL.Path, "/admin/storage-classes/"), "/metadata")
+	response, err := h.adminUpdateStorageClassMetadata(req.Context(), name, &body)
 	writeHTTPResponse(w, response, err)
 }
 

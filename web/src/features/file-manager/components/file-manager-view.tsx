@@ -45,6 +45,7 @@ import {
 } from '@/features/file-manager/utils/file-tree'
 import { viewerApi } from '@/features/viewer/api/viewer-api'
 import { formatBytes } from '@/features/viewer/utils/format-capacity'
+import { formatQuantity, quantityPercent } from '@/features/viewer/utils/storage-quantity'
 
 interface FileManagerViewProps {
 	api?: ViewerAPI
@@ -497,9 +498,7 @@ interface StorageUsageSummaryProps {
 function StorageUsageSummary({ pvc }: StorageUsageSummaryProps) {
 	const { t } = useTranslation()
 	const stats = pvc?.volume_stats
-	const percent = stats && pvc.capacity_bytes > 0
-		? Math.min(100, Math.max(0, Math.round((stats.used_bytes / pvc.capacity_bytes) * 100)))
-		: 0
+	const percent = stats && pvc ? quantityPercent(stats.used, pvc.capacity) : 0
 
 	if (!stats) {
 		return (
@@ -521,7 +520,7 @@ function StorageUsageSummary({ pvc }: StorageUsageSummaryProps) {
 		<div className="grid min-w-56 gap-1.5 rounded-lg border bg-card px-3 py-2">
 			<div className="flex items-center justify-between gap-2 text-xs">
 				<span className="font-medium text-foreground">
-					{`${formatBytes(stats.used_bytes)} / ${formatBytes(pvc.capacity_bytes)}`}
+					{`${formatQuantity(stats.used)} / ${formatQuantity(pvc.capacity)}`}
 				</span>
 				<span className="text-muted-foreground">
 					{`${percent}%`}
@@ -529,7 +528,7 @@ function StorageUsageSummary({ pvc }: StorageUsageSummaryProps) {
 			</div>
 			<Progress aria-label={t('volumes.usageProgressLabel', { pvc: pvc.name })} value={percent} />
 			<div className="text-xs text-muted-foreground">
-				{t('volumes.usageFree', { size: formatBytes(stats.available_bytes) })}
+				{t('volumes.usageFree', { size: formatQuantity(stats.available) })}
 			</div>
 		</div>
 	)

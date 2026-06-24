@@ -12,12 +12,46 @@ import type {
 	ViewerSession,
 	ViewerToken,
 } from '@/features/viewer/types/viewer'
+import { quantityFromBytes } from '@/features/viewer/utils/storage-quantity'
 
-export function pvcFixture(overrides: Partial<PVC> = {}): PVC {
+type RawPVCOverride = Partial<Omit<PVC, 'capacity' | 'volume_stats'>> & {
+	capacity?: string | PVC['capacity']
+	capacity_bytes?: number
+	volume_stats?: Partial<PVC['volume_stats']> & {
+		available_bytes?: number
+		metric_capacity_bytes?: number
+		used_bytes?: number
+	}
+}
+
+type RawStorageQuotaOverride = Partial<StorageQuota> & {
+	available_bytes?: number
+	available_quantity?: string
+	limit_bytes?: number
+	limit_quantity?: string
+	used_bytes?: number
+	used_quantity?: string
+}
+
+export function pvcFixture(overrides: RawPVCOverride = {}): PVC {
+	const capacity = typeof overrides.capacity === 'string'
+		? quantityFromBytes(overrides.capacity_bytes ?? 10 * 1024 * 1024 * 1024)
+		: overrides.capacity ?? quantityFromBytes(overrides.capacity_bytes ?? 10 * 1024 * 1024 * 1024)
+	const rawStats = overrides.volume_stats
+	const volumeStats = rawStats
+		? {
+				source: rawStats.source ?? 'kubelet',
+				status: rawStats.status ?? 'ready',
+				sample_time: rawStats.sample_time,
+				available: rawStats.available ?? quantityFromBytes(rawStats.available_bytes ?? 0),
+				metricCapacity: rawStats.metricCapacity ?? quantityFromBytes(rawStats.metric_capacity_bytes ?? Number(capacity.value())),
+				used: rawStats.used ?? quantityFromBytes(rawStats.used_bytes ?? 0),
+			}
+		: undefined
+	const { capacity: _capacity, capacity_bytes: _capacityBytes, volume_stats: _volumeStats, ...rest } = overrides
 	return {
 		access_modes: ['ReadWriteOnce'],
-		capacity: '10Gi',
-		capacity_bytes: 10 * 1024 * 1024 * 1024,
+		capacity,
 		mount_status: '',
 		mounted: false,
 		mounted_pods: [],
@@ -33,8 +67,8 @@ export function pvcFixture(overrides: Partial<PVC> = {}): PVC {
 			requires_node: false,
 		},
 		viewer_supported: true,
-		volume_stats: undefined,
-		...overrides,
+		volume_stats: volumeStats,
+		...rest,
 	}
 }
 
@@ -62,6 +96,8 @@ export function storageClassFixture(overrides: Partial<StorageClass> = {}): Stor
 		in_use_pvc_count: 0,
 		is_default: true,
 		managed_by_storage_manager: true,
+		available_to_users: false,
+		display_names: {},
 		name: 'standard',
 		provisioner: 'kubernetes.io/no-provisioner',
 		reclaim_policy: 'Delete',
@@ -84,15 +120,27 @@ export function storageClassYAMLFixture(overrides: Partial<StorageClassYAML> = {
 	}
 }
 
-export function storageQuotaFixture(overrides: Partial<StorageQuota> = {}): StorageQuota {
+export function storageQuotaFixture(overrides: RawStorageQuotaOverride = {}): StorageQuota {
+	const available = overrides.available ?? quantityFromBytes(overrides.available_bytes ?? 15 * 1024 * 1024 * 1024)
+	const limit = overrides.limit ?? quantityFromBytes(overrides.limit_bytes ?? 20 * 1024 * 1024 * 1024)
+	const used = overrides.used ?? quantityFromBytes(overrides.used_bytes ?? 5 * 1024 * 1024 * 1024)
+	const {
+		available: _available,
+		available_bytes: _availableBytes,
+		available_quantity: _availableQuantity,
+		limit: _limit,
+		limit_bytes: _limitBytes,
+		limit_quantity: _limitQuantity,
+		used: _used,
+		used_bytes: _usedBytes,
+		used_quantity: _usedQuantity,
+		...rest
+	} = overrides
 	return {
-		available_bytes: 15 * 1024 * 1024 * 1024,
-		available_quantity: '15Gi',
-		limit_bytes: 20 * 1024 * 1024 * 1024,
-		limit_quantity: '20Gi',
-		used_bytes: 5 * 1024 * 1024 * 1024,
-		used_quantity: '5Gi',
-		...overrides,
+		available,
+		limit,
+		used,
+		...rest,
 	}
 }
 
@@ -187,6 +235,11 @@ export function createFakeViewerAPI(overrides: Partial<ViewerAPI> = {}): ViewerA
 		],
 		adminListStorageClasses: async () => [storageClassFixture()],
 		adminUpdateStorageClass: async name => storageClassFixture({ name }),
+		adminUpdateStorageClassMetadata: async (name, input) => storageClassFixture({
+			available_to_users: input.availableToUsers,
+			display_names: input.displayNames,
+			name,
+		}),
 		closePodSession: async () => podSessionFixture({ status: 'terminated' }),
 		closeViewerSession: async id => viewerSessionFixture({ id, status: 'closed' }),
 		createPVC: async input =>
@@ -194,7 +247,6 @@ export function createFakeViewerAPI(overrides: Partial<ViewerAPI> = {}): ViewerA
 				namespace: input.namespace,
 				name: input.name,
 				capacity: input.capacity,
-				capacity_bytes: input.capacityBytes,
 				access_modes: input.accessModes,
 			}),
 		createViewerSession: async input =>
@@ -219,16 +271,26 @@ export function createFakeViewerAPI(overrides: Partial<ViewerAPI> = {}): ViewerA
 				namespace: input.namespace,
 				name: input.name,
 				capacity: input.capacity,
-				capacity_bytes: input.capacityBytes,
 			}),
+		describePVC: async input => ({
+			describe: `Name: ${input.name}\nNamespace: ${input.namespace}`,
+			name: input.name,
+			namespace: input.namespace,
+		}),
 		getContext: async () => viewerContextFixture(),
 		getStorageQuota: async () => storageQuotaFixture(),
+		getPVCYAML: async input => ({
+			name: input.name,
+			namespace: input.namespace,
+			yaml: `apiVersion: v1\nkind: PersistentVolumeClaim\nmetadata:\n  name: ${input.name}\n  namespace: ${input.namespace}\n`,
+		}),
 		getPodSession: async id => podSessionFixture({ id }),
 		getViewerSession: async id => viewerSessionFixture({ id, status: 'ready', token_ready: true }),
 		heartbeatViewerSession: async id => heartbeatFixture({ viewer_session_id: id }),
 		issueViewerToken: async id => viewerTokenFixture({ viewer_session_id: id }),
 		listPVCs: async () => [pvcFixture()],
 		listStorageClasses: async () => [storageClassFixture()],
+		updatePVC: async input => pvcFixture({ name: input.name, namespace: input.namespace }),
 		...overrides,
 	}
 }

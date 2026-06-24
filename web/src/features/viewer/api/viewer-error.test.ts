@@ -99,7 +99,7 @@ describe('viewer errors', () => {
 			instance.t,
 		)
 
-		expect(formatted.message).toBe('This StorageClass is used by existing PVCs and cannot be deleted.')
+		expect(formatted.message).toBe('This storage type is used by existing PVCs and cannot be deleted.')
 		expect(formatted.description).toContain('pvc_count: 2')
 		expect(formatted.description).toContain('storage_class: standard')
 	})

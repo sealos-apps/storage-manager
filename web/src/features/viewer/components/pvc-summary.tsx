@@ -6,7 +6,7 @@ import { Database, HardDrive, Server, ShieldAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Card, CardContent } from '@/components/ui/card'
-import { formatBytes } from '@/features/viewer/utils/format-capacity'
+import { formatQuantity, sumQuantities } from '@/features/viewer/utils/storage-quantity'
 
 interface PVCSummaryProps {
 	pvcs: PVC[]
@@ -17,13 +17,13 @@ export function PVCSummary({ pvcs }: PVCSummaryProps) {
 	const mounted = pvcs.filter(pvc => pvc.mounted).length
 	const supported = pvcs.filter(pvc => pvc.viewer_supported).length
 	const unsupported = pvcs.length - supported
-	const capacity = pvcs.reduce((total, pvc) => total + pvc.capacity_bytes, 0)
+	const capacity = sumQuantities(pvcs.map(pvc => pvc.capacity))
 
 	return (
 		<section className="grid gap-3 md:grid-cols-4">
 			<SummaryTile icon={<Database />} label={t('viewer.summaryTotal')} value={String(pvcs.length)} />
 			<SummaryTile icon={<Server />} label={t('viewer.summaryMounted')} value={String(mounted)} />
-			<SummaryTile icon={<HardDrive />} label={t('viewer.capacity')} value={formatBytes(capacity)} />
+			<SummaryTile icon={<HardDrive />} label={t('viewer.capacity')} value={formatQuantity(capacity)} />
 			<SummaryTile icon={<ShieldAlert />} label={t('viewer.summaryUnsupported')} value={String(unsupported)} />
 		</section>
 	)

@@ -1,5 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query'
-import type { CreatePVCInput, DeletePVCInput, ExpandPVCInput, PVC, ViewerAPI } from '@/features/viewer/types/viewer'
+import type { CreatePVCInput, DeletePVCInput, ExpandPVCInput, PVC, StorageClassYAMLInput, ViewerAPI } from '@/features/viewer/types/viewer'
 
 import { mutationOptions } from '@tanstack/react-query'
 
@@ -22,7 +22,6 @@ export function createPVCMutationOptions(
 				namespace: input.namespace,
 				name: input.name,
 				uid: `optimistic:${input.namespace}:${input.name}`,
-				capacity_bytes: input.capacityBytes,
 				capacity: input.capacity,
 				access_modes: input.accessModes,
 				storage_class_name: input.storageClassName,
@@ -126,7 +125,6 @@ export function expandPVCMutationOptions(
 						? {
 								...pvc,
 								capacity: input.capacity,
-								capacity_bytes: input.capacityBytes,
 							}
 						: pvc,
 				),
@@ -153,6 +151,26 @@ export function expandPVCMutationOptions(
 			void queryClient.invalidateQueries({
 				queryKey: viewerKeys.pvcs(ALL_NAMESPACES),
 			})
+		},
+	})
+}
+
+export function updatePVCMutationOptions(
+	queryClient: QueryClient,
+	api: ViewerAPI = viewerApi,
+) {
+	return mutationOptions({
+		mutationKey: viewerKeys.mutations.updatePVC(),
+		mutationFn: (input: DeletePVCInput & StorageClassYAMLInput) => api.updatePVC(input),
+		onSuccess: (pvc) => {
+			queryClient.setQueryData<PVC[]>(
+				viewerKeys.pvcs(pvc.namespace),
+				current => (current ?? []).map(item => item.name === pvc.name ? pvc : item),
+			)
+			void queryClient.invalidateQueries({ queryKey: viewerKeys.pvcs(pvc.namespace) })
+			void queryClient.invalidateQueries({ queryKey: viewerKeys.pvcs(ALL_NAMESPACES) })
+			void queryClient.invalidateQueries({ queryKey: viewerKeys.pvcYAML(pvc.namespace, pvc.name) })
+			void queryClient.invalidateQueries({ queryKey: viewerKeys.storageQuota(pvc.namespace) })
 		},
 	})
 }

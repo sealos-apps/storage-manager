@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -17,6 +18,11 @@ import (
 type StorageClassService struct {
 	kube     kube.Interface
 	recorder *observability.Recorder
+}
+
+type StorageClassMetadataInput struct {
+	AvailableToUsers bool
+	DisplayNames     map[string]string
 }
 
 func NewStorageClassService(kubeClient kube.Interface, recorder *observability.Recorder) *StorageClassService {
@@ -143,6 +149,51 @@ func (s *StorageClassService) UpdateStorageClass(
 	return &result, nil
 }
 
+func (s *StorageClassService) UpdateStorageClassMetadata(
+	ctx context.Context,
+	name string,
+	input StorageClassMetadataInput,
+) (item *domain.StorageClass, err error) {
+	ctx, finish := s.recorder.TraceOperation(ctx, "storageclass.update_metadata", slog.String("storageclass", name))
+	defer func() {
+		finish(err)
+	}()
+
+	current, err := s.kube.GetStorageClass(ctx, name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, apienv.NewError(404, apienv.CodeStorageClassNotFound, "StorageClass not found", nil)
+		}
+		return nil, err
+	}
+	if current.Annotations == nil {
+		current.Annotations = map[string]string{}
+	}
+	current.Annotations[StorageClassAvailableToUsersAnnotation] = boolAnnotation(input.AvailableToUsers)
+	displayNames := cleanDisplayNames(input.DisplayNames)
+	if len(displayNames) == 0 {
+		delete(current.Annotations, StorageClassDisplayNameAnnotation)
+	} else {
+		body, err := json.Marshal(displayNames)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling storageclass display names %s: %w", name, err)
+		}
+		current.Annotations[StorageClassDisplayNameAnnotation] = string(body)
+	}
+	updated, err := s.kube.UpdateStorageClass(ctx, current)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, apienv.NewError(404, apienv.CodeStorageClassNotFound, "StorageClass not found", nil)
+		}
+		if apierrors.IsConflict(err) {
+			return nil, apienv.NewError(409, apienv.CodeStorageClassConflict, "StorageClass was modified; reload and retry", nil)
+		}
+		return nil, err
+	}
+	result := StorageClassToDomain(*updated)
+	return &result, nil
+}
+
 func (s *StorageClassService) DeleteStorageClass(ctx context.Context, name string) (item *domain.StorageClass, err error) {
 	ctx, finish := s.recorder.TraceOperation(ctx, "storageclass.delete", slog.String("storageclass", name))
 	defer func() {
@@ -218,6 +269,26 @@ func storageClassDeleteBlockedReason(storageClass domain.StorageClass) string {
 		return "in_use"
 	}
 	return ""
+}
+
+func boolAnnotation(value bool) string {
+	if value {
+		return "true"
+	}
+	return "false"
+}
+
+func cleanDisplayNames(input map[string]string) map[string]string {
+	names := map[string]string{}
+	for locale, name := range input {
+		locale = strings.TrimSpace(locale)
+		name = strings.TrimSpace(name)
+		if locale == "" || name == "" {
+			continue
+		}
+		names[locale] = name
+	}
+	return names
 }
 
 func (s *StorageClassService) DescribeStorageClass(

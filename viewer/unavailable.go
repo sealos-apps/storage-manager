@@ -33,6 +33,18 @@ func (unavailableViewerService) DeletePVC(_ context.Context, _ session.DeletePVC
 	return nil, errRuntimeUnavailable
 }
 
+func (unavailableViewerService) GetPVCYAML(_ context.Context, _ string, _ string) (*session.PVCYAML, error) {
+	return nil, errRuntimeUnavailable
+}
+
+func (unavailableViewerService) UpdatePVC(_ context.Context, _ string, _ string, _ string) (*domain.PVC, error) {
+	return nil, errRuntimeUnavailable
+}
+
+func (unavailableViewerService) DescribePVC(_ context.Context, _ string, _ string) (*session.PVCDescribe, error) {
+	return nil, errRuntimeUnavailable
+}
+
 func (unavailableViewerService) ExpandPVC(_ context.Context, _ session.ExpandPVCInput) (*domain.PVC, error) {
 	return nil, errRuntimeUnavailable
 }
@@ -93,6 +105,14 @@ func (unavailableStorageClassService) UpdateStorageClass(
 	_ context.Context,
 	_ string,
 	_ string,
+) (*domain.StorageClass, error) {
+	return nil, errRuntimeUnavailable
+}
+
+func (unavailableStorageClassService) UpdateStorageClassMetadata(
+	_ context.Context,
+	_ string,
+	_ session.StorageClassMetadataInput,
 ) (*domain.StorageClass, error) {
 	return nil, errRuntimeUnavailable
 }

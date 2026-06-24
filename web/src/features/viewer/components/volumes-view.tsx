@@ -30,7 +30,7 @@ import { ErrorCallout } from '@/features/viewer/components/error-callout'
 import { PVCListSkeleton } from '@/features/viewer/components/loading-skeletons'
 import { PVCStatusBadge } from '@/features/viewer/components/pvc-status-badge'
 import { useViewerSearch } from '@/features/viewer/stores/viewer-ui-store'
-import { formatBytes } from '@/features/viewer/utils/format-capacity'
+import { formatQuantity, quantityPercent, sumQuantities } from '@/features/viewer/utils/storage-quantity'
 import { canLaunchViewer } from '@/features/viewer/utils/viewer-status'
 
 interface VolumesViewProps {
@@ -38,6 +38,8 @@ interface VolumesViewProps {
 	fileManagementEnabled: boolean
 	showNamespaceColumn?: boolean
 	onDelete: (pvc: PVC) => void
+	onDescribe: (pvc: PVC) => void
+	onEditYAML: (pvc: PVC) => void
 	onExpand: (pvc: PVC) => void
 	onOpenFiles: (pvc: PVC) => void
 	pvcQuery: UseQueryResult<PVC[], Error>
@@ -50,6 +52,8 @@ export function VolumesView({
 	fileManagementEnabled,
 	showNamespaceColumn = false,
 	onDelete,
+	onDescribe,
+	onEditYAML,
 	onExpand,
 	onOpenFiles,
 	pvcQuery,
@@ -64,7 +68,7 @@ export function VolumesView({
 				return `${pvc.namespace} ${pvc.name} ${pvc.storage_class_name} ${mountedPodNames}`.toLowerCase().includes(search)
 			})
 		: pvcs
-	const capacity = pvcs.reduce((total, pvc) => total + pvc.capacity_bytes, 0)
+	const capacity = sumQuantities(pvcs.map(pvc => pvc.capacity))
 	const mountDetectionAvailable = pvcs.every(pvc => pvc.mount_status !== 'unknown')
 	const mounted = mountDetectionAvailable ? pvcs.filter(pvc => pvc.mounted).length : null
 	const unused = mounted === null ? null : pvcs.length - mounted
@@ -81,7 +85,7 @@ export function VolumesView({
 			<Separator />
 
 			<div className="grid gap-3 md:grid-cols-3">
-				<MetricCard label={t('volumes.totalAllocated')} value={formatBytes(capacity)} />
+				<MetricCard label={t('volumes.totalAllocated')} value={formatQuantity(capacity)} />
 				<MetricCard label={t('volumes.mountedCount')} value={mounted === null ? t('volumes.mountDetectionUnavailable') : String(mounted)} />
 				<MetricCard label={t('volumes.unusedCount')} value={unused === null ? t('volumes.mountDetectionUnavailable') : String(unused)} />
 			</div>
@@ -113,6 +117,8 @@ export function VolumesView({
 										<PVCRow
 											key={pvc.uid}
 											onDelete={onDelete}
+											onDescribe={onDescribe}
+											onEditYAML={onEditYAML}
 											onExpand={onExpand}
 											onOpenFiles={onOpenFiles}
 											fileManagementEnabled={fileManagementEnabled}
@@ -150,19 +156,21 @@ function MetricCard({ label, value }: { label: string, value: string }) {
 interface PVCRowProps {
 	fileManagementEnabled: boolean
 	onDelete: (pvc: PVC) => void
+	onDescribe: (pvc: PVC) => void
+	onEditYAML: (pvc: PVC) => void
 	onExpand: (pvc: PVC) => void
 	onOpenFiles: (pvc: PVC) => void
 	pvc: PVC
 	showNamespaceColumn: boolean
 }
 
-function PVCRow({ fileManagementEnabled, onDelete, onExpand, onOpenFiles, pvc, showNamespaceColumn }: PVCRowProps) {
+function PVCRow({ fileManagementEnabled, onDelete, onDescribe, onEditYAML, onExpand, onOpenFiles, pvc, showNamespaceColumn }: PVCRowProps) {
 	const { t } = useTranslation()
 	const mountedTarget = pvc.mounted_pods[0]
 	const canDelete = !pvc.mounted
 
 	return (
-		<TableRow className="h-16">
+		<TableRow>
 			<TableCell className="max-w-[28rem] whitespace-nowrap">
 				<div className="flex min-w-0 items-center gap-3">
 					<div className="flex size-9 items-center justify-center rounded-md border bg-muted text-muted-foreground">
@@ -221,6 +229,12 @@ function PVCRow({ fileManagementEnabled, onDelete, onExpand, onOpenFiles, pvc, s
 							<DropdownMenuGroup>
 								<DropdownMenuItem onSelect={() => onExpand(pvc)}>
 									{t('volumes.expand')}
+								</DropdownMenuItem>
+								<DropdownMenuItem onSelect={() => onDescribe(pvc)}>
+									{t('storageClasses.describe')}
+								</DropdownMenuItem>
+								<DropdownMenuItem onSelect={() => onEditYAML(pvc)}>
+									{t('storageClasses.yaml')}
 								</DropdownMenuItem>
 								<DropdownMenuItem
 									disabled={!canDelete}
@@ -286,18 +300,16 @@ function PVCUsageCell({ pvc }: { pvc: PVC }) {
 			</div>
 		)
 	}
-	const metricCapacity = stats.metric_capacity_bytes
-	const percent = metricCapacity > 0
-		? Math.min(100, Math.max(0, Math.round((stats.used_bytes / metricCapacity) * 100)))
-		: 0
+	const metricCapacity = stats.metricCapacity
+	const percent = quantityPercent(stats.used, metricCapacity)
 	const mismatch = stats.status !== 'ready'
-	const freeText = t('volumes.usageFree', { size: formatBytes(stats.available_bytes) })
+	const freeText = t('volumes.usageFree', { size: formatQuantity(stats.available) })
 
 	return (
 		<div className="grid min-h-10 min-w-40 content-center gap-1.5">
 			<div className="flex items-center justify-between gap-2 text-sm">
 				<div className="flex min-w-0 items-center gap-1.5">
-					<span className="truncate font-medium">{`${formatBytes(stats.used_bytes)} / ${formatBytes(metricCapacity)}`}</span>
+					<span className="truncate font-medium">{`${formatQuantity(stats.used)} / ${formatQuantity(metricCapacity)}`}</span>
 					{mismatch
 						? (
 								<Tooltip>
@@ -314,7 +326,7 @@ function PVCUsageCell({ pvc }: { pvc: PVC }) {
 									<TooltipContent>
 										<div className="grid gap-1">
 											<div>{t('volumes.usageMismatch')}</div>
-											<div>{t('volumes.usageRequestedCapacity', { size: formatBytes(pvc.capacity_bytes) })}</div>
+											<div>{t('volumes.usageRequestedCapacity', { size: formatQuantity(pvc.capacity) })}</div>
 										</div>
 									</TooltipContent>
 								</Tooltip>

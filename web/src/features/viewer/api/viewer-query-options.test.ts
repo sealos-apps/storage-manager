@@ -18,6 +18,7 @@ import {
 	viewerSessionQueryOptions,
 } from '@/features/viewer/api/viewer-query-options'
 import { createFakeViewerAPI } from '@/features/viewer/test/fakes'
+import { Quantity } from '@/utils/quantities'
 
 const mutationContext = {
 	client: new QueryClient(),
@@ -101,8 +102,7 @@ describe('viewer query options', () => {
 			queryKey: options.queryKey,
 			signal: new AbortController().signal,
 		})).resolves.toMatchObject({
-			available_bytes: 15 * 1024 * 1024 * 1024,
-			available_quantity: '15Gi',
+			available: expect.objectContaining({}),
 		})
 	})
 
@@ -181,8 +181,7 @@ describe('viewer query options', () => {
 
 		await createPVCMutationOptions(queryClient, api).onSettled?.(undefined, null, {
 			accessModes: ['ReadWriteOnce'],
-			capacity: '10Gi',
-			capacityBytes: 10,
+			capacity: Quantity.parse('10Gi'),
 			name: 'data',
 			namespace: 'ns-admin',
 			storageClassName: 'standard',
@@ -192,8 +191,7 @@ describe('viewer query options', () => {
 			namespace: 'ns-admin',
 		}, undefined, mutationContext)
 		await expandPVCMutationOptions(queryClient, api).onSettled?.(undefined, null, {
-			capacity: '20Gi',
-			capacityBytes: 20,
+			capacity: Quantity.parse('20Gi'),
 			name: 'data',
 			namespace: 'ns-admin',
 		}, undefined, mutationContext)

@@ -17,6 +17,7 @@ import {
 	initializeSealosAuthorization,
 	resetSealosAuthorizationForTest,
 } from '@/services/sealos/sealos-authorization'
+import { Quantity } from '@/utils/quantities'
 
 const sdk = vi.hoisted(() => ({
 	createSealosApp: vi.fn(),
@@ -176,6 +177,9 @@ describe('viewer API adapter', () => {
 		const adminUpdateStorageClass = vi.fn().mockResolvedValue({
 			storage_class: storageClassFixture({ name: 'standard' }),
 		})
+		const adminUpdateStorageClassMetadata = vi.fn().mockResolvedValue({
+			storage_class: storageClassFixture({ name: 'standard', available_to_users: true, display_names: { zh: '标准' } }),
+		})
 		const createPVC = vi.fn().mockResolvedValue({
 			pvc: pvcFixture({ name: 'cache-data' }),
 		})
@@ -183,6 +187,15 @@ describe('viewer API adapter', () => {
 			pvc: pvcFixture({ capacity: '20Gi', capacity_bytes: 20 * 1024 * 1024 * 1024 }),
 		})
 		const deletePVC = vi.fn().mockResolvedValue({
+			pvc: pvcFixture({ name: 'mysql-data' }),
+		})
+		const describePVC = vi.fn().mockResolvedValue({
+			pvc_describe: { namespace: 'default', name: 'mysql-data', describe: 'Name: mysql-data' },
+		})
+		const getPVCYAML = vi.fn().mockResolvedValue({
+			pvc_yaml: { namespace: 'default', name: 'mysql-data', yaml: 'kind: PersistentVolumeClaim' },
+		})
+		const updatePVC = vi.fn().mockResolvedValue({
 			pvc: pvcFixture({ name: 'mysql-data' }),
 		})
 		const getContext = vi.fn().mockResolvedValue({
@@ -211,14 +224,18 @@ describe('viewer API adapter', () => {
 				AdminListNamespaces: adminListNamespaces,
 				AdminListStorageClasses: adminListStorageClasses,
 				AdminUpdateStorageClass: adminUpdateStorageClass,
+				AdminUpdateStorageClassMetadata: adminUpdateStorageClassMetadata,
 				ListPVCs: listPVCs,
 				ListStorageClasses: listStorageClasses,
 				CreatePVC: createPVC,
 				CreateViewerSession: createViewerSession,
 				ExpandPVC: expandPVC,
 				DeletePVC: deletePVC,
+				DescribePVC: describePVC,
 				GetContext: getContext,
+				GetPVCYAML: getPVCYAML,
 				GetStorageQuota: getStorageQuota,
+				UpdatePVC: updatePVC,
 			},
 		} as never)
 
@@ -226,7 +243,7 @@ describe('viewer API adapter', () => {
 			namespace: 'ns-admin',
 		}))
 		await expect(api.getStorageQuota({ namespace: 'default' })).resolves.toEqual(expect.objectContaining({
-			available_quantity: '15Gi',
+			available: expect.any(Quantity),
 		}))
 		await expect(api.listPVCs({ namespace: 'default' })).resolves.toEqual([
 			expect.objectContaining({ name: 'mysql-data' }),
@@ -255,21 +272,26 @@ describe('viewer API adapter', () => {
 		await expect(api.adminDescribeStorageClass('standard')).resolves.toEqual(expect.objectContaining({ name: 'standard' }))
 		await expect(api.adminCreateStorageClass({ yaml: 'kind: StorageClass' })).resolves.toEqual(expect.objectContaining({ name: 'created' }))
 		await expect(api.adminUpdateStorageClass('standard', { yaml: 'kind: StorageClass' })).resolves.toEqual(expect.objectContaining({ name: 'standard' }))
+		await expect(api.adminUpdateStorageClassMetadata('standard', {
+			availableToUsers: true,
+			displayNames: { zh: '标准' },
+		})).resolves.toEqual(expect.objectContaining({ name: 'standard' }))
 		await expect(api.adminDeleteStorageClass('standard')).resolves.toEqual(expect.objectContaining({ name: 'standard' }))
+		await expect(api.getPVCYAML({ namespace: 'default', name: 'mysql-data' })).resolves.toEqual(expect.objectContaining({ name: 'mysql-data' }))
+		await expect(api.describePVC({ namespace: 'default', name: 'mysql-data' })).resolves.toEqual(expect.objectContaining({ name: 'mysql-data' }))
+		await expect(api.updatePVC({ namespace: 'default', name: 'mysql-data', yaml: 'kind: PersistentVolumeClaim' })).resolves.toEqual(expect.objectContaining({ name: 'mysql-data' }))
 		await expect(api.createPVC({
 			namespace: 'default',
 			name: 'cache-data',
-			capacity: '5Gi',
-			capacityBytes: 5 * 1024 * 1024 * 1024,
+			capacity: Quantity.parse('5Gi'),
 			accessModes: ['ReadWriteOnce'],
 			storageClassName: 'standard',
 		})).resolves.toEqual(expect.objectContaining({ name: 'cache-data' }))
 		await expect(api.expandPVC({
 			namespace: 'default',
 			name: 'mysql-data',
-			capacity: '20Gi',
-			capacityBytes: 20 * 1024 * 1024 * 1024,
-		})).resolves.toEqual(expect.objectContaining({ capacity: '20Gi' }))
+			capacity: Quantity.parse('20Gi'),
+		})).resolves.toEqual(expect.objectContaining({ capacity: expect.any(Quantity) }))
 		await expect(api.deletePVC({
 			namespace: 'default',
 			name: 'mysql-data',
@@ -309,6 +331,11 @@ describe('viewer API adapter', () => {
 			Authorization: 'Bearer test-kubeconfig',
 			yaml: 'kind: StorageClass',
 		})
+		expect(adminUpdateStorageClassMetadata).toHaveBeenCalledWith('standard', {
+			Authorization: 'Bearer test-kubeconfig',
+			available_to_users: true,
+			display_names: { zh: '标准' },
+		})
 		expect(adminDeleteStorageClass).toHaveBeenCalledWith('standard', {
 			Authorization: 'Bearer test-kubeconfig',
 		})
@@ -330,6 +357,17 @@ describe('viewer API adapter', () => {
 		})
 		expect(deletePVC).toHaveBeenCalledWith('default', 'mysql-data', {
 			Authorization: 'Bearer test-kubeconfig',
+		})
+		expect(getPVCYAML).toHaveBeenCalledWith('default', 'mysql-data', {
+			Authorization: 'Bearer test-kubeconfig',
+		})
+		expect(describePVC).toHaveBeenCalledWith('default', 'mysql-data', {
+			Authorization: 'Bearer test-kubeconfig',
+		})
+		expect(updatePVC).toHaveBeenCalledWith('default', 'mysql-data', {
+			Authorization: 'Bearer test-kubeconfig',
+			SealosAccountAuthorization: 'Bearer account.jwt.token',
+			yaml: 'kind: PersistentVolumeClaim',
 		})
 		expect(getContext).toHaveBeenCalledWith({
 			Authorization: 'Bearer test-kubeconfig',

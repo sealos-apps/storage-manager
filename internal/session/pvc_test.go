@@ -2,6 +2,7 @@ package session
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/nixieboluo/sealos-storage-manager/internal/apienv"
@@ -54,6 +55,61 @@ func TestViewerServiceCreatePVC(t *testing.T) {
 	}
 	if created.Spec.StorageClassName == nil || *created.Spec.StorageClassName != "standard" {
 		t.Fatalf("storage class = %#v", created.Spec.StorageClassName)
+	}
+}
+
+func TestViewerServicePVCYAMLAndDescribe(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	storageClassName := "standard"
+	clientset := fake.NewSimpleClientset(&corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "default",
+			Name:      "data",
+			UID:       types.UID("uid"),
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			StorageClassName: &storageClassName,
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")},
+			},
+		},
+	})
+	client := kube.New(clientset)
+	store := state.New(cfg.Cache)
+	pods := NewPodService(cfg, store, client, observability.MustNew(cfg.Observability, nil))
+	service := NewViewerService(cfg, store, client, pods, nil, observability.MustNew(cfg.Observability, nil))
+
+	yamlResult, err := service.GetPVCYAML(t.Context(), "default", "data")
+	if err != nil {
+		t.Fatalf("GetPVCYAML() error = %v", err)
+	}
+	if !strings.Contains(yamlResult.YAML, "kind: PersistentVolumeClaim") || !strings.Contains(yamlResult.YAML, "namespace: default") {
+		t.Fatalf("yaml = %s", yamlResult.YAML)
+	}
+	describe, err := service.DescribePVC(t.Context(), "default", "data")
+	if err != nil {
+		t.Fatalf("DescribePVC() error = %v", err)
+	}
+	for _, want := range []string{"Name: data", "Namespace: default", "StorageClass: standard", "Capacity: 1Gi"} {
+		if !strings.Contains(describe.Describe, want) {
+			t.Fatalf("describe missing %q: %s", want, describe.Describe)
+		}
+	}
+	updatedBody := strings.Replace(yamlResult.YAML, "storage: 1Gi", "storage: 2Gi", 1)
+	updated, err := service.UpdatePVC(t.Context(), "default", "data", updatedBody)
+	if err != nil {
+		t.Fatalf("UpdatePVC() error = %v", err)
+	}
+	if updated.Capacity != "2Gi" {
+		t.Fatalf("updated capacity = %q", updated.Capacity)
+	}
+	_, err = service.UpdatePVC(t.Context(), "default", "other", updatedBody)
+	var apiErr *apienv.Error
+	if !errors.As(err, &apiErr) || apiErr.Code != apienv.CodeValidationError {
+		t.Fatalf("UpdatePVC(mismatch) error = %#v", err)
 	}
 }
 

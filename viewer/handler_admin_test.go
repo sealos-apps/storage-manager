@@ -248,6 +248,12 @@ func TestHandlerAdminStorageClassEndpointsUseEnvelope(t *testing.T) {
 			want:   "storage_class",
 		},
 		{
+			name:   "metadata",
+			req:    httptest.NewRequest(http.MethodPut, "/admin/storage-classes/standard/metadata", strings.NewReader(`{"available_to_users":true,"display_names":{"zh":"高性能云盘"}}`)),
+			handle: (*Handler).AdminUpdateStorageClassMetadata,
+			want:   "storage_class",
+		},
+		{
 			name:   "delete",
 			req:    httptest.NewRequest(http.MethodDelete, "/admin/storage-classes/standard", nil),
 			handle: (*Handler).AdminDeleteStorageClass,

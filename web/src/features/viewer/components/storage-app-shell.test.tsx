@@ -20,6 +20,7 @@ import {
 	viewerTokenFixture,
 } from '@/features/viewer/test/fakes'
 import { renderWithProviders } from '@/test/render'
+import { Quantity } from '@/utils/quantities'
 
 const sealosAuthorizationMockState = vi.hoisted(() => ({
 	authorization: {
@@ -106,7 +107,7 @@ describe('storageAppShell', () => {
 
 		expect(await screen.findByText('mysql-data')).toBeInTheDocument()
 		expect(screen.getByText('logs')).toBeInTheDocument()
-		expect(screen.getByRole('columnheader', { name: /storage class/i })).toBeInTheDocument()
+		expect(screen.getByRole('columnheader', { name: /storage type/i })).toBeInTheDocument()
 		expect(screen.getAllByText('standard').length).toBeGreaterThan(0)
 		expect(screen.queryByRole('columnheader', { name: /capacity/i })).not.toBeInTheDocument()
 		expect(screen.queryByText('10Gi')).not.toBeInTheDocument()
@@ -245,7 +246,7 @@ describe('storageAppShell', () => {
 		await user.clear(screen.getByLabelText(/^capacity$/i))
 		await user.type(screen.getByLabelText(/^capacity$/i), '6')
 
-		expect(await screen.findByText('Storage quota available: 5Gi.')).toBeInTheDocument()
+		expect(await screen.findByText('Storage quota available: 5 GiB.')).toBeInTheDocument()
 		expect(screen.getByRole('button', { name: /^create$/i })).toBeDisabled()
 		expect(createPVC).not.toHaveBeenCalled()
 	})
@@ -521,7 +522,7 @@ describe('storageAppShell', () => {
 		renderWithProviders(<StorageAppShell api={api} />)
 
 		expect(await screen.findByRole('combobox', { name: /system namespace/i })).toBeInTheDocument()
-		expect(screen.getByRole('button', { name: 'StorageClasses' })).toBeInTheDocument()
+		expect(screen.getByRole('button', { name: 'Storage types' })).toBeInTheDocument()
 		expect(adminListNamespaces).toHaveBeenCalled()
 	})
 
@@ -544,7 +545,7 @@ describe('storageAppShell', () => {
 
 		expect(await screen.findByText('ns-admin')).toBeInTheDocument()
 		expect(screen.queryByRole('combobox', { name: /system namespace/i })).not.toBeInTheDocument()
-		expect(screen.queryByRole('button', { name: 'StorageClasses' })).not.toBeInTheDocument()
+		expect(screen.queryByRole('button', { name: 'Storage types' })).not.toBeInTheDocument()
 	})
 
 	it('hides file management when the backend feature flag is disabled', async () => {
@@ -597,8 +598,7 @@ describe('storageAppShell', () => {
 		await waitFor(() => expect(createPVC).toHaveBeenCalledWith(expect.objectContaining({
 			name: 'cache-data',
 			namespace: 'ns-admin',
-			capacity: '5Gi',
-			capacityBytes: 5 * 1024 * 1024 * 1024,
+			capacity: expect.any(Quantity),
 			accessModes: ['ReadWriteOnce'],
 			storageClassName: 'standard',
 		})))
@@ -644,8 +644,7 @@ describe('storageAppShell', () => {
 		await waitFor(() => expect(expandPVC).toHaveBeenCalledWith({
 			namespace: 'ns-admin',
 			name: 'data',
-			capacity: '20Gi',
-			capacityBytes: 20 * 1024 * 1024 * 1024,
+			capacity: expect.any(Quantity),
 		}))
 	})
 
@@ -703,7 +702,7 @@ describe('storageAppShell', () => {
 
 		await user.click(await screen.findByRole('button', { name: /create pvc/i }))
 		await user.type(screen.getByLabelText('Name'), 'hidden-data')
-		await user.click(screen.getByRole('combobox', { name: /storage class/i }))
+		await user.click(screen.getByRole('combobox', { name: /storage type/i }))
 		await user.click(await screen.findByRole('option', { name: 'hidden' }))
 		await user.click(screen.getByRole('combobox', { name: /access modes/i }))
 		await user.click(await screen.findByRole('option', { name: 'ReadWriteMany' }))
@@ -729,7 +728,7 @@ describe('storageAppShell', () => {
 		await user.click(await screen.findByRole('button', { name: /create pvc/i }))
 		await user.type(screen.getByLabelText('Name'), 'cache-data')
 
-		expect(screen.getByText(/no storageclass exists/i)).toBeInTheDocument()
+		expect(screen.getByText(/no storage type exists/i)).toBeInTheDocument()
 		expect(screen.getByRole('button', { name: /^create$/i })).toBeDisabled()
 		expect(createPVC).not.toHaveBeenCalled()
 	})
@@ -751,7 +750,7 @@ describe('storageAppShell', () => {
 		await waitFor(() => expect(screen.queryByRole('button', { name: /create pvc/i })).not.toBeInTheDocument())
 	})
 
-	it('orders the create PVC form as storage class before access mode', async () => {
+	it('orders the create PVC form as storage type before access mode', async () => {
 		const user = userEvent.setup()
 		const api = createFakeViewerAPI({
 			listPVCs: vi.fn().mockResolvedValue([]),
@@ -762,7 +761,7 @@ describe('storageAppShell', () => {
 		await user.click(await screen.findByRole('button', { name: /create pvc/i }))
 
 		const dialog = screen.getByRole('dialog')
-		const storageClass = within(dialog).getByText('Storage class')
+		const storageClass = within(dialog).getByText(/storage type/i)
 		const accessModes = within(dialog).getByText('Access modes')
 
 		expect(storageClass.compareDocumentPosition(accessModes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
@@ -803,9 +802,9 @@ describe('storageAppShell', () => {
 
 		renderWithProviders(<StorageAppShell api={api} />)
 
-		await user.click(await screen.findByRole('button', { name: 'StorageClasses' }))
-		expect(await screen.findByRole('heading', { name: 'StorageClasses' })).toBeInTheDocument()
-		expect(screen.getByText('standard')).toBeInTheDocument()
+		await user.click(await screen.findByRole('button', { name: 'Storage types' }))
+		expect(await screen.findByRole('heading', { name: 'Storage types' })).toBeInTheDocument()
+		expect(screen.getAllByText('standard').length).toBeGreaterThan(0)
 
 		await user.click(screen.getByRole('button', { name: 'Describe' }))
 
@@ -813,7 +812,92 @@ describe('storageAppShell', () => {
 		expect(await screen.findByDisplayValue(/Name: standard/)).toBeInTheDocument()
 	})
 
-	it('creates, edits, and deletes StorageClasses through the admin dialogs', async () => {
+	it('shows localized storage type names and saves metadata annotations', async () => {
+		const user = userEvent.setup()
+		const adminUpdateStorageClassMetadata = vi.fn().mockResolvedValue(storageClassFixture({
+			name: 'standard',
+			available_to_users: true,
+			display_names: { en: 'Fast disk', zh: '高速云盘' },
+		}))
+		const api = createFakeViewerAPI({
+			adminCapabilities: vi.fn().mockResolvedValue({
+				can_manage_pvcs: false,
+				can_manage_storage_classes: true,
+				file_management_enabled: true,
+				user_namespace: 'ns-admin',
+			}),
+			adminListStorageClasses: vi.fn().mockResolvedValue([
+				storageClassFixture({
+					name: 'standard',
+					display_names: { en: 'Fast disk', zh: '高速云盘' },
+				}),
+			]),
+			adminUpdateStorageClassMetadata,
+			listPVCs: vi.fn().mockResolvedValue([]),
+		})
+
+		renderWithProviders(<StorageAppShell api={api} />)
+
+		await user.click(await screen.findByRole('button', { name: 'Storage types' }))
+		expect(await screen.findByText('Fast disk')).toBeInTheDocument()
+		await user.hover(screen.getByText('Fast disk'))
+		await waitFor(() => expect(screen.getAllByText('zh: 高速云盘').length).toBeGreaterThan(0))
+
+		await user.click(screen.getByRole('button', { name: 'Edit' }))
+		await user.click(await screen.findByLabelText('Available to users'))
+		await user.click(screen.getByRole('button', { name: 'Save' }))
+
+		await waitFor(() => expect(adminUpdateStorageClassMetadata).toHaveBeenCalledWith('standard', {
+			availableToUsers: true,
+			displayNames: { en: 'Fast disk', zh: '高速云盘' },
+		}))
+	})
+
+	it('opens PVC Describe and YAML actions from the volume menu', async () => {
+		const user = userEvent.setup()
+		const describePVC = vi.fn().mockResolvedValue({
+			namespace: 'ns-admin',
+			name: 'data',
+			describe: 'Name: data\nNamespace: ns-admin',
+		})
+		const getPVCYAML = vi.fn().mockResolvedValue({
+			namespace: 'ns-admin',
+			name: 'data',
+			yaml: 'apiVersion: v1\nkind: PersistentVolumeClaim\nmetadata:\n  name: data\n',
+		})
+		const updatePVC = vi.fn().mockResolvedValue(pvcFixture({ name: 'data', namespace: 'ns-admin' }))
+		const api = createFakeViewerAPI({
+			describePVC,
+			getPVCYAML,
+			listPVCs: vi.fn().mockResolvedValue([
+				pvcFixture({ name: 'data', namespace: 'ns-admin', uid: 'uid-data' }),
+			]),
+			updatePVC,
+		})
+
+		renderWithProviders(<StorageAppShell api={api} />)
+
+		await user.click(await screen.findByRole('button', { name: /more actions/i }))
+		await user.click(await screen.findByRole('menuitem', { name: 'Describe' }))
+		expect(await screen.findByDisplayValue(/Name: data/)).toBeInTheDocument()
+		expect(describePVC).toHaveBeenCalledWith({ namespace: 'ns-admin', name: 'data' })
+		await user.click(screen.getAllByRole('button', { name: 'Close' })[0]!)
+
+		await user.click(await screen.findByRole('button', { name: /more actions/i }))
+		await user.click(await screen.findByRole('menuitem', { name: 'YAML' }))
+		const yamlEditor = await screen.findByLabelText('Monaco editor')
+		await waitFor(() => expect((yamlEditor as HTMLTextAreaElement).value).toContain('PersistentVolumeClaim'))
+		await user.click(screen.getByRole('button', { name: 'Save' }))
+
+		await waitFor(() => expect(updatePVC).toHaveBeenCalledWith(expect.objectContaining({
+			namespace: 'ns-admin',
+			name: 'data',
+			yaml: expect.stringContaining('PersistentVolumeClaim'),
+		})))
+		expect(getPVCYAML).toHaveBeenCalledWith({ namespace: 'ns-admin', name: 'data' })
+	})
+
+	it('creates, edits, and deletes Storage types through the admin dialogs', async () => {
 		const user = userEvent.setup()
 		const adminCreateStorageClass = vi.fn().mockResolvedValue(storageClassFixture({ name: 'created' }))
 		const adminDeleteStorageClass = vi.fn().mockResolvedValue(storageClassFixture({ name: 'standard' }))
@@ -846,7 +930,7 @@ describe('storageAppShell', () => {
 
 		renderWithProviders(<StorageAppShell api={api} />)
 
-		await user.click(await screen.findByRole('button', { name: 'StorageClasses' }))
+		await user.click(await screen.findByRole('button', { name: 'Storage types' }))
 		expect(await screen.findByRole('columnheader', { name: 'Reclaim policy' })).toBeInTheDocument()
 		expect(screen.getByRole('columnheader', { name: 'Volume binding mode' })).toBeInTheDocument()
 		expect(screen.getByRole('columnheader', { name: 'Allow volume expansion' })).toBeInTheDocument()
@@ -857,7 +941,7 @@ describe('storageAppShell', () => {
 		expect(await screen.findByText('Retain')).toBeInTheDocument()
 		expect(screen.getByText('WaitForFirstConsumer')).toBeInTheDocument()
 		expect(screen.getByText('Yes')).toBeInTheDocument()
-		await user.click(await screen.findByRole('button', { name: 'Create StorageClass' }))
+		await user.click(await screen.findByRole('button', { name: 'Create storage type' }))
 		const createEditor = await screen.findByLabelText('Monaco editor')
 		await user.clear(createEditor)
 		await user.type(createEditor, 'apiVersion: storage.k8s.io/v1\nkind: StorageClass\nmetadata:\n  name: created\nprovisioner: test.io/created\n')
@@ -866,7 +950,7 @@ describe('storageAppShell', () => {
 			yaml: expect.stringContaining('name: created'),
 		})))
 
-		await user.click(await screen.findByRole('button', { name: 'Edit' }))
+		await user.click(await screen.findByRole('button', { name: 'YAML' }))
 		const editEditor = await screen.findByLabelText('Monaco editor')
 		expect(screen.getByRole('dialog')).toHaveClass('h-[88vh]')
 		await waitFor(() => expect((editEditor as HTMLTextAreaElement).value).toContain('name: standard'))
@@ -916,10 +1000,10 @@ describe('storageAppShell', () => {
 
 		renderWithProviders(<StorageAppShell api={api} />)
 
-		await user.click(await screen.findByRole('button', { name: 'StorageClasses' }))
-		const externalRow = screen.getByText('external').closest('tr')
-		const inUseRow = screen.getByText('in-use').closest('tr')
-		const managedRow = screen.getByText('managed').closest('tr')
+		await user.click(await screen.findByRole('button', { name: 'Storage types' }))
+		const externalRow = screen.getAllByText('external')[0]?.closest('tr')
+		const inUseRow = screen.getAllByText('in-use')[0]?.closest('tr')
+		const managedRow = screen.getAllByText('managed')[0]?.closest('tr')
 		if (!externalRow || !inUseRow || !managedRow) {
 			throw new Error('missing StorageClass row')
 		}
@@ -1014,7 +1098,7 @@ describe('storageAppShell', () => {
 		if (!mismatchRow) {
 			throw new Error('missing mismatch-data row')
 		}
-		expect(mismatchRow).toHaveClass('h-16')
+		expect(mismatchRow).not.toHaveClass('h-16')
 		const mountedButton = within(mismatchRow).getByRole('button', { name: 'Mounted' })
 		expect(mountedButton).toHaveAttribute('title', 're-irldxgfr-minio-0')
 		await user.hover(mountedButton)

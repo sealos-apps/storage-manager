@@ -62,6 +62,47 @@ func DeletePVC(
 	return runtimeHandler().DeletePVCData(ctx, namespace, name, req)
 }
 
+// Get PVC YAML
+// Returns editable YAML for a PersistentVolumeClaim. Server-managed Kubernetes
+// fields are removed so the YAML can be edited and sent to Update PVC.
+//
+//encore:api public method=GET path=/pvcs/:namespace/:name/yaml
+func GetPVCYAML(
+	ctx context.Context,
+	namespace string,
+	name string,
+	req *AuthenticatedRequest,
+) (*PVCYAMLResponse, error) {
+	return runtimeHandler().GetPVCYAMLData(ctx, namespace, name, req)
+}
+
+// Update PVC
+// Updates a PersistentVolumeClaim from YAML. The manifest namespace and name
+// must match the path namespace and name.
+//
+//encore:api public method=PUT path=/pvcs/:namespace/:name
+func UpdatePVC(
+	ctx context.Context,
+	namespace string,
+	name string,
+	req *PVCYAMLRequest,
+) (*PVCResponse, error) {
+	return runtimeHandler().UpdatePVCData(ctx, namespace, name, req)
+}
+
+// Describe PVC
+// Returns a kubectl-style text description for a PersistentVolumeClaim.
+//
+//encore:api public method=GET path=/pvcs/:namespace/:name/describe
+func DescribePVC(
+	ctx context.Context,
+	namespace string,
+	name string,
+	req *AuthenticatedRequest,
+) (*PVCDescribeResponse, error) {
+	return runtimeHandler().DescribePVCData(ctx, namespace, name, req)
+}
+
 // Expand PVC
 // Increases a PersistentVolumeClaim storage request. The new capacity must be
 // larger than the current value. The StorageClass must allow volume expansion.
@@ -150,6 +191,19 @@ func AdminUpdateStorageClass(
 	req *StorageClassYAMLRequest,
 ) (*StorageClassResponse, error) {
 	return runtimeHandler().AdminUpdateStorageClassData(ctx, name, req)
+}
+
+// Update Storage Class Metadata
+// Updates storage-manager annotations for user availability and localized
+// display names without editing the full StorageClass manifest.
+//
+//encore:api public method=PUT path=/admin/storage-classes/:name/metadata
+func AdminUpdateStorageClassMetadata(
+	ctx context.Context,
+	name string,
+	req *StorageClassMetadataRequest,
+) (*StorageClassResponse, error) {
+	return runtimeHandler().AdminUpdateStorageClassMetadataData(ctx, name, req)
 }
 
 // Delete Storage Class
