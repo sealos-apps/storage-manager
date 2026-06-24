@@ -114,11 +114,12 @@ func TestStorageClassServiceUpdateMetadata(t *testing.T) {
 		kube.New(clientset),
 		observability.MustNew(cfg.Observability, nil),
 	)
+	zhKey := " zh "
 
 	updated, err := service.UpdateStorageClassMetadata(t.Context(), "standard", StorageClassMetadataInput{
 		AvailableToUsers: true,
 		DisplayNames: map[string]string{
-			" zh ": " 高性能云盘 ",
+			zhKey:  " 高性能云盘 ",
 			"en":   "Fast Disk",
 			"":     "ignored",
 		},
