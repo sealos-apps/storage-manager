@@ -173,7 +173,7 @@ function PVCRow({ fileManagementEnabled, onDelete, onDescribe, onEditYAML, onExp
 		<TableRow>
 			<TableCell className="max-w-[28rem] whitespace-nowrap">
 				<div className="flex min-w-0 items-center gap-3">
-					<div className="flex size-9 items-center justify-center rounded-md border bg-muted text-muted-foreground">
+					<div className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-muted text-muted-foreground">
 						<HardDrive />
 					</div>
 					<div className="flex min-w-0 items-center gap-2">

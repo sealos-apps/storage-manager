@@ -2,9 +2,15 @@ package apienv
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 func TestAllCodesContainsEveryPublicBusinessCode(t *testing.T) {
@@ -85,6 +91,35 @@ func TestWriteSuccess(t *testing.T) {
 	if body["viewer_session"]["id"] != "vs_1" {
 		t.Fatalf("body = %v", body)
 	}
+}
+
+func TestFromErrorPreservesKubernetesDetails(t *testing.T) {
+	t.Parallel()
+
+	err := fmt.Errorf("creating pvc default/data: %w", apierrors.NewForbidden(
+		coreResource("persistentvolumeclaims"),
+		"data",
+		fmt.Errorf("exceeded quota: quota-default, requested: requests.storage=20Gi"),
+	))
+
+	apiErr := FromError(err)
+
+	if apiErr.Status != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", apiErr.Status, http.StatusForbidden)
+	}
+	if apiErr.Code != CodeInternal {
+		t.Fatalf("code = %q, want %q", apiErr.Code, CodeInternal)
+	}
+	if apiErr.Message == "Internal server error" || !strings.Contains(apiErr.Message, "exceeded quota") {
+		t.Fatalf("message = %q", apiErr.Message)
+	}
+	if apiErr.Details["kubernetes_reason"] != string(metav1.StatusReasonForbidden) {
+		t.Fatalf("details = %v", apiErr.Details)
+	}
+}
+
+func coreResource(resource string) schema.GroupResource {
+	return schema.GroupResource{Resource: resource}
 }
 
 func TestWriteError(t *testing.T) {

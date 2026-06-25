@@ -1072,13 +1072,13 @@ describe('storageAppShell', () => {
 		expect(screen.getByText('3 GiB / 10 GiB')).toBeInTheDocument()
 		expect(screen.queryByText('Free 7 GiB')).not.toBeInTheDocument()
 		expect(screen.getByRole('progressbar', { name: 'ready-data PVC usage' }).querySelector('[data-slot="progress-indicator"]')).toHaveStyle({
-			transform: 'translateX(-70%)',
+			width: '30%',
 		})
 		expect(screen.getByText('Not collected')).toBeInTheDocument()
 		expect(screen.getByText('307 GiB / 418 GiB')).toBeInTheDocument()
 		expect(screen.getByText('73%')).toBeInTheDocument()
 		expect(screen.getByRole('progressbar', { name: 'mismatch-data PVC usage' }).querySelector('[data-slot="progress-indicator"]')).toHaveStyle({
-			transform: 'translateX(-27%)',
+			width: '73%',
 		})
 		expect(screen.queryByText('307 GiB / 1 GiB')).not.toBeInTheDocument()
 		expect(screen.queryByText('Free 90 GiB')).not.toBeInTheDocument()

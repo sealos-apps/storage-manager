@@ -185,7 +185,7 @@ describe('fileManagerView', () => {
 		expect(await screen.findByText((_, element) => element?.textContent === '5 GiB / 20 GiB')).toBeInTheDocument()
 		expect(screen.getByText('Free 15 GiB')).toBeInTheDocument()
 		expect(screen.getByRole('progressbar', { name: /data PVC usage/i }).querySelector('[data-slot="progress-indicator"]')).toHaveStyle({
-			transform: 'translateX(-75%)',
+			width: '25%',
 		})
 	})
 

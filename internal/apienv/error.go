@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 const (
@@ -121,6 +123,17 @@ func FromError(err error) *Error {
 	}
 	if apiErr, ok := errors.AsType[*Error](err); ok {
 		return apiErr
+	}
+	var statusErr apierrors.APIStatus
+	if errors.As(err, &statusErr) {
+		status := statusErr.Status()
+		message := status.Message
+		if message == "" {
+			message = err.Error()
+		}
+		return NewError(int(status.Code), CodeInternal, message, map[string]any{
+			"kubernetes_reason": string(status.Reason),
+		})
 	}
 	return NewError(http.StatusInternalServerError, CodeInternal, "Internal server error", nil)
 }

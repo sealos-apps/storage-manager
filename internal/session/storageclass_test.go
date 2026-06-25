@@ -119,9 +119,9 @@ func TestStorageClassServiceUpdateMetadata(t *testing.T) {
 	updated, err := service.UpdateStorageClassMetadata(t.Context(), "standard", StorageClassMetadataInput{
 		AvailableToUsers: true,
 		DisplayNames: map[string]string{
-			zhKey:  " 高性能云盘 ",
-			"en":   "Fast Disk",
-			"":     "ignored",
+			zhKey: " 高性能云盘 ",
+			"en":  "Fast Disk",
+			"":    "ignored",
 		},
 	})
 	if err != nil {

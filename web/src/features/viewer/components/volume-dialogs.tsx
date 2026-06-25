@@ -441,7 +441,7 @@ function ExpandPVCDialogContent({
 			<DialogContent>
 				<DialogHeader>
 					<DialogTitle>{t('volumes.expand')}</DialogTitle>
-					<DialogDescription>{pvc ? `${pvc.namespace}/${pvc.name}` : ''}</DialogDescription>
+					<DialogDescription className="break-all pr-8">{pvc ? `${pvc.namespace}/${pvc.name}` : ''}</DialogDescription>
 				</DialogHeader>
 				<form
 					className="grid gap-4"
