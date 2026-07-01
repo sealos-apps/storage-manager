@@ -113,7 +113,7 @@
 }
 
 @layer base {
-	* {
+	:root {
 		--tw-inset-shadow: 0 0 #0000;
 		--tw-inset-ring-shadow: 0 0 #0000;
 		--tw-ring-offset-width: 0px;
@@ -121,6 +121,9 @@
 		--tw-ring-offset-shadow: 0 0 #0000;
 		--tw-ring-shadow: 0 0 #0000;
 		--tw-shadow: 0 0 #0000;
+	}
+
+	* {
 		border-color: var(--border);
 		outline-color: var(--ring);
 	}

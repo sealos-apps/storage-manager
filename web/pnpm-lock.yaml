@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  container-query-polyfill@1.0.2:
+    hash: 182c4dab79ab78967771f76bb569af7177d4e36b028704453f51d8cfd6850ba5
+    path: patches/container-query-polyfill@1.0.2.patch
+
 importers:
 
   .:
@@ -55,7 +60,7 @@ importers:
         version: 2.1.1
       container-query-polyfill:
         specifier: ^1.0.2
-        version: 1.0.2
+        version: 1.0.2(patch_hash=182c4dab79ab78967771f76bb569af7177d4e36b028704453f51d8cfd6850ba5)
       core-js:
         specifier: ^3.49.0
         version: 3.49.0
@@ -7226,7 +7231,7 @@ snapshots:
 
   confbox@0.2.4: {}
 
-  container-query-polyfill@1.0.2: {}
+  container-query-polyfill@1.0.2(patch_hash=182c4dab79ab78967771f76bb569af7177d4e36b028704453f51d8cfd6850ba5): {}
 
   convert-source-map@2.0.0: {}
 

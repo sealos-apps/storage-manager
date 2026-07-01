@@ -4,6 +4,7 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.12.3 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches patches
 COPY packages/encore-client/package.json packages/encore-client/package.json
 COPY packages/filebrowser-client/package.json packages/filebrowser-client/package.json
 
