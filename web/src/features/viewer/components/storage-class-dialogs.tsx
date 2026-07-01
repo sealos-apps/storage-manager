@@ -5,7 +5,7 @@ import type { PVC, StorageClass, ViewerAPI } from '@/features/viewer/types/viewe
 import { useForm } from '@tanstack/react-form'
 import { useQuery } from '@tanstack/react-query'
 import { lazy, Suspense, useState } from 'react'
-import { useTranslation } from 'react-i18next'
+import { Trans, useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
@@ -486,7 +486,19 @@ export function DeleteStorageClassDialog({
 			<DialogContent>
 				<DialogHeader>
 					<DialogTitle>{t('storageClasses.deleteTitle')}</DialogTitle>
-					<DialogDescription>{name ? t('storageClasses.deleteDescription', { name }) : ''}</DialogDescription>
+					<DialogDescription>
+						{name
+							? (
+									<Trans
+										components={{
+											name: <strong className="select-all font-semibold text-foreground" />,
+										}}
+										i18nKey="storageClasses.deleteDescription"
+										values={{ name }}
+									/>
+								)
+							: null}
+					</DialogDescription>
 				</DialogHeader>
 				<form
 					className="grid gap-4"
@@ -497,7 +509,7 @@ export function DeleteStorageClassDialog({
 				>
 					<form.Field name="confirmName">
 						{field => (
-							<FormField id="delete-storage-class-confirm" label={t('volumes.typeNameToConfirm')}>
+							<FormField id="delete-storage-class-confirm" label={t('storageClasses.typeNameToConfirm')}>
 								<Input
 									id="delete-storage-class-confirm"
 									onChange={(event) => {

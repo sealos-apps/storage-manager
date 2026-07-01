@@ -964,7 +964,7 @@ describe('storageAppShell', () => {
 		expect(screen.queryByRole('button', { name: 'Policy' })).not.toBeInTheDocument()
 
 		await user.click(await screen.findByRole('button', { name: 'Delete' }))
-		await user.type(screen.getByLabelText('Type PVC name to confirm'), 'standard')
+		await user.type(screen.getByLabelText('Type storage type name to confirm'), 'standard')
 		await user.click(screen.getByRole('button', { name: 'Delete' }))
 		await waitFor(() => expect(adminDeleteStorageClass).toHaveBeenCalledWith('standard'))
 	})
@@ -1011,7 +1011,7 @@ describe('storageAppShell', () => {
 		expect(within(inUseRow).getByRole('button', { name: 'Delete' })).toBeDisabled()
 		expect(within(inUseRow).getByText('2')).toBeInTheDocument()
 		await user.click(within(managedRow).getByRole('button', { name: 'Delete' }))
-		await user.type(screen.getByLabelText('Type PVC name to confirm'), 'managed')
+		await user.type(screen.getByLabelText('Type storage type name to confirm'), 'managed')
 		await user.click(screen.getByRole('button', { name: 'Delete' }))
 
 		await waitFor(() => expect(adminDeleteStorageClass).toHaveBeenCalledWith('managed'))

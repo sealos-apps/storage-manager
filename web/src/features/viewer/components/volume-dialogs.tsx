@@ -3,7 +3,7 @@ import type { AdminNamespace, PVC, StorageClass, StorageQuota } from '@/features
 import type { Quantity } from '@/utils/quantities'
 
 import { useForm } from '@tanstack/react-form'
-import { useTranslation } from 'react-i18next'
+import { Trans, useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
@@ -533,14 +533,24 @@ export function DeletePVCDialog({
 			})
 		},
 	})
-	const confirmName = form.state.values.confirmName
-
 	return (
 		<Dialog onOpenChange={open => !open && onOpenChange(null)} open={deleteState !== null}>
 			<DialogContent>
 				<DialogHeader>
 					<DialogTitle>{t('volumes.deleteTitle')}</DialogTitle>
-					<DialogDescription>{pvc ? t('volumes.deleteDescription', { name: pvc.name }) : ''}</DialogDescription>
+					<DialogDescription>
+						{pvc
+							? (
+									<Trans
+										components={{
+											name: <strong className="select-all font-semibold text-foreground" />,
+										}}
+										i18nKey="volumes.deleteDescription"
+										values={{ name: pvc.name }}
+									/>
+								)
+							: null}
+					</DialogDescription>
 				</DialogHeader>
 				<form
 					className="grid gap-4"
@@ -568,9 +578,13 @@ export function DeletePVCDialog({
 						<Button onClick={() => onOpenChange(null)} type="button" variant="outline">
 							{t('actions.cancel')}
 						</Button>
-						<Button disabled={!pvc || mutation.isPending || confirmName !== pvc.name} type="submit" variant="destructive">
-							{t('actions.delete')}
-						</Button>
+						<form.Subscribe selector={state => state.values.confirmName}>
+							{confirmName => (
+								<Button disabled={!pvc || mutation.isPending || confirmName !== pvc.name} type="submit" variant="destructive">
+									{t('actions.delete')}
+								</Button>
+							)}
+						</form.Subscribe>
 					</DialogFooter>
 				</form>
 			</DialogContent>
