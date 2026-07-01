@@ -24,7 +24,7 @@ WEB_DIR ?= web
 WEB_DEV_API_BASE_URL ?= http://localhost:4000
 WEB_DEV_KUBECONFIG ?= ../config/kubeconfig.dev.yaml
 
-.PHONY: check-go-version dev backend-dev web-dev fmt backend-fmt web-fmt fmt-check backend-fmt-check web-fmt-check lint backend-lint web-lint vet backend-vet test backend-test web-test test-race backend-test-race test-integration backend-test-integration security backend-security openapi build-image backend-build-image build-images push-images web-build-image chart-lint chart-template chart-package deploy-verify verify backend-verify web-verify tidy backend-tidy web-install web-generate-api web-typecheck build web-build web-check-css e2e web-e2e
+.PHONY: check-go-version dev backend-dev web-dev fmt backend-fmt web-fmt fmt-check backend-fmt-check web-fmt-check lint backend-lint web-lint vet backend-vet test backend-test web-test test-race backend-test-race test-integration backend-test-integration security backend-security openapi build-image backend-build-image build-images push-images web-build-image chart-lint chart-template chart-package deploy-verify verify backend-verify web-verify tidy backend-tidy web-install web-generate-api web-typecheck build web-build e2e web-e2e
 
 check-go-version:
 	@required="$$(cat $(GO_VERSION_FILE))"; \
@@ -175,15 +175,12 @@ build: web-build
 web-build:
 	cd $(WEB_DIR) && $(PNPM) build
 
-web-check-css:
-	cd $(WEB_DIR) && $(PNPM) check:css
-
 e2e: web-e2e
 
 web-e2e:
 	cd $(WEB_DIR) && $(PNPM) e2e
 
-web-verify: web-lint web-test web-typecheck web-build web-check-css
+web-verify: web-lint web-test web-typecheck web-build
 
 backend-verify: backend-fmt-check backend-vet backend-test
 

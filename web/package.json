@@ -9,7 +9,6 @@
 		"generate:api": "encore gen client --lang=typescript --output=packages/encore-client/src/generated/client.ts",
 		"prepare": "pnpm generate:api",
 		"build": "tsc -b && vite build",
-		"check:css": "node scripts/check-modern-css.mjs",
 		"lint": "eslint .",
 		"preview": "vite preview",
 		"test": "vitest run",

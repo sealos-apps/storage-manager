@@ -23,7 +23,6 @@ pnpm test
 pnpm test:watch
 pnpm test:ui
 pnpm build
-pnpm check:css
 pnpm generate:api
 pnpm e2e
 ```
@@ -111,8 +110,6 @@ the minimum usable browser through build transforms and runtime polyfills:
 - `core-js` covers JS runtime gaps not handled by Vite's Chrome 86 syntax target.
 - `container-query-polyfill` and `css-has-pseudo/browser` are loaded in
   `src/polyfills.ts`.
-- `pnpm check:css` scans the production CSS output for unsupported syntax that
-  should not ship without a Chrome 86 fallback.
 
 Tailwind v4 is still not officially Chrome 86-supported, so avoid relying on
 new CSS that cannot be fully polyfilled, including `field-sizing`,

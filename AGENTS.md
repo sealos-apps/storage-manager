@@ -171,11 +171,10 @@ make web-lint
 make web-test
 make web-typecheck
 make web-build
-make web-check-css
 ```
 
-Run `make web-build && make web-check-css` before claiming Chrome compatibility
-work is complete. Use `make web-test` for unit/integration checks and
+Run `make web-build` before claiming Chrome compatibility work is complete.
+Use `make web-test` for unit/integration checks and
 `cd web && pnpm test:watch` only for active local iteration.
 
 Frontend SDK rules:

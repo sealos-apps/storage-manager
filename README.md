@@ -123,7 +123,6 @@ make web-install
 make web-generate-api
 make web-typecheck
 make web-build
-make web-check-css
 make web-e2e
 ```
 
