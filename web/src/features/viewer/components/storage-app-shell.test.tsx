@@ -812,6 +812,34 @@ describe('storageAppShell', () => {
 		expect(await screen.findByDisplayValue(/Name: standard/)).toBeInTheDocument()
 	})
 
+	it('hides namespace switcher on StorageClass management', async () => {
+		const user = userEvent.setup()
+		const api = createFakeViewerAPI({
+			adminCapabilities: vi.fn().mockResolvedValue({
+				can_manage_pvcs: true,
+				can_manage_storage_classes: true,
+				file_management_enabled: true,
+				user_namespace: 'ns-admin',
+			}),
+			adminListNamespaces: vi.fn().mockResolvedValue([
+				{ name: 'ns-admin', status: 'Active', is_current_context: true },
+				{ name: 'kube-system', status: 'Active', is_current_context: false },
+			]),
+			adminListStorageClasses: vi.fn().mockResolvedValue([
+				storageClassFixture({ name: 'standard' }),
+			]),
+			listPVCs: vi.fn().mockResolvedValue([]),
+		})
+
+		renderWithProviders(<StorageAppShell api={api} />)
+
+		await user.click(await screen.findByRole('button', { name: 'Storage types' }))
+
+		expect(viewerUIStore.state.view).toBe('storageClasses')
+		expect(await screen.findByRole('heading', { name: 'Storage types' })).toBeInTheDocument()
+		expect(screen.queryByRole('combobox', { name: /system namespace/i })).not.toBeInTheDocument()
+	})
+
 	it('shows localized storage type names and saves metadata annotations', async () => {
 		const user = userEvent.setup()
 		const adminUpdateStorageClassMetadata = vi.fn().mockResolvedValue(storageClassFixture({

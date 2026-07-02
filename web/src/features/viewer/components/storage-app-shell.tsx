@@ -313,7 +313,7 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 		}
 	}, [canManageStorageClasses, fileManagementEnabled, showFileEntry, showFileNavigation, showSessionNavigation, view])
 
-	const pageActions = (
+	const volumeActions = (
 		<div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:w-auto">
 			<NamespaceFilter
 				canSelectNamespaces={canSelectAdminNamespace}
@@ -332,15 +332,7 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 				<RefreshCw data-icon="inline-start" />
 				{t('actions.refresh')}
 			</Button>
-			{view === 'storageClasses'
-				? (
-						<Button onClick={() => setStorageClassEditor({ mode: 'create' })} type="button">
-							<Plus data-icon="inline-start" />
-							{t('storageClasses.create')}
-						</Button>
-					)
-				: null}
-			{view === 'volumes' && pvcCreationEnabled
+			{pvcCreationEnabled
 				? (
 						<Button
 							disabled={!effectiveNamespace || (isAllNamespaces && adminNamespaces.length === 0)}
@@ -352,6 +344,24 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 						</Button>
 					)
 				: null}
+		</div>
+	)
+	const storageClassActions = (
+		<div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:w-auto">
+			<Button
+				aria-label={t('actions.refresh')}
+				disabled={!effectiveNamespace}
+				onClick={refreshAllStorageData}
+				type="button"
+				variant="outline"
+			>
+				<RefreshCw data-icon="inline-start" />
+				{t('actions.refresh')}
+			</Button>
+			<Button onClick={() => setStorageClassEditor({ mode: 'create' })} type="button">
+				<Plus data-icon="inline-start" />
+				{t('storageClasses.create')}
+			</Button>
 		</div>
 	)
 
@@ -407,7 +417,7 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 						>
 							<TabsContent className="m-0 flex h-full flex-col gap-4" value="volumes">
 								<VolumesView
-									actions={pageActions}
+									actions={volumeActions}
 									onDelete={pvc => setDeleteState({ pvc, confirmName: '' })}
 									onDescribe={setDescribePVC}
 									onEditYAML={setYamlPVC}
@@ -458,7 +468,7 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 							</TabsContent>
 							<TabsContent className="m-0 flex h-full min-h-0 flex-col" value="storageClasses">
 								<StorageClassAdminView
-									actions={pageActions}
+									actions={storageClassActions}
 									deleteMutation={deleteStorageClassMutation}
 									onDelete={setDeleteStorageClassName}
 									onDescribe={setDescribeStorageClassName}
