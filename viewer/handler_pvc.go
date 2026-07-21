@@ -71,6 +71,7 @@ func (h *Handler) listPVCs(ctx context.Context, req *ListPVCsRequest) (*ListPVCs
 	if items == nil {
 		items = []domain.PVC{}
 	}
+	items = pvcListForOperationMode(op.mode, items)
 	h.observe(ctx, http.MethodGet, "/pvcs", http.StatusOK, start)
 	return &ListPVCsResponse{PVCList: PVCList{Items: items}}, nil
 }
@@ -285,7 +286,7 @@ func (h *Handler) createPVC(ctx context.Context, req *CreatePVCRequest) (*PVCRes
 		return nil, apiErr
 	}
 	h.observe(ctx, http.MethodPost, "/pvcs", http.StatusCreated, start)
-	return &PVCResponse{PVC: pvc}, nil
+	return &PVCResponse{PVC: pvcForOperationMode(op.mode, pvc)}, nil
 }
 
 func (h *Handler) deletePVC(
@@ -342,11 +343,12 @@ func (h *Handler) deletePVC(
 	})
 	if deleteErr != nil {
 		apiErr := apienv.FromError(deleteErr)
+		apiErr = pvcErrorForOperationMode(op.mode, apiErr)
 		h.observe(ctx, http.MethodDelete, "/pvcs/:namespace/:name", apiErr.Status, start)
 		return nil, apiErr
 	}
 	h.observe(ctx, http.MethodDelete, "/pvcs/:namespace/:name", http.StatusOK, start)
-	return &PVCResponse{PVC: pvc}, nil
+	return &PVCResponse{PVC: pvcForOperationMode(op.mode, pvc)}, nil
 }
 
 func (h *Handler) getPVCYAML(
@@ -416,7 +418,7 @@ func (h *Handler) updatePVC(
 		return nil, apiErr
 	}
 	h.observe(ctx, http.MethodPut, "/pvcs/:namespace/:name", http.StatusOK, start)
-	return &PVCResponse{PVC: pvc}, nil
+	return &PVCResponse{PVC: pvcForOperationMode(op.mode, pvc)}, nil
 }
 
 func (h *Handler) describePVC(
@@ -542,7 +544,56 @@ func (h *Handler) expandPVC(
 		return nil, apiErr
 	}
 	h.observe(ctx, http.MethodPost, "/pvcs/:namespace/:name/expand", http.StatusOK, start)
-	return &PVCResponse{PVC: pvc}, nil
+	return &PVCResponse{PVC: pvcForOperationMode(op.mode, pvc)}, nil
+}
+
+func pvcListForOperationMode(mode operationMode, pvcs []domain.PVC) []domain.PVC {
+	if mode != operationModeUser {
+		return pvcs
+	}
+	items := append([]domain.PVC(nil), pvcs...)
+	for index := range items {
+		items[index] = redactPVCReferences(items[index])
+	}
+	return items
+}
+
+func pvcForOperationMode(mode operationMode, pvc *domain.PVC) *domain.PVC {
+	if mode != operationModeUser || pvc == nil {
+		return pvc
+	}
+	item := redactPVCReferences(*pvc)
+	return &item
+}
+
+func pvcErrorForOperationMode(mode operationMode, apiErr *apienv.Error) *apienv.Error {
+	if mode != operationModeUser || apiErr == nil || apiErr.Code != apienv.CodePVCReferenced {
+		return apiErr
+	}
+	details := map[string]any{}
+	for key, value := range apiErr.Details {
+		if key == "references" {
+			continue
+		}
+		details[key] = value
+	}
+	details["references"] = redactedPVCReferences()
+	return apienv.NewError(apiErr.Status, apiErr.Code, apiErr.Message, details)
+}
+
+func redactPVCReferences(pvc domain.PVC) domain.PVC {
+	if len(pvc.References) == 0 {
+		return pvc
+	}
+	pvc.References = redactedPVCReferences()
+	return pvc
+}
+
+func redactedPVCReferences() []domain.PVCReference {
+	return []domain.PVCReference{{
+		Relation: "referenced",
+		Evidence: "redacted",
+	}}
 }
 
 func (h *Handler) requireStorageQuota(

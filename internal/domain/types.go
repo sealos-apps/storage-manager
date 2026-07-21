@@ -154,6 +154,25 @@ type PVCVolumeStats struct {
 	AvailableBytes int64 `json:"available_bytes"`
 }
 
+type PVCReference struct {
+	// SourceProduct identifies the Sealos product that declares the reference.
+	SourceProduct string `json:"source_product"`
+	// SourceKind is the Kubernetes or product kind of the referencing resource.
+	SourceKind string `json:"source_kind"`
+	// SourceNamespace is the namespace containing the referencing resource.
+	SourceNamespace string `json:"source_namespace"`
+	// SourceName is the display or Kubernetes name of the referencing resource.
+	SourceName string `json:"source_name"`
+	// SourceUID is the Kubernetes UID of the referencing resource when available.
+	SourceUID string `json:"source_uid,omitempty"`
+	// Relation describes how the source uses the PVC, such as mounted or owned.
+	Relation string `json:"relation"`
+	// MountPath is the first declared mount path when the source exposes one.
+	MountPath string `json:"mount_path,omitempty"`
+	// Evidence identifies which stable contract produced this reference.
+	Evidence string `json:"evidence"`
+}
+
 type PVC struct {
 	// Namespace is the Kubernetes namespace containing the PVC.
 	Namespace string `json:"namespace"`
@@ -175,6 +194,8 @@ type PVC struct {
 	MountStatus string `json:"mount_status"`
 	// MountedPods lists active pods that currently mount this PVC.
 	MountedPods []MountedPod `json:"mounted_pods"`
+	// References lists declared app/devbox references that may remain while pods are paused.
+	References []PVCReference `json:"references"`
 	// ViewerSupported reports whether storage-manager can open a File Browser viewer for this PVC.
 	ViewerSupported bool `json:"viewer_supported"`
 	// ViewerMode is the effective viewer permission mode for this PVC.

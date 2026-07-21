@@ -32,6 +32,7 @@ func TestAllCodesContainsEveryPublicBusinessCode(t *testing.T) {
 		CodePVCNotFound,
 		CodePVCAccessDenied,
 		CodePVCInUse,
+		CodePVCReferenced,
 		CodePVCCreateForbidden,
 		CodePVCDeleteForbidden,
 		CodePVCExpandForbidden,

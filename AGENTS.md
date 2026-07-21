@@ -35,6 +35,13 @@ rules that must shape code changes. Do not turn it into a generic Encore manual.
   collaborators that are easy to unit test.
 - Propagate `context.Context` through every request path. Do not replace a
   request context with `context.Background()` inside handlers or services.
+- PVC reference protection follows `docs/pvc-reference-contract.md`: deletion
+  must fail closed when reference scanning fails, while list/create/update/expand
+  response enrichment is best-effort. Do not parse AppLaunchpad or DevBox private
+  CR specs in Storage Manager; rely on the explicit label/annotation contract and
+  Kubernetes workload volume evidence. User-mode API responses must not expose
+  reference source names, UIDs, or mount paths; admin-mode responses may include
+  those details.
 
 ## Observability Rules
 
@@ -159,8 +166,10 @@ Required frontend stack:
   TanStack Devtools.
 - Tests: Vitest, jsdom, React Testing Library, jest-dom, and user-event.
 - Backend SDK: Encore-generated TypeScript client only. Generate it with
-  `pnpm generate:api` from `web/`; keep generated client output under
-  `web/src/services/encore/client.ts`.
+  `pnpm generate:api` from `web/`; generated output lives at
+  `web/packages/encore-client/src/generated/client.ts` and is ignored by git.
+  Keep committed frontend imports behind `@sealos-storage-manager/encore-client`
+  or feature-local adapters.
 
 Frontend development flow:
 
@@ -221,12 +230,14 @@ web/src/
   layouts/             route/page layout composition
   pages/               page-level composition
   services/            API clients and shared service adapters
-  services/encore/     Encore TypeScript SDK boundary
   store/               global frontend stores
   styles/              Tailwind and global styles
   test/                shared test setup and render helpers
   types/               ambient and shared project types
   utils/               shared helpers
+web/packages/
+  encore-client/       Encore TypeScript SDK package boundary
+  filebrowser-client/  File Browser API package boundary
 ```
 
 Feature modules may own local `api/`, `components/`, `forms/`, `stores/`, and

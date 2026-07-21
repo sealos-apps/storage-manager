@@ -50,7 +50,8 @@ func CreatePVC(ctx context.Context, req *CreatePVCRequest) (*PVCResponse, error)
 // Delete PVC
 // Deletes a PersistentVolumeClaim by namespace and name. The PVC must be
 // visible to the caller. Deletion is blocked while active pods still mount the
-// PVC.
+// PVC, or while declared application or DevBox references still point at the
+// PVC. Declared references return a 409 PVC_REFERENCED conflict.
 //
 //encore:api public method=DELETE path=/pvcs/:namespace/:name
 func DeletePVC(

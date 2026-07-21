@@ -100,6 +100,53 @@ func (c observedClient) DeletePVC(ctx context.Context, namespace string, name st
 	})
 }
 
+func (c observedClient) ListPVCReferences(ctx context.Context, namespace string) ([]PVCReferenceBinding, error) {
+	var references []PVCReferenceBinding
+	err := c.observe(ctx, "list", "pvc_references", namespace, "", func(ctx context.Context) error {
+		var err error
+		references, err = c.next.ListPVCReferences(ctx, namespace)
+		return err
+	})
+	return references, err
+}
+
+func (c observedClient) ListAllPVCReferences(ctx context.Context) ([]PVCReferenceBinding, error) {
+	var references []PVCReferenceBinding
+	err := c.observe(ctx, "list", "pvc_references", "", "", func(ctx context.Context) error {
+		var err error
+		references, err = c.next.ListAllPVCReferences(ctx)
+		return err
+	})
+	return references, err
+}
+
+func (c observedClient) ListPVCReferencesForPVCs(
+	ctx context.Context,
+	namespace string,
+	pvcs []corev1.PersistentVolumeClaim,
+) ([]PVCReferenceBinding, error) {
+	var references []PVCReferenceBinding
+	err := c.observe(ctx, "list", "pvc_references", namespace, "", func(ctx context.Context) error {
+		var err error
+		references, err = c.next.ListPVCReferencesForPVCs(ctx, namespace, pvcs)
+		return err
+	})
+	return references, err
+}
+
+func (c observedClient) ListAllPVCReferencesForPVCs(
+	ctx context.Context,
+	pvcs []corev1.PersistentVolumeClaim,
+) ([]PVCReferenceBinding, error) {
+	var references []PVCReferenceBinding
+	err := c.observe(ctx, "list", "pvc_references", "", "", func(ctx context.Context) error {
+		var err error
+		references, err = c.next.ListAllPVCReferencesForPVCs(ctx, pvcs)
+		return err
+	})
+	return references, err
+}
+
 func (c observedClient) UpdatePVCStorageRequest(
 	ctx context.Context,
 	namespace string,

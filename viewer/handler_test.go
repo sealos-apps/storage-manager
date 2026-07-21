@@ -22,6 +22,7 @@ type fakeViewerService struct {
 	pvcBatchInput   *[]string
 	pvcsByNamespace map[string][]domain.PVC
 	pvc             *domain.PVC
+	pvcErr          error
 	namespaces      []corev1.Namespace
 	storageClasses  []domain.StorageClass
 	created         *domain.ViewerSession
@@ -202,12 +203,18 @@ func (f *fakeViewerService) CreatePVC(_ context.Context, input session.CreatePVC
 	if f.pvcInput != nil {
 		*f.pvcInput = input
 	}
+	if f.pvcErr != nil {
+		return nil, f.pvcErr
+	}
 	return f.pvc, nil
 }
 
 func (f *fakeViewerService) DeletePVC(_ context.Context, input session.DeletePVCInput) (*domain.PVC, error) {
 	if f.deleteInput != nil {
 		*f.deleteInput = input
+	}
+	if f.pvcErr != nil {
+		return nil, f.pvcErr
 	}
 	return f.pvc, nil
 }
@@ -220,6 +227,9 @@ func (f *fakeViewerService) GetPVCYAML(_ context.Context, namespace string, name
 }
 
 func (f *fakeViewerService) UpdatePVC(_ context.Context, namespace string, name string, _ string) (*domain.PVC, error) {
+	if f.pvcErr != nil {
+		return nil, f.pvcErr
+	}
 	if f.pvc != nil {
 		return f.pvc, nil
 	}
@@ -236,6 +246,9 @@ func (f *fakeViewerService) DescribePVC(_ context.Context, namespace string, nam
 func (f *fakeViewerService) ExpandPVC(_ context.Context, input session.ExpandPVCInput) (*domain.PVC, error) {
 	if f.expandInput != nil {
 		*f.expandInput = input
+	}
+	if f.pvcErr != nil {
+		return nil, f.pvcErr
 	}
 	return f.pvc, nil
 }

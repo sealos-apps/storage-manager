@@ -65,7 +65,8 @@ export function VolumesView({
 	const filteredPVCs = search
 		? pvcs.filter((pvc) => {
 				const mountedPodNames = pvc.mounted_pods.map(pod => pod.name).join(' ')
-				return `${pvc.namespace} ${pvc.name} ${pvc.storage_class_name} ${mountedPodNames}`.toLowerCase().includes(search)
+				const referenceNames = (pvc.references ?? []).map(reference => pvcReferenceDisplayName(reference)).join(' ')
+				return `${pvc.namespace} ${pvc.name} ${pvc.storage_class_name} ${mountedPodNames} ${referenceNames}`.toLowerCase().includes(search)
 			})
 		: pvcs
 	const capacity = sumQuantities(pvcs.map(pvc => pvc.capacity))
@@ -167,7 +168,8 @@ interface PVCRowProps {
 function PVCRow({ fileManagementEnabled, onDelete, onDescribe, onEditYAML, onExpand, onOpenFiles, pvc, showNamespaceColumn }: PVCRowProps) {
 	const { t } = useTranslation()
 	const mountedTarget = pvc.mounted_pods[0]
-	const canDelete = !pvc.mounted
+	const references = pvc.references ?? []
+	const canDelete = !pvc.mounted && references.length === 0
 
 	return (
 		<TableRow>
@@ -181,6 +183,7 @@ function PVCRow({ fileManagementEnabled, onDelete, onDescribe, onEditYAML, onExp
 						<div className="flex shrink-0 items-center gap-1">
 							<PVCStatusBadge pvc={pvc} />
 							<PVCMountedBadge mounted={pvc.mounted} mountedPodName={mountedTarget?.name} mountStatus={pvc.mount_status} />
+							<PVCReferenceBadge references={references} />
 						</div>
 					</div>
 				</div>
@@ -250,6 +253,61 @@ function PVCRow({ fileManagementEnabled, onDelete, onDescribe, onEditYAML, onExp
 			</TableCell>
 		</TableRow>
 	)
+}
+
+function PVCReferenceBadge({ references }: { references: PVC['references'] }) {
+	const { t } = useTranslation()
+	if (references.length === 0) {
+		return null
+	}
+	const primary = references[0]
+	const title = references.map(reference => pvcReferenceDisplayName(reference, t('viewer.pvcReferenced'))).join('\n')
+	const labelName = primary ? pvcReferenceDisplayName(primary, t('viewer.pvcReferenced')) : t('viewer.pvcReferenced')
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<Button
+					aria-label={t('viewer.pvcReferencedBy', { name: labelName })}
+					className="h-auto rounded-full px-2 py-0.5 text-xs"
+					size="sm"
+					title={title}
+					variant="outline"
+				>
+					{t('viewer.pvcReferenced')}
+				</Button>
+			</TooltipTrigger>
+			<TooltipContent>
+				<div className="grid gap-1">
+					{references.map(reference => (
+						<div key={pvcReferenceKey(reference)}>{pvcReferenceDisplayName(reference)}</div>
+					))}
+				</div>
+			</TooltipContent>
+		</Tooltip>
+	)
+}
+
+function pvcReferenceDisplayName(reference: PVC['references'][number], fallback?: string) {
+	const prefix = [reference.source_product, reference.source_kind].filter(Boolean).join('/')
+	const name = reference.source_name || reference.source_uid || reference.source_namespace
+	const path = reference.mount_path ? ` ${reference.mount_path}` : ''
+	if (prefix && name) {
+		return `${prefix}/${name}${path}`
+	}
+	return `${name || prefix || fallback || reference.relation}${path}`
+}
+
+function pvcReferenceKey(reference: PVC['references'][number]) {
+	return [
+		reference.source_uid,
+		reference.source_namespace,
+		reference.source_product,
+		reference.source_kind,
+		reference.source_name,
+		reference.relation,
+		reference.mount_path,
+		reference.evidence,
+	].filter(Boolean).join(':')
 }
 
 function PVCMountedBadge({

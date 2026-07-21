@@ -56,6 +56,7 @@ function mapPVC(pvc: RawPVC): PVC {
 		capacity: capacity instanceof Quantity
 			? capacity
 			: pvc.capacity ? Quantity.parse(pvc.capacity) : quantityFromBytes(pvc.capacity_bytes),
+		references: pvc.references ?? [],
 		volume_stats: stats
 			? {
 					...stats,

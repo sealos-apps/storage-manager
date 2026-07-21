@@ -52,6 +52,103 @@ func TestHandlerListPVCsUsesEnvelope(t *testing.T) {
 	}
 }
 
+func TestHandlerListPVCsRedactsReferenceDetailsForUser(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(
+		&fakeViewerService{
+			pvcs: []domain.PVC{{
+				Namespace: "ns",
+				Name:      "data",
+				References: []domain.PVCReference{{
+					SourceProduct:   "applaunchpad",
+					SourceKind:      "App",
+					SourceNamespace: "ns",
+					SourceName:      "secret-app",
+					SourceUID:       "secret-uid",
+					Relation:        "mounted",
+					MountPath:       "/secret",
+					Evidence:        "metadata-annotation",
+				}},
+			}},
+		},
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+	)
+	req := httptest.NewRequest(http.MethodGet, "/pvcs?namespace=ns", nil)
+	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
+	recorder := httptest.NewRecorder()
+
+	handler.ListPVCs(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var body map[string]struct {
+		Items []domain.PVC `json:"items"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	references := body["pvc_list"].Items[0].References
+	if len(references) != 1 {
+		t.Fatalf("references = %#v", references)
+	}
+	if references[0].SourceName != "" || references[0].SourceUID != "" || references[0].MountPath != "" ||
+		references[0].Evidence != "redacted" {
+		t.Fatalf("references = %#v", references)
+	}
+}
+
+func TestHandlerListPVCsKeepsReferenceDetailsForAdmin(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(
+		&fakeViewerService{
+			namespaces: []corev1.Namespace{{ObjectMeta: metav1.ObjectMeta{Name: "kube-system"}}},
+			pvcs: []domain.PVC{{
+				Namespace: "kube-system",
+				Name:      "data",
+				References: []domain.PVCReference{{
+					SourceProduct: "applaunchpad",
+					SourceKind:    "App",
+					SourceName:    "demo-app",
+					MountPath:     "/data",
+					Evidence:      "metadata-annotation",
+				}},
+			}},
+		},
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+		WithAdminAuthorizer(allowAdminAuthorizer{}),
+	)
+	req := httptest.NewRequest(http.MethodGet, "/pvcs?namespace=kube-system", nil)
+	req.Header.Set("Authorization", url.QueryEscape(testUserNamespaceKubeconfig))
+	recorder := httptest.NewRecorder()
+
+	handler.ListPVCs(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var body map[string]struct {
+		Items []domain.PVC `json:"items"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	references := body["pvc_list"].Items[0].References
+	if len(references) != 1 || references[0].SourceName != "demo-app" || references[0].MountPath != "/data" {
+		t.Fatalf("references = %#v", references)
+	}
+}
+
 func TestHandlerGetContextUsesKubeconfigNamespace(t *testing.T) {
 	t.Parallel()
 
@@ -242,6 +339,46 @@ func TestHandlerCreatePVCUsesEnvelope(t *testing.T) {
 	}
 	if !strings.Contains(recorder.Body.String(), `"pvc"`) {
 		t.Fatalf("body = %s", recorder.Body.String())
+	}
+}
+
+func TestHandlerDeletePVCReferencedErrorRedactsDetailsForUser(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(
+		&fakeViewerService{
+			pvcErr: apienv.NewError(http.StatusConflict, apienv.CodePVCReferenced, "PVC is still referenced", map[string]any{
+				"references": []domain.PVCReference{{
+					SourceProduct: "applaunchpad",
+					SourceKind:    "App",
+					SourceName:    "secret-app",
+					SourceUID:     "secret-uid",
+					MountPath:     "/secret",
+					Evidence:      "metadata-annotation",
+				}},
+			}),
+		},
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+	)
+	req := httptest.NewRequest(http.MethodDelete, "/pvcs/ns/data", nil)
+	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
+	recorder := httptest.NewRecorder()
+
+	handler.DeletePVC(recorder, req)
+
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	body := recorder.Body.String()
+	if strings.Contains(body, "secret-app") || strings.Contains(body, "/secret") || strings.Contains(body, "secret-uid") {
+		t.Fatalf("body leaked reference details: %s", body)
+	}
+	if !strings.Contains(body, string(apienv.CodePVCReferenced)) || !strings.Contains(body, `"evidence":"redacted"`) {
+		t.Fatalf("body = %s", body)
 	}
 }
 

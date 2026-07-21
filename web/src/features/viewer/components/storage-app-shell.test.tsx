@@ -648,6 +648,39 @@ describe('storageAppShell', () => {
 		}))
 	})
 
+	it('disables delete for PVCs referenced by applications', async () => {
+		const user = userEvent.setup()
+		const deletePVC = vi.fn()
+		const api = createFakeViewerAPI({
+			deletePVC,
+			listPVCs: vi.fn().mockResolvedValue([
+				pvcFixture({
+					name: 'data',
+					namespace: 'ns-admin',
+					uid: 'uid-data',
+					references: [{
+						evidence: 'metadata-annotation',
+						mount_path: '/data',
+						relation: 'mounted',
+						source_kind: 'App',
+						source_name: 'Demo App',
+						source_namespace: 'ns-admin',
+						source_product: 'applaunchpad',
+						source_uid: 'app-uid',
+					}],
+				}),
+			]),
+		})
+
+		renderWithProviders(<StorageAppShell api={api} />)
+
+		expect(await screen.findByText('Referenced')).toBeInTheDocument()
+		await user.click(await screen.findByRole('button', { name: /more actions/i }))
+		const deleteMenuItem = await screen.findByRole('menuitem', { name: /^delete$/i })
+		expect(deleteMenuItem).toHaveAttribute('aria-disabled', 'true')
+		expect(deletePVC).not.toHaveBeenCalled()
+	})
+
 	it('shows backend details in PVC mutation error toasts', async () => {
 		const user = userEvent.setup()
 		const detail = 'persistentvolumeclaims "cache-data" is forbidden: exceeded quota: quota-ns-admin'

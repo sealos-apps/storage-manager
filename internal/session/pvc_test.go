@@ -10,12 +10,15 @@ import (
 	"github.com/nixieboluo/sealos-storage-manager/internal/kube"
 	"github.com/nixieboluo/sealos-storage-manager/internal/observability"
 	"github.com/nixieboluo/sealos-storage-manager/internal/state"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
+	ktesting "k8s.io/client-go/testing"
 )
 
 func TestViewerServiceCreatePVC(t *testing.T) {
@@ -55,6 +58,39 @@ func TestViewerServiceCreatePVC(t *testing.T) {
 	}
 	if created.Spec.StorageClassName == nil || *created.Spec.StorageClassName != "standard" {
 		t.Fatalf("storage class = %#v", created.Spec.StorageClassName)
+	}
+}
+
+func TestViewerServiceCreatePVCReturnsSuccessWhenReferenceScanFails(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	clientset := fake.NewSimpleClientset(&storagev1.StorageClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "standard",
+		},
+		Provisioner: "example.test/provisioner",
+	})
+	clientset.PrependReactor("list", "deployments", func(_ ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("reference scan unavailable")
+	})
+	client := kube.New(clientset)
+	store := state.New(cfg.Cache)
+	pods := NewPodService(cfg, store, client, observability.MustNew(cfg.Observability, nil))
+	service := NewViewerService(cfg, store, client, pods, nil, observability.MustNew(cfg.Observability, nil))
+
+	pvc, err := service.CreatePVC(t.Context(), CreatePVCInput{
+		Namespace:        "default",
+		Name:             "data",
+		Capacity:         "2Gi",
+		AccessModes:      []string{domain.AccessModeReadWriteOnce},
+		StorageClassName: "standard",
+	})
+	if err != nil {
+		t.Fatalf("CreatePVC() error = %v", err)
+	}
+	if pvc.Name != "data" || len(pvc.References) != 0 {
+		t.Fatalf("pvc = %#v", pvc)
 	}
 }
 
@@ -162,6 +198,56 @@ func TestViewerServiceListPVCsIncludesStorageClassName(t *testing.T) {
 	}
 }
 
+func TestViewerServiceListPVCsIncludesReferences(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	client := kube.New(fake.NewSimpleClientset(
+		&corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "data", UID: types.UID("uid")},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")},
+				},
+			},
+		},
+		&appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "default",
+				Name:      "demo",
+				Labels: map[string]string{
+					kube.PVCReferenceSourceLabel:  "true",
+					kube.PVCReferenceProductLabel: "applaunchpad",
+					kube.PVCReferenceKindLabel:    "App",
+				},
+				Annotations: map[string]string{
+					kube.PVCReferenceNameAnnotation: "Demo App",
+					kube.PVCReferencesAnnotation:    `[{"name":"data","mountPath":"/data"}]`,
+				},
+			},
+		},
+	))
+	store := state.New(cfg.Cache)
+	pods := NewPodService(cfg, store, client, observability.MustNew(cfg.Observability, nil))
+	service := NewViewerService(cfg, store, client, pods, nil, observability.MustNew(cfg.Observability, nil))
+
+	items, err := service.ListPVCs(t.Context(), "default")
+	if err != nil {
+		t.Fatalf("ListPVCs() error = %v", err)
+	}
+	if len(items) != 1 || len(items[0].References) != 1 {
+		t.Fatalf("items = %#v", items)
+	}
+	reference := items[0].References[0]
+	if reference.SourceProduct != "applaunchpad" ||
+		reference.SourceKind != "App" ||
+		reference.SourceName != "Demo App" ||
+		reference.MountPath != "/data" {
+		t.Fatalf("reference = %#v", reference)
+	}
+}
+
 func TestViewerServiceCreatePVCRejectsUnsupportedAccessMode(t *testing.T) {
 	t.Parallel()
 
@@ -218,6 +304,89 @@ func TestViewerServiceDeletePVCRejectsMountedPVC(t *testing.T) {
 	}
 }
 
+func TestViewerServiceDeletePVCRejectsReferencedPVC(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	clientset := fake.NewSimpleClientset(
+		&corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "data", UID: types.UID("uid")},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")},
+				},
+			},
+		},
+		&appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "default",
+				Name:      "demo",
+				Labels: map[string]string{
+					kube.PVCReferenceSourceLabel:  "true",
+					kube.PVCReferenceProductLabel: "applaunchpad",
+					kube.PVCReferenceKindLabel:    "App",
+				},
+				Annotations: map[string]string{
+					kube.PVCReferencesAnnotation: `[{"name":"data"}]`,
+				},
+			},
+		},
+	)
+	client := kube.New(clientset)
+	store := state.New(cfg.Cache)
+	pods := NewPodService(cfg, store, client, observability.MustNew(cfg.Observability, nil))
+	service := NewViewerService(cfg, store, client, pods, nil, observability.MustNew(cfg.Observability, nil))
+
+	_, err := service.DeletePVC(t.Context(), DeletePVCInput{Namespace: "default", Name: "data"})
+	var apiErr *apienv.Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("DeletePVC() error = %T %v, want apienv.Error", err, err)
+	}
+	if apiErr.Code != apienv.CodePVCReferenced {
+		t.Fatalf("code = %s, want %s", apiErr.Code, apienv.CodePVCReferenced)
+	}
+	if _, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(t.Context(), "data", metav1.GetOptions{}); err != nil {
+		t.Fatalf("referenced pvc was deleted: %v", err)
+	}
+}
+
+func TestViewerServiceDeletePVCUsesCheckedReferenceState(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	clientset := fake.NewSimpleClientset(
+		&corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "data", UID: types.UID("uid")},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")},
+				},
+			},
+		},
+	)
+	client := kube.New(clientset)
+	store := state.New(cfg.Cache)
+	pods := NewPodService(cfg, store, client, observability.MustNew(cfg.Observability, nil))
+	service := NewViewerService(cfg, store, client, pods, nil, observability.MustNew(cfg.Observability, nil))
+
+	deleted, err := service.DeletePVC(t.Context(), DeletePVCInput{Namespace: "default", Name: "data"})
+	if err != nil {
+		t.Fatalf("DeletePVC() error = %v", err)
+	}
+	if len(deleted.References) != 0 {
+		t.Fatalf("deleted references = %#v, want none", deleted.References)
+	}
+
+	if got := countListActions(clientset.Actions(), "deployments"); got != 1 {
+		t.Fatalf("deployment reference scans = %d, want 1", got)
+	}
+	if got := countListActions(clientset.Actions(), "statefulsets"); got != 1 {
+		t.Fatalf("statefulset reference scans = %d, want 1", got)
+	}
+}
+
 func TestViewerServiceExpandPVC(t *testing.T) {
 	t.Parallel()
 
@@ -254,4 +423,14 @@ func TestViewerServiceExpandPVC(t *testing.T) {
 	if updated.Spec.Resources.Requests.Storage().String() != "3Gi" {
 		t.Fatalf("storage = %s", updated.Spec.Resources.Requests.Storage().String())
 	}
+}
+
+func countListActions(actions []ktesting.Action, resource string) int {
+	count := 0
+	for _, action := range actions {
+		if action.GetVerb() == "list" && action.GetResource().Resource == resource {
+			count++
+		}
+	}
+	return count
 }

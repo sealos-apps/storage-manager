@@ -8,6 +8,7 @@ export const viewerErrorMessageKeys = {
 	PVC_NOT_FOUND: 'errors.pvcNotFound',
 	PVC_ALREADY_EXISTS: 'errors.pvcAlreadyExists',
 	PVC_IN_USE: 'errors.pvcInUse',
+	PVC_REFERENCED: 'errors.pvcReferenced',
 	PVC_ACCESS_DENIED: 'errors.pvcAccessDenied',
 	PVC_CREATE_FORBIDDEN: 'errors.pvcCreateForbidden',
 	PVC_DELETE_FORBIDDEN: 'errors.pvcDeleteForbidden',
