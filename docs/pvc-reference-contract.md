@@ -17,8 +17,7 @@ Storage Manager 在删除 PVC 前需要识别“没有活跃 Pod，但仍被应�
 metadata:
   labels:
     storage.sealos.io/pvc-reference-source: "true"
-    storage.sealos.io/ref-product: "devbox" # devbox | applaunchpad | ...
-    storage.sealos.io/ref-kind: "DevBox"    # DevBox | App | ...
+    storage.sealos.io/ref-source: "devbox" # devbox | applaunchpad | ...
   annotations:
     storage.sealos.io/ref-name: "demo"
     storage.sealos.io/pvc-references: |
@@ -31,8 +30,7 @@ metadata:
 字段约定：
 
 - `storage.sealos.io/pvc-reference-source=true` 是 Storage Manager 的扫描入口。没有这个 label 的资源不会参与 PVC 删除保护。
-- `storage.sealos.io/ref-product` 表示产品来源，例如 `devbox` 或 `applaunchpad`。
-- `storage.sealos.io/ref-kind` 表示引用方资源类型，例如 `DevBox` 或 `App`。不要写 `local`、`shared`、`generated` 这类 PVC 类型。
+- `storage.sealos.io/ref-source` 表示引用方来源，例如 `devbox` 或 `applaunchpad`。这是引用方类型，不是 `local`、`shared`、`generated` 这类 PVC 类型。
 - `storage.sealos.io/ref-name` 是给用户看的引用方名称，缺省时使用 Kubernetes resource name。
 - `storage.sealos.io/pvc-references` 是 JSON array。每一项表示当前资源引用的一个 PVC。
 - `name` 是 PVC name。本版本只支持同 namespace 引用；声明了其他 namespace 的条目会被忽略。跨 namespace 需要重新设计授权和展示策略后再开启。
@@ -50,7 +48,7 @@ Storage Manager 删除 PVC 前会阻止以下情况：
 - 带上述 label 的 Deployment/StatefulSet 在 pod template 的 `volumes[].persistentVolumeClaim.claimName` 中引用该 PVC，即使没有显式 `pvc-references` annotation，也会被识别。
 - 带上述 label 的 StatefulSet 使用 `volumeClaimTemplates` 生成的 PVC，例如 `<templateName>-<statefulSetName>-<ordinal>`，会被识别为 `owned`。
 
-列表页会 best-effort 展示 `references[]`；如果引用扫描暂时失败，会记录告警并继续展示 PVC。删除接口会 fail closed：引用扫描失败时不会继续删除。
+列表页会 best-effort 展示 `references[]`；普通用户只看到自己 namespace 内的引用方资源，管理员可在允许的 namespace 范围内看到引用方详情。如果引用扫描暂时失败，会记录告警并继续展示 PVC。删除接口会 fail closed：引用扫描失败时不会继续删除。
 
 ## AppLaunchpad 接入建议
 

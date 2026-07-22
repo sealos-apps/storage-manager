@@ -19,11 +19,10 @@ import (
 )
 
 const (
-	PVCReferenceSourceLabel    = "storage.sealos.io/pvc-reference-source"
-	PVCReferenceProductLabel   = "storage.sealos.io/ref-product"
-	PVCReferenceKindLabel      = "storage.sealos.io/ref-kind"
-	PVCReferenceNameAnnotation = "storage.sealos.io/ref-name"
-	PVCReferencesAnnotation    = "storage.sealos.io/pvc-references"
+	PVCReferenceSourceLabel     = "storage.sealos.io/pvc-reference-source"
+	PVCReferenceSourceTypeLabel = "storage.sealos.io/ref-source"
+	PVCReferenceNameAnnotation  = "storage.sealos.io/ref-name"
+	PVCReferencesAnnotation     = "storage.sealos.io/pvc-references"
 
 	PVCReferenceRelationMounted = "mounted"
 	PVCReferenceRelationOwned   = "owned"
@@ -46,8 +45,7 @@ type PVCReferenceBinding struct {
 }
 
 type pvcReferenceSource struct {
-	Product     string
-	Kind        string
+	SourceType  string
 	Namespace   string
 	Name        string
 	DisplayName string
@@ -227,14 +225,16 @@ func pvcReferenceSourceFromObject(
 	fallbackKind string,
 ) pvcReferenceSource {
 	if meta == nil {
-		return pvcReferenceSource{Kind: fallbackKind}
+		return pvcReferenceSource{SourceType: fallbackKind}
 	}
 	if kind == "" {
 		kind = fallbackKind
 	}
 	source := pvcReferenceSource{
-		Product:     strings.TrimSpace(meta.Labels[PVCReferenceProductLabel]),
-		Kind:        firstNonEmpty(strings.TrimSpace(meta.Labels[PVCReferenceKindLabel]), kind),
+		SourceType: firstNonEmpty(
+			strings.TrimSpace(meta.Labels[PVCReferenceSourceTypeLabel]),
+			kind,
+		),
 		Namespace:   meta.Namespace,
 		Name:        meta.Name,
 		DisplayName: strings.TrimSpace(meta.Annotations[PVCReferenceNameAnnotation]),
@@ -266,9 +266,8 @@ func pvcReferencesFromSource(source pvcReferenceSource) ([]PVCReferenceBinding, 
 	}
 	var declared []declaredPVCReference
 	if err := json.Unmarshal([]byte(body), &declared); err != nil {
-		return nil, fmt.Errorf("parsing pvc references on %s/%s %s/%s: %w",
-			source.Product,
-			source.Kind,
+		return nil, fmt.Errorf("parsing pvc references on %s %s/%s: %w",
+			source.SourceType,
 			source.Namespace,
 			source.Name,
 			err,
@@ -409,8 +408,7 @@ func domainReference(
 	evidence string,
 ) domain.PVCReference {
 	return domain.PVCReference{
-		SourceProduct:   source.Product,
-		SourceKind:      source.Kind,
+		SourceType:      source.SourceType,
 		SourceNamespace: source.Namespace,
 		SourceName:      firstNonEmpty(source.DisplayName, source.Name),
 		SourceUID:       source.UID,
@@ -459,8 +457,7 @@ func pvcReferenceBindingDedupeKey(ref PVCReferenceBinding) string {
 	return strings.Join([]string{
 		ref.PVCNamespace,
 		ref.PVCName,
-		reference.SourceProduct,
-		reference.SourceKind,
+		reference.SourceType,
 		reference.SourceNamespace,
 		reference.SourceName,
 		reference.SourceUID,
@@ -474,8 +471,7 @@ func pvcReferenceBindingSortKey(ref PVCReferenceBinding) string {
 	return strings.Join([]string{
 		ref.PVCNamespace,
 		ref.PVCName,
-		reference.SourceProduct,
-		reference.SourceKind,
+		reference.SourceType,
 		reference.SourceNamespace,
 		reference.SourceName,
 		reference.Relation,

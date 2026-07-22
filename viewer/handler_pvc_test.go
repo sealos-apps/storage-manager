@@ -52,7 +52,7 @@ func TestHandlerListPVCsUsesEnvelope(t *testing.T) {
 	}
 }
 
-func TestHandlerListPVCsRedactsReferenceDetailsForUser(t *testing.T) {
+func TestHandlerListPVCsShowsOwnNamespaceReferenceDetailsForUser(t *testing.T) {
 	t.Parallel()
 
 	handler := NewHandler(
@@ -61,13 +61,19 @@ func TestHandlerListPVCsRedactsReferenceDetailsForUser(t *testing.T) {
 				Namespace: "ns",
 				Name:      "data",
 				References: []domain.PVCReference{{
-					SourceProduct:   "applaunchpad",
-					SourceKind:      "App",
+					SourceType:      "applaunchpad",
 					SourceNamespace: "ns",
-					SourceName:      "secret-app",
-					SourceUID:       "secret-uid",
+					SourceName:      "demo-app",
+					SourceUID:       "app-uid",
 					Relation:        "mounted",
-					MountPath:       "/secret",
+					MountPath:       "/data",
+					Evidence:        "metadata-annotation",
+				}, {
+					SourceType:      "devbox",
+					SourceNamespace: "other",
+					SourceName:      "other-devbox",
+					Relation:        "mounted",
+					MountPath:       "/workspace",
 					Evidence:        "metadata-annotation",
 				}},
 			}},
@@ -97,8 +103,10 @@ func TestHandlerListPVCsRedactsReferenceDetailsForUser(t *testing.T) {
 	if len(references) != 1 {
 		t.Fatalf("references = %#v", references)
 	}
-	if references[0].SourceName != "" || references[0].SourceUID != "" || references[0].MountPath != "" ||
-		references[0].Evidence != "redacted" {
+	if references[0].SourceType != "applaunchpad" ||
+		references[0].SourceName != "demo-app" ||
+		references[0].SourceUID != "app-uid" ||
+		references[0].MountPath != "/data" {
 		t.Fatalf("references = %#v", references)
 	}
 }
@@ -113,11 +121,11 @@ func TestHandlerListPVCsKeepsReferenceDetailsForAdmin(t *testing.T) {
 				Namespace: "kube-system",
 				Name:      "data",
 				References: []domain.PVCReference{{
-					SourceProduct: "applaunchpad",
-					SourceKind:    "App",
-					SourceName:    "demo-app",
-					MountPath:     "/data",
-					Evidence:      "metadata-annotation",
+					SourceType:      "applaunchpad",
+					SourceNamespace: "kube-system",
+					SourceName:      "demo-app",
+					MountPath:       "/data",
+					Evidence:        "metadata-annotation",
 				}},
 			}},
 		},
@@ -342,19 +350,25 @@ func TestHandlerCreatePVCUsesEnvelope(t *testing.T) {
 	}
 }
 
-func TestHandlerDeletePVCReferencedErrorRedactsDetailsForUser(t *testing.T) {
+func TestHandlerDeletePVCReferencedErrorShowsOwnNamespaceDetailsForUser(t *testing.T) {
 	t.Parallel()
 
 	handler := NewHandler(
 		&fakeViewerService{
 			pvcErr: apienv.NewError(http.StatusConflict, apienv.CodePVCReferenced, "PVC is still referenced", map[string]any{
 				"references": []domain.PVCReference{{
-					SourceProduct: "applaunchpad",
-					SourceKind:    "App",
-					SourceName:    "secret-app",
-					SourceUID:     "secret-uid",
-					MountPath:     "/secret",
-					Evidence:      "metadata-annotation",
+					SourceType:      "applaunchpad",
+					SourceNamespace: "ns",
+					SourceName:      "demo-app",
+					SourceUID:       "app-uid",
+					MountPath:       "/data",
+					Evidence:        "metadata-annotation",
+				}, {
+					SourceType:      "devbox",
+					SourceNamespace: "other",
+					SourceName:      "other-devbox",
+					MountPath:       "/workspace",
+					Evidence:        "metadata-annotation",
 				}},
 			}),
 		},
@@ -374,11 +388,11 @@ func TestHandlerDeletePVCReferencedErrorRedactsDetailsForUser(t *testing.T) {
 		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
 	}
 	body := recorder.Body.String()
-	if strings.Contains(body, "secret-app") || strings.Contains(body, "/secret") || strings.Contains(body, "secret-uid") {
-		t.Fatalf("body leaked reference details: %s", body)
+	if !strings.Contains(body, "demo-app") || !strings.Contains(body, "/data") || !strings.Contains(body, "app-uid") {
+		t.Fatalf("body did not include own namespace reference details: %s", body)
 	}
-	if !strings.Contains(body, string(apienv.CodePVCReferenced)) || !strings.Contains(body, `"evidence":"redacted"`) {
-		t.Fatalf("body = %s", body)
+	if strings.Contains(body, "other-devbox") || strings.Contains(body, "/workspace") {
+		t.Fatalf("body leaked cross namespace reference details: %s", body)
 	}
 }
 

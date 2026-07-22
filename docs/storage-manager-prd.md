@@ -97,7 +97,7 @@ Storage Manager 提供一个 Sealos Desktop 存储应用，由 typed Encore API 
 - 管理员命名空间选择使用应用级 all-namespaces token 做聚合，同时保留对调用者的授权检查。
 - PVC 可见性包括挂载检测、已挂载 pod 明细、应用/DevBox 引用状态、viewer 支持状态、viewer 模式、调度提示和可选文件系统使用量指标。
 - PVC 创建和扩容同时接收 Kubernetes quantity 字符串和字节数。后端校验一致性、容量方向、StorageClass 支持和启用配额时的额度。
-- PVC 删除会校验调用者可见性，并在活跃 pod 仍挂载该 PVC 或声明式应用引用仍存在时阻止删除。普通用户只看到粗粒度“已引用”信号，管理员可看到引用方详情。
+- PVC 删除会校验调用者可见性，并在活跃 pod 仍挂载该 PVC 或声明式应用引用仍存在时阻止删除。普通用户可看到自己 namespace 内的引用方详情，管理员可看到其允许 namespace 范围内的引用方详情。
 - Viewer session 是用户侧会话，背后由 pod session 支撑。安全时，同一 PVC 的多个 viewer session 可以共享一个 pod session。
 - Pod session 表示 Kubernetes 资源，包括 viewer pod、service、public URL、internal URL、runtime version、节点调度、状态、原因、活跃时间和过期时间。
 - Viewer session 表示用户状态，包括 ID、pod session ID、namespace、PVC name、status、pod status、viewer URL、mode、token readiness、heartbeat 和过期时间。

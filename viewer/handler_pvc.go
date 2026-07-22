@@ -71,7 +71,7 @@ func (h *Handler) listPVCs(ctx context.Context, req *ListPVCsRequest) (*ListPVCs
 	if items == nil {
 		items = []domain.PVC{}
 	}
-	items = pvcListForOperationMode(op.mode, items)
+	items = pvcListForOperationMode(op.mode, op.namespace, items)
 	h.observe(ctx, http.MethodGet, "/pvcs", http.StatusOK, start)
 	return &ListPVCsResponse{PVCList: PVCList{Items: items}}, nil
 }
@@ -286,7 +286,7 @@ func (h *Handler) createPVC(ctx context.Context, req *CreatePVCRequest) (*PVCRes
 		return nil, apiErr
 	}
 	h.observe(ctx, http.MethodPost, "/pvcs", http.StatusCreated, start)
-	return &PVCResponse{PVC: pvcForOperationMode(op.mode, pvc)}, nil
+	return &PVCResponse{PVC: pvcForOperationMode(op.mode, op.namespace, pvc)}, nil
 }
 
 func (h *Handler) deletePVC(
@@ -343,12 +343,12 @@ func (h *Handler) deletePVC(
 	})
 	if deleteErr != nil {
 		apiErr := apienv.FromError(deleteErr)
-		apiErr = pvcErrorForOperationMode(op.mode, apiErr)
+		apiErr = pvcErrorForOperationMode(op.mode, op.namespace, apiErr)
 		h.observe(ctx, http.MethodDelete, "/pvcs/:namespace/:name", apiErr.Status, start)
 		return nil, apiErr
 	}
 	h.observe(ctx, http.MethodDelete, "/pvcs/:namespace/:name", http.StatusOK, start)
-	return &PVCResponse{PVC: pvcForOperationMode(op.mode, pvc)}, nil
+	return &PVCResponse{PVC: pvcForOperationMode(op.mode, op.namespace, pvc)}, nil
 }
 
 func (h *Handler) getPVCYAML(
@@ -418,7 +418,7 @@ func (h *Handler) updatePVC(
 		return nil, apiErr
 	}
 	h.observe(ctx, http.MethodPut, "/pvcs/:namespace/:name", http.StatusOK, start)
-	return &PVCResponse{PVC: pvcForOperationMode(op.mode, pvc)}, nil
+	return &PVCResponse{PVC: pvcForOperationMode(op.mode, op.namespace, pvc)}, nil
 }
 
 func (h *Handler) describePVC(
@@ -544,56 +544,64 @@ func (h *Handler) expandPVC(
 		return nil, apiErr
 	}
 	h.observe(ctx, http.MethodPost, "/pvcs/:namespace/:name/expand", http.StatusOK, start)
-	return &PVCResponse{PVC: pvcForOperationMode(op.mode, pvc)}, nil
+	return &PVCResponse{PVC: pvcForOperationMode(op.mode, op.namespace, pvc)}, nil
 }
 
-func pvcListForOperationMode(mode operationMode, pvcs []domain.PVC) []domain.PVC {
+func pvcListForOperationMode(mode operationMode, namespace string, pvcs []domain.PVC) []domain.PVC {
 	if mode != operationModeUser {
 		return pvcs
 	}
 	items := append([]domain.PVC(nil), pvcs...)
 	for index := range items {
-		items[index] = redactPVCReferences(items[index])
+		items[index] = filterPVCReferencesForNamespace(items[index], namespace)
 	}
 	return items
 }
 
-func pvcForOperationMode(mode operationMode, pvc *domain.PVC) *domain.PVC {
+func pvcForOperationMode(mode operationMode, namespace string, pvc *domain.PVC) *domain.PVC {
 	if mode != operationModeUser || pvc == nil {
 		return pvc
 	}
-	item := redactPVCReferences(*pvc)
+	item := filterPVCReferencesForNamespace(*pvc, namespace)
 	return &item
 }
 
-func pvcErrorForOperationMode(mode operationMode, apiErr *apienv.Error) *apienv.Error {
+func pvcErrorForOperationMode(mode operationMode, namespace string, apiErr *apienv.Error) *apienv.Error {
 	if mode != operationModeUser || apiErr == nil || apiErr.Code != apienv.CodePVCReferenced {
 		return apiErr
 	}
 	details := map[string]any{}
 	for key, value := range apiErr.Details {
 		if key == "references" {
+			if references, ok := value.([]domain.PVCReference); ok {
+				details[key] = filterPVCReferenceListForNamespace(references, namespace)
+			} else {
+				details[key] = []domain.PVCReference{}
+			}
 			continue
 		}
 		details[key] = value
 	}
-	details["references"] = redactedPVCReferences()
 	return apienv.NewError(apiErr.Status, apiErr.Code, apiErr.Message, details)
 }
 
-func redactPVCReferences(pvc domain.PVC) domain.PVC {
+func filterPVCReferencesForNamespace(pvc domain.PVC, namespace string) domain.PVC {
 	if len(pvc.References) == 0 {
 		return pvc
 	}
-	pvc.References = redactedPVCReferences()
+	pvc.References = filterPVCReferenceListForNamespace(pvc.References, namespace)
 	return pvc
 }
 
-func redactedPVCReferences() []domain.PVCReference {
-	return []domain.PVCReference{{
-		Relation: "referenced",
-		Evidence: "redacted",
-	}}
+func filterPVCReferenceListForNamespace(references []domain.PVCReference, namespace string) []domain.PVCReference {
+	filtered := make([]domain.PVCReference, 0, len(references))
+	for _, reference := range references {
+		if reference.SourceNamespace != namespace {
+			continue
+		}
+		filtered = append(filtered, reference)
+	}
+	return filtered
 }
 
 func (h *Handler) requireStorageQuota(

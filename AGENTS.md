@@ -39,9 +39,9 @@ rules that must shape code changes. Do not turn it into a generic Encore manual.
   must fail closed when reference scanning fails, while list/create/update/expand
   response enrichment is best-effort. Do not parse AppLaunchpad or DevBox private
   CR specs in Storage Manager; rely on the explicit label/annotation contract and
-  Kubernetes workload volume evidence. User-mode API responses must not expose
-  reference source names, UIDs, or mount paths; admin-mode responses may include
-  those details.
+  Kubernetes workload volume evidence. User-mode API responses may expose
+  reference details only for resources in the caller's own namespace; admin-mode
+  responses may include details for the allowed namespace scope.
 
 ## Observability Rules
 

@@ -303,8 +303,7 @@ resource_type 使用 snake_case 单数或集合名。
   "mounted_pods": [],
   "references": [
     {
-      "source_product": "applaunchpad",
-      "source_kind": "App",
+      "source_type": "applaunchpad",
       "source_namespace": "default",
       "source_name": "demo",
       "source_uid": "app-uid",
@@ -445,9 +444,9 @@ GET /api/pvcs?namespace=default
 `PVC` 字段见通用 DTO。
 
 `references` 表示暂停后仍可能存在的 App/DevBox 声明式 PVC 引用。
-普通用户响应会脱敏引用方名称、UID 和挂载路径，只保留“已引用”
-信号；管理员响应可包含完整引用方详情。删除 PVC 时，如果活跃 Pod
-仍挂载该 PVC 返回 `PVC_IN_USE`；如果声明式引用仍存在返回
+普通用户响应只包含自己 namespace 内的引用方详情；管理员响应可在
+允许的 namespace 范围内包含完整引用方详情。删除 PVC 时，如果活跃
+Pod 仍挂载该 PVC 返回 `PVC_IN_USE`；如果声明式引用仍存在返回
 `PVC_REFERENCED`。
 
 后端根据 PVC accessModes 计算：

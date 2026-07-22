@@ -662,10 +662,9 @@ describe('storageAppShell', () => {
 						evidence: 'metadata-annotation',
 						mount_path: '/data',
 						relation: 'mounted',
-						source_kind: 'App',
 						source_name: 'Demo App',
 						source_namespace: 'ns-admin',
-						source_product: 'applaunchpad',
+						source_type: 'applaunchpad',
 						source_uid: 'app-uid',
 					}],
 				}),
@@ -675,6 +674,7 @@ describe('storageAppShell', () => {
 		renderWithProviders(<StorageAppShell api={api} />)
 
 		expect(await screen.findByText('Referenced')).toBeInTheDocument()
+		expect(screen.getByRole('button', { name: /referenced by applaunchpad\/Demo App \/data/i })).toBeInTheDocument()
 		await user.click(await screen.findByRole('button', { name: /more actions/i }))
 		const deleteMenuItem = await screen.findByRole('menuitem', { name: /^delete$/i })
 		expect(deleteMenuItem).toHaveAttribute('aria-disabled', 'true')

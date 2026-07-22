@@ -28,9 +28,8 @@ func TestClientListPVCReferencesFromWorkload(t *testing.T) {
 				Name:      "demo",
 				UID:       types.UID("deployment-uid"),
 				Labels: map[string]string{
-					PVCReferenceSourceLabel:  "true",
-					PVCReferenceProductLabel: "applaunchpad",
-					PVCReferenceKindLabel:    "App",
+					PVCReferenceSourceLabel:     "true",
+					PVCReferenceSourceTypeLabel: "applaunchpad",
 				},
 				Annotations: map[string]string{
 					PVCReferenceNameAnnotation: "Demo App",
@@ -79,8 +78,7 @@ func TestClientListPVCReferencesFromWorkload(t *testing.T) {
 		t.Fatalf("references = %#v", references)
 	}
 	byPVC := pvcReferenceBindingsByPVC(references)
-	if got := byPVC["data"][0].Reference; got.SourceProduct != "applaunchpad" ||
-		got.SourceKind != "App" ||
+	if got := byPVC["data"][0].Reference; got.SourceType != "applaunchpad" ||
 		got.SourceName != "Demo App" ||
 		got.MountPath != "/data" ||
 		got.Evidence != PVCReferenceEvidenceAnnotation {
@@ -104,9 +102,8 @@ func TestClientListPVCReferencesFromStatefulSetClaimTemplates(t *testing.T) {
 				Namespace: "default",
 				Name:      "demo",
 				Labels: map[string]string{
-					PVCReferenceSourceLabel:  "true",
-					PVCReferenceProductLabel: "applaunchpad",
-					PVCReferenceKindLabel:    "App",
+					PVCReferenceSourceLabel:     "true",
+					PVCReferenceSourceTypeLabel: "applaunchpad",
 				},
 			},
 			Spec: appsv1.StatefulSetSpec{
@@ -157,9 +154,8 @@ func TestClientListPVCReferencesFromDynamicCustomResource(t *testing.T) {
 	devbox.SetName("code-server")
 	devbox.SetUID(types.UID("devbox-uid"))
 	devbox.SetLabels(map[string]string{
-		PVCReferenceSourceLabel:  "true",
-		PVCReferenceProductLabel: "devbox",
-		PVCReferenceKindLabel:    "DevBox",
+		PVCReferenceSourceLabel:     "true",
+		PVCReferenceSourceTypeLabel: "devbox",
 	})
 	devbox.SetAnnotations(map[string]string{
 		PVCReferenceNameAnnotation: "code-server",
@@ -189,8 +185,7 @@ func TestClientListPVCReferencesFromDynamicCustomResource(t *testing.T) {
 		t.Fatalf("references = %#v", references)
 	}
 	got := references[0].Reference
-	if got.SourceProduct != "devbox" ||
-		got.SourceKind != "DevBox" ||
+	if got.SourceType != "devbox" ||
 		got.SourceUID != "devbox-uid" ||
 		got.MountPath != "/workspace" ||
 		got.Relation != PVCReferenceRelationMounted {

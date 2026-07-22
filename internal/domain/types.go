@@ -155,10 +155,8 @@ type PVCVolumeStats struct {
 }
 
 type PVCReference struct {
-	// SourceProduct identifies the Sealos product that declares the reference.
-	SourceProduct string `json:"source_product"`
-	// SourceKind is the Kubernetes or product kind of the referencing resource.
-	SourceKind string `json:"source_kind"`
+	// SourceType identifies the product or resource type that declares the reference.
+	SourceType string `json:"source_type"`
 	// SourceNamespace is the namespace containing the referencing resource.
 	SourceNamespace string `json:"source_namespace"`
 	// SourceName is the display or Kubernetes name of the referencing resource.

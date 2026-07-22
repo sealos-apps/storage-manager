@@ -217,9 +217,8 @@ func TestViewerServiceListPVCsIncludesReferences(t *testing.T) {
 				Namespace: "default",
 				Name:      "demo",
 				Labels: map[string]string{
-					kube.PVCReferenceSourceLabel:  "true",
-					kube.PVCReferenceProductLabel: "applaunchpad",
-					kube.PVCReferenceKindLabel:    "App",
+					kube.PVCReferenceSourceLabel:     "true",
+					kube.PVCReferenceSourceTypeLabel: "applaunchpad",
 				},
 				Annotations: map[string]string{
 					kube.PVCReferenceNameAnnotation: "Demo App",
@@ -240,8 +239,7 @@ func TestViewerServiceListPVCsIncludesReferences(t *testing.T) {
 		t.Fatalf("items = %#v", items)
 	}
 	reference := items[0].References[0]
-	if reference.SourceProduct != "applaunchpad" ||
-		reference.SourceKind != "App" ||
+	if reference.SourceType != "applaunchpad" ||
 		reference.SourceName != "Demo App" ||
 		reference.MountPath != "/data" {
 		t.Fatalf("reference = %#v", reference)
@@ -323,9 +321,8 @@ func TestViewerServiceDeletePVCRejectsReferencedPVC(t *testing.T) {
 				Namespace: "default",
 				Name:      "demo",
 				Labels: map[string]string{
-					kube.PVCReferenceSourceLabel:  "true",
-					kube.PVCReferenceProductLabel: "applaunchpad",
-					kube.PVCReferenceKindLabel:    "App",
+					kube.PVCReferenceSourceLabel:     "true",
+					kube.PVCReferenceSourceTypeLabel: "applaunchpad",
 				},
 				Annotations: map[string]string{
 					kube.PVCReferencesAnnotation: `[{"name":"data"}]`,
@@ -348,6 +345,47 @@ func TestViewerServiceDeletePVCRejectsReferencedPVC(t *testing.T) {
 	}
 	if _, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(t.Context(), "data", metav1.GetOptions{}); err != nil {
 		t.Fatalf("referenced pvc was deleted: %v", err)
+	}
+}
+
+func TestViewerServiceDeletePVCFailsClosedWhenReferenceScanFails(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	clientset := fake.NewSimpleClientset(
+		&corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "data", UID: types.UID("uid")},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")},
+				},
+			},
+		},
+		&appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "default",
+				Name:      "demo",
+				Labels: map[string]string{
+					kube.PVCReferenceSourceLabel:     "true",
+					kube.PVCReferenceSourceTypeLabel: "applaunchpad",
+				},
+				Annotations: map[string]string{
+					kube.PVCReferencesAnnotation: `not-json`,
+				},
+			},
+		},
+	)
+	client := kube.New(clientset)
+	store := state.New(cfg.Cache)
+	pods := NewPodService(cfg, store, client, observability.MustNew(cfg.Observability, nil))
+	service := NewViewerService(cfg, store, client, pods, nil, observability.MustNew(cfg.Observability, nil))
+
+	if _, err := service.DeletePVC(t.Context(), DeletePVCInput{Namespace: "default", Name: "data"}); err == nil {
+		t.Fatal("DeletePVC() error = nil")
+	}
+	if _, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(t.Context(), "data", metav1.GetOptions{}); err != nil {
+		t.Fatalf("pvc was deleted after reference scan failure: %v", err)
 	}
 }
 

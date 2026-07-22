@@ -288,7 +288,7 @@ function PVCReferenceBadge({ references }: { references: PVC['references'] }) {
 }
 
 function pvcReferenceDisplayName(reference: PVC['references'][number], fallback?: string) {
-	const prefix = [reference.source_product, reference.source_kind].filter(Boolean).join('/')
+	const prefix = reference.source_type
 	const name = reference.source_name || reference.source_uid || reference.source_namespace
 	const path = reference.mount_path ? ` ${reference.mount_path}` : ''
 	if (prefix && name) {
@@ -301,8 +301,7 @@ function pvcReferenceKey(reference: PVC['references'][number]) {
 	return [
 		reference.source_uid,
 		reference.source_namespace,
-		reference.source_product,
-		reference.source_kind,
+		reference.source_type,
 		reference.source_name,
 		reference.relation,
 		reference.mount_path,

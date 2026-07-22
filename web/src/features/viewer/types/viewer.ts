@@ -6,10 +6,9 @@ export interface PVCReference {
 	evidence: string
 	mount_path?: string
 	relation: string
-	source_kind: string
 	source_name: string
 	source_namespace: string
-	source_product: string
+	source_type: string
 	source_uid?: string
 }
 export type RawPVC = domain.PVC & {
