@@ -285,7 +285,7 @@ function DeletePVCMenuItem({
 			</TooltipTrigger>
 			<TooltipContent
 				arrowClassName="bg-popover fill-popover"
-				className="max-w-72 border bg-popover text-popover-foreground shadow-md"
+				className="max-w-[15rem] border bg-popover text-left text-wrap text-popover-foreground shadow-md"
 			>
 				{disabledReason}
 			</TooltipContent>
