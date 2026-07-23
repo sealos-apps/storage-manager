@@ -169,7 +169,7 @@ function PVCRow({ fileManagementEnabled, onDelete, onDescribe, onEditYAML, onExp
 	const { t } = useTranslation()
 	const mountedTarget = pvc.mounted_pods[0]
 	const references = pvc.references ?? []
-	const canDelete = !pvc.mounted && references.length === 0
+	const deleteBlockedReason = pvcDeleteBlockedReason(pvc, references, t)
 
 	return (
 		<TableRow>
@@ -239,19 +239,52 @@ function PVCRow({ fileManagementEnabled, onDelete, onDescribe, onEditYAML, onExp
 								<DropdownMenuItem onSelect={() => onEditYAML(pvc)}>
 									{t('storageClasses.yaml')}
 								</DropdownMenuItem>
-								<DropdownMenuItem
-									disabled={!canDelete}
-									onSelect={() => onDelete(pvc)}
-									variant="destructive"
-								>
-									{t('actions.delete')}
-								</DropdownMenuItem>
+								<DeletePVCMenuItem
+									disabledReason={deleteBlockedReason}
+									onDelete={() => onDelete(pvc)}
+								/>
 							</DropdownMenuGroup>
 						</DropdownMenuContent>
 					</DropdownMenu>
 				</div>
 			</TableCell>
 		</TableRow>
+	)
+}
+
+function DeletePVCMenuItem({
+	disabledReason,
+	onDelete,
+}: {
+	disabledReason: string
+	onDelete: () => void
+}) {
+	const { t } = useTranslation()
+	if (!disabledReason) {
+		return (
+			<DropdownMenuItem onSelect={onDelete} variant="destructive">
+				{t('actions.delete')}
+			</DropdownMenuItem>
+		)
+	}
+
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>
+				<DropdownMenuItem
+					aria-disabled="true"
+					className="cursor-not-allowed text-muted-foreground focus:bg-accent focus:text-muted-foreground"
+					onSelect={(event) => {
+						event.preventDefault()
+					}}
+					title={disabledReason}
+					variant="destructive"
+				>
+					{t('actions.delete')}
+				</DropdownMenuItem>
+			</TooltipTrigger>
+			<TooltipContent className="max-w-72">{disabledReason}</TooltipContent>
+		</Tooltip>
 	)
 }
 
@@ -295,6 +328,38 @@ function pvcReferenceDisplayName(reference: PVC['references'][number], fallback?
 		return `${prefix}/${name}${path}`
 	}
 	return `${name || prefix || fallback || reference.relation}${path}`
+}
+
+function pvcDeleteBlockedReason(
+	pvc: PVC,
+	references: PVC['references'],
+	t: ReturnType<typeof useTranslation>['t'],
+) {
+	if (pvc.mounted) {
+		const mountedPods = summarizedNames(pvc.mounted_pods.map(pod => pod.name))
+		if (mountedPods) {
+			return t('volumes.deleteBlockedMountedPods', { pods: mountedPods })
+		}
+		return t('volumes.deleteBlockedMounted')
+	}
+	if (references.length > 0) {
+		const referenceNames = summarizedNames(
+			references.map(reference => pvcReferenceDisplayName(reference, t('viewer.pvcReferenced'))),
+		)
+		if (referenceNames) {
+			return t('volumes.deleteBlockedReferences', { references: referenceNames })
+		}
+		return t('volumes.deleteBlockedReferenced')
+	}
+	return ''
+}
+
+function summarizedNames(values: string[], limit = 2) {
+	const names = Array.from(new Set(values.map(value => value.trim()).filter(Boolean)))
+	if (names.length <= limit) {
+		return names.join(', ')
+	}
+	return `${names.slice(0, limit).join(', ')} +${names.length - limit}`
 }
 
 function pvcReferenceKey(reference: PVC['references'][number]) {

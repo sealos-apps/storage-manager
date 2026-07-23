@@ -54,7 +54,7 @@ describe('delete dialogs', () => {
 		const name = screen.getByText('mysql-data')
 		expect(name.tagName).toBe('STRONG')
 		expect(name).toHaveClass('select-all')
-		expect(name.closest('p')).toHaveTextContent('Type mysql-data to confirm deletion. Mounted PVCs cannot be deleted.')
+		expect(name.closest('p')).toHaveTextContent('Type mysql-data to confirm deletion. Mounted or referenced PVCs cannot be deleted.')
 	})
 
 	it('renders the storage class delete name as bold selectable text', () => {

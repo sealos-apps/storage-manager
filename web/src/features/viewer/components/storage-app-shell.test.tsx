@@ -678,6 +678,46 @@ describe('storageAppShell', () => {
 		await user.click(await screen.findByRole('button', { name: /more actions/i }))
 		const deleteMenuItem = await screen.findByRole('menuitem', { name: /^delete$/i })
 		expect(deleteMenuItem).toHaveAttribute('aria-disabled', 'true')
+		await user.hover(deleteMenuItem)
+		expect(
+			await screen.findByText('Referenced by applaunchpad/Demo App /data. Remove the reference before deleting it.'),
+		).toBeInTheDocument()
+		await user.click(deleteMenuItem)
+		expect(deletePVC).not.toHaveBeenCalled()
+	})
+
+	it('explains why mounted PVCs cannot be deleted', async () => {
+		const user = userEvent.setup()
+		const deletePVC = vi.fn()
+		const api = createFakeViewerAPI({
+			deletePVC,
+			listPVCs: vi.fn().mockResolvedValue([
+				pvcFixture({
+					name: 'data',
+					namespace: 'ns-admin',
+					uid: 'uid-data',
+					mounted: true,
+					mounted_pods: [{
+						name: 'mysql-0',
+						namespace: 'ns-admin',
+						node_name: 'node-a',
+						phase: 'Running',
+						read_only: false,
+					}],
+				}),
+			]),
+		})
+
+		renderWithProviders(<StorageAppShell api={api} />)
+
+		await user.click(await screen.findByRole('button', { name: /more actions/i }))
+		const deleteMenuItem = await screen.findByRole('menuitem', { name: /^delete$/i })
+		expect(deleteMenuItem).toHaveAttribute('aria-disabled', 'true')
+		await user.hover(deleteMenuItem)
+		expect(
+			await screen.findByText('Mounted by Pod mysql-0. Stop the related workload before deleting it.'),
+		).toBeInTheDocument()
+		await user.click(deleteMenuItem)
 		expect(deletePVC).not.toHaveBeenCalled()
 	})
 
