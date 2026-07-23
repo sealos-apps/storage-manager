@@ -283,7 +283,12 @@ function DeletePVCMenuItem({
 					{t('actions.delete')}
 				</DropdownMenuItem>
 			</TooltipTrigger>
-			<TooltipContent className="max-w-72">{disabledReason}</TooltipContent>
+			<TooltipContent
+				arrowClassName="bg-popover fill-popover"
+				className="max-w-72 border bg-popover text-popover-foreground shadow-md"
+			>
+				{disabledReason}
+			</TooltipContent>
 		</Tooltip>
 	)
 }
