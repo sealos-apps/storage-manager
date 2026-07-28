@@ -13,6 +13,7 @@ const (
 	CodePVCNotFound                 Code = "PVC_NOT_FOUND"
 	CodePVCAccessDenied             Code = "PVC_ACCESS_DENIED"
 	CodePVCInUse                    Code = "PVC_IN_USE"
+	CodePVCReferenced               Code = "PVC_REFERENCED"
 	CodePVCCreateForbidden          Code = "PVC_CREATE_FORBIDDEN"
 	CodePVCDeleteForbidden          Code = "PVC_DELETE_FORBIDDEN"
 	CodePVCExpandForbidden          Code = "PVC_EXPAND_FORBIDDEN"
@@ -51,6 +52,7 @@ var AllCodes = [...]Code{
 	CodePVCNotFound,
 	CodePVCAccessDenied,
 	CodePVCInUse,
+	CodePVCReferenced,
 	CodePVCCreateForbidden,
 	CodePVCDeleteForbidden,
 	CodePVCExpandForbidden,

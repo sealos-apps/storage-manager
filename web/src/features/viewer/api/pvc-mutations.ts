@@ -36,6 +36,7 @@ export function createPVCMutationOptions(
 					reason: '',
 				},
 				reason: '',
+				references: [],
 				volume_stats: undefined,
 			}
 			queryClient.setQueryData<PVC[]>(key, current => [

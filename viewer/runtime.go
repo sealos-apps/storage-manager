@@ -22,6 +22,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -106,9 +107,14 @@ func newRuntimeFromConfig(cfg config.Config) (*Runtime, error) {
 		_ = recorder.Shutdown(context.Background())
 		return nil, fmt.Errorf("building management kubernetes client: %w", err)
 	}
+	dynamicClient, err := dynamic.NewForConfig(restConfig)
+	if err != nil {
+		_ = recorder.Shutdown(context.Background())
+		return nil, fmt.Errorf("building management dynamic kubernetes client: %w", err)
+	}
 	tracerProvider := recorder.OTelTracerProvider()
 	store := state.New(cfg.Cache)
-	kubeClient := kube.WithObservability(kube.New(clientset), recorder)
+	kubeClient := kube.WithObservability(kube.NewWithDynamic(clientset, dynamicClient), recorder)
 	adminKubeClient, err := storageClassAdminKubeClient(cfg, restConfig, recorder)
 	if err != nil {
 		_ = recorder.Shutdown(context.Background())

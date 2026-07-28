@@ -2,7 +2,18 @@ import type { domain, session, viewer } from '@sealos-storage-manager/encore-cli
 import type { Quantity } from '@/utils/quantities'
 
 export type MountedPod = domain.MountedPod
-export type RawPVC = domain.PVC
+export interface PVCReference {
+	evidence: string
+	mount_path?: string
+	relation: string
+	source_name: string
+	source_namespace: string
+	source_type: string
+	source_uid?: string
+}
+export type RawPVC = domain.PVC & {
+	references?: PVCReference[]
+}
 export type RawPVCVolumeStats = domain.PVCVolumeStats
 export type RawStorageQuota = viewer.StorageQuota
 
@@ -12,8 +23,9 @@ export type PVCVolumeStats = Omit<domain.PVCVolumeStats, 'available_bytes' | 'me
 	sample_time?: string
 	used: Quantity
 }
-export type PVC = Omit<domain.PVC, 'capacity' | 'capacity_bytes' | 'volume_stats'> & {
+export type PVC = Omit<domain.PVC, 'capacity' | 'capacity_bytes' | 'references' | 'volume_stats'> & {
 	capacity: Quantity
+	references: PVCReference[]
 	volume_stats?: PVCVolumeStats
 }
 export type PodSession = domain.PodSession
@@ -49,6 +61,7 @@ export const backendViewerErrorCodes = [
 	'PVC_NOT_FOUND',
 	'PVC_ALREADY_EXISTS',
 	'PVC_IN_USE',
+	'PVC_REFERENCED',
 	'PVC_ACCESS_DENIED',
 	'PVC_CREATE_FORBIDDEN',
 	'PVC_DELETE_FORBIDDEN',

@@ -58,6 +58,7 @@ export function pvcFixture(overrides: RawPVCOverride = {}): PVC {
 		name: 'data',
 		namespace: 'default',
 		reason: '',
+		references: [],
 		storage_class_name: 'standard',
 		uid: 'pvc-uid',
 		viewer_mode: 'readwrite',

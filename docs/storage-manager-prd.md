@@ -22,7 +22,7 @@ Storage Manager 提供一个 Sealos Desktop 存储应用，由 typed Encore API 
 
 1. 作为 Sealos 用户，我希望看到由当前凭据解析出的命名空间，以便确认自己正在管理哪些存储资源。
 2. 作为 Sealos 用户，我希望列出自己命名空间内的 PVC，以便找到需要操作的卷。
-3. 作为 Sealos 用户，我希望每个 PVC 行展示名称、命名空间、容量、访问模式、StorageClass、挂载状态和 viewer 支持状态，以便快速选择正确操作。
+3. 作为 Sealos 用户，我希望每个 PVC 行展示名称、命名空间、容量、访问模式、StorageClass、挂载状态、应用引用状态和 viewer 支持状态，以便快速选择正确操作。
 4. 作为 Sealos 用户，我希望手动刷新存储数据，以便看到 Kubernetes 或其他工作流产生的最新变化。
 5. 作为 Sealos 用户，我希望在可用时看到 PVC 使用量指标，以便了解已用空间和剩余空间。
 6. 作为 Sealos 用户，我希望 Storage Manager 说明使用量指标不可用的原因，以便避免把缺失指标误解为空数据。
@@ -34,7 +34,7 @@ Storage Manager 提供一个 Sealos Desktop 存储应用，由 typed Encore API 
 12. 作为 Sealos 用户，我希望扩容请求必须大于当前容量，以便阻止误操作、无效操作和缩容请求。
 13. 作为 Sealos 用户，我希望启用配额时扩容请求会检查额度，以便避免提交超过账户限制的请求。
 14. 作为 Sealos 用户，我希望删除未使用的 PVC 前需要明确确认，以便降低误删数据的风险。
-15. 作为 Sealos 用户，我希望 PVC 被活跃 pod 挂载时阻止删除，以便保护运行中的工作负载。
+15. 作为 Sealos 用户，我希望 PVC 被活跃 pod 挂载或被 App/DevBox 声明引用时阻止删除，以便保护运行中或暂停状态下仍依赖该卷的工作负载。
 16. 作为 Sealos 用户，我希望为受支持的 PVC 打开文件，以便在浏览器内查看或管理卷内容。
 17. 作为 Sealos 用户，我希望打开 PVC 时 Storage Manager 自动创建临时 viewer 会话，以便无需理解 viewer pod 的实现细节。
 18. 作为 Sealos 用户，我希望 viewer pod 启动时看到会话进度，以便确认系统正在处理。
@@ -95,9 +95,9 @@ Storage Manager 提供一个 Sealos Desktop 存储应用，由 typed Encore API 
 - 每条请求路径都把传入的 context 传递到 handler 和 service collaborator。
 - 用户授权基于调用者的 Sealos 或 Kubernetes bearer token。管理员提权是显式流程，并通过 admin authorization check 执行。
 - 管理员命名空间选择使用应用级 all-namespaces token 做聚合，同时保留对调用者的授权检查。
-- PVC 可见性包括挂载检测、已挂载 pod 明细、viewer 支持状态、viewer 模式、调度提示和可选文件系统使用量指标。
+- PVC 可见性包括挂载检测、已挂载 pod 明细、应用/DevBox 引用状态、viewer 支持状态、viewer 模式、调度提示和可选文件系统使用量指标。
 - PVC 创建和扩容同时接收 Kubernetes quantity 字符串和字节数。后端校验一致性、容量方向、StorageClass 支持和启用配额时的额度。
-- PVC 删除会校验调用者可见性，并在活跃 pod 仍挂载该 PVC 时阻止删除。
+- PVC 删除会校验调用者可见性，并在活跃 pod 仍挂载该 PVC 或声明式应用引用仍存在时阻止删除。普通用户可看到自己 namespace 内的引用方详情，管理员可看到其允许 namespace 范围内的引用方详情。
 - Viewer session 是用户侧会话，背后由 pod session 支撑。安全时，同一 PVC 的多个 viewer session 可以共享一个 pod session。
 - Pod session 表示 Kubernetes 资源，包括 viewer pod、service、public URL、internal URL、runtime version、节点调度、状态、原因、活跃时间和过期时间。
 - Viewer session 表示用户状态，包括 ID、pod session ID、namespace、PVC name、status、pod status、viewer URL、mode、token readiness、heartbeat 和过期时间。
@@ -124,7 +124,7 @@ Storage Manager 提供一个 Sealos Desktop 存储应用，由 typed Encore API 
 
 - 测试应断言外部行为和公开契约，包括 API 响应、授权决策、状态转换、query option、UI 行为和生成 schema 假设。除非调用顺序本身是契约，否则不应断言私有 helper 调用顺序。
 - 后端 handler 测试应覆盖请求解析、授权模式、命名空间解析、service 输入、响应 envelope、token no-cache header 和错误码映射。
-- 后端 service 测试应覆盖 PVC 列表、挂载检测、viewer 支持决策、PVC create/delete/expand 校验、配额检查、viewer session 生命周期、File Browser hook verification、token 签发、heartbeat、关闭行为、cache 过期、cleanup 和孤儿资源同步。
+- 后端 service 测试应覆盖 PVC 列表、挂载检测、声明式引用检测、viewer 支持决策、PVC create/delete/expand 校验、配额检查、viewer session 生命周期、File Browser hook verification、token 签发、heartbeat、关闭行为、cache 过期、cleanup 和孤儿资源同步。
 - Kubernetes 相关测试使用 fake clientset 做单元覆盖，真实集群检查通过显式 integration config 执行。
 - StorageClass 测试应覆盖 list metadata、YAML sanitization、create/update validation、managed ownership label、conflict handling、describe output、delete restriction 和 in-use PVC count。
 - Config 测试应覆盖 default、YAML parsing、validation error、redaction、example config，以及产品用到的 deploy config value。

@@ -895,6 +895,10 @@ func TestDeployServiceAccountAllowsViewerPodCleanup(t *testing.T) {
 	requireRule(t, clusterRole.Rules, "", "pods", []string{"get", "list", "delete", "patch"})
 	requireRule(t, clusterRole.Rules, "", "services", []string{"get", "list", "delete"})
 	requireRule(t, clusterRole.Rules, "", "configmaps", []string{"get", "list", "delete"})
+	requireRule(t, clusterRole.Rules, "apps", "deployments", []string{"list"})
+	requireRule(t, clusterRole.Rules, "apps", "statefulsets", []string{"list"})
+	requireRule(t, clusterRole.Rules, "app.sealos.io", "apps", []string{"list"})
+	requireRule(t, clusterRole.Rules, "devbox.sealos.io", "devboxes", []string{"list"})
 	requireRule(t, clusterRole.Rules, "networking.k8s.io", "ingresses", []string{"get", "list", "delete"})
 }
 

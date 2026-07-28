@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -22,6 +23,17 @@ type Interface interface {
 	CreatePVC(ctx context.Context, pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error)
 	UpdatePVC(ctx context.Context, pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolumeClaim, error)
 	DeletePVC(ctx context.Context, namespace string, name string) error
+	ListPVCReferences(ctx context.Context, namespace string) ([]PVCReferenceBinding, error)
+	ListAllPVCReferences(ctx context.Context) ([]PVCReferenceBinding, error)
+	ListPVCReferencesForPVCs(
+		ctx context.Context,
+		namespace string,
+		pvcs []corev1.PersistentVolumeClaim,
+	) ([]PVCReferenceBinding, error)
+	ListAllPVCReferencesForPVCs(
+		ctx context.Context,
+		pvcs []corev1.PersistentVolumeClaim,
+	) ([]PVCReferenceBinding, error)
 	UpdatePVCStorageRequest(
 		ctx context.Context,
 		namespace string,
@@ -52,10 +64,18 @@ type Interface interface {
 
 type Client struct {
 	clientset kubernetes.Interface
+	dynamic   dynamic.Interface
 }
 
 func New(clientset kubernetes.Interface) *Client {
 	return &Client{clientset: clientset}
+}
+
+func NewWithDynamic(clientset kubernetes.Interface, dynamicClient dynamic.Interface) *Client {
+	return &Client{
+		clientset: clientset,
+		dynamic:   dynamicClient,
+	}
 }
 
 func (c *Client) ListNamespaces(ctx context.Context) ([]corev1.Namespace, error) {

@@ -52,6 +52,111 @@ func TestHandlerListPVCsUsesEnvelope(t *testing.T) {
 	}
 }
 
+func TestHandlerListPVCsShowsOwnNamespaceReferenceDetailsForUser(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(
+		&fakeViewerService{
+			pvcs: []domain.PVC{{
+				Namespace: "ns",
+				Name:      "data",
+				References: []domain.PVCReference{{
+					SourceType:      "applaunchpad",
+					SourceNamespace: "ns",
+					SourceName:      "demo-app",
+					SourceUID:       "app-uid",
+					Relation:        "mounted",
+					MountPath:       "/data",
+					Evidence:        "metadata-annotation",
+				}, {
+					SourceType:      "devbox",
+					SourceNamespace: "other",
+					SourceName:      "other-devbox",
+					Relation:        "mounted",
+					MountPath:       "/workspace",
+					Evidence:        "metadata-annotation",
+				}},
+			}},
+		},
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+	)
+	req := httptest.NewRequest(http.MethodGet, "/pvcs?namespace=ns", nil)
+	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
+	recorder := httptest.NewRecorder()
+
+	handler.ListPVCs(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var body map[string]struct {
+		Items []domain.PVC `json:"items"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	references := body["pvc_list"].Items[0].References
+	if len(references) != 1 {
+		t.Fatalf("references = %#v", references)
+	}
+	if references[0].SourceType != "applaunchpad" ||
+		references[0].SourceName != "demo-app" ||
+		references[0].SourceUID != "app-uid" ||
+		references[0].MountPath != "/data" {
+		t.Fatalf("references = %#v", references)
+	}
+}
+
+func TestHandlerListPVCsKeepsReferenceDetailsForAdmin(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(
+		&fakeViewerService{
+			namespaces: []corev1.Namespace{{ObjectMeta: metav1.ObjectMeta{Name: "kube-system"}}},
+			pvcs: []domain.PVC{{
+				Namespace: "kube-system",
+				Name:      "data",
+				References: []domain.PVCReference{{
+					SourceType:      "applaunchpad",
+					SourceNamespace: "kube-system",
+					SourceName:      "demo-app",
+					MountPath:       "/data",
+					Evidence:        "metadata-annotation",
+				}},
+			}},
+		},
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+		WithAdminAuthorizer(allowAdminAuthorizer{}),
+	)
+	req := httptest.NewRequest(http.MethodGet, "/pvcs?namespace=kube-system", nil)
+	req.Header.Set("Authorization", url.QueryEscape(testUserNamespaceKubeconfig))
+	recorder := httptest.NewRecorder()
+
+	handler.ListPVCs(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var body map[string]struct {
+		Items []domain.PVC `json:"items"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	references := body["pvc_list"].Items[0].References
+	if len(references) != 1 || references[0].SourceName != "demo-app" || references[0].MountPath != "/data" {
+		t.Fatalf("references = %#v", references)
+	}
+}
+
 func TestHandlerGetContextUsesKubeconfigNamespace(t *testing.T) {
 	t.Parallel()
 
@@ -242,6 +347,52 @@ func TestHandlerCreatePVCUsesEnvelope(t *testing.T) {
 	}
 	if !strings.Contains(recorder.Body.String(), `"pvc"`) {
 		t.Fatalf("body = %s", recorder.Body.String())
+	}
+}
+
+func TestHandlerDeletePVCReferencedErrorShowsOwnNamespaceDetailsForUser(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(
+		&fakeViewerService{
+			pvcErr: apienv.NewError(http.StatusConflict, apienv.CodePVCReferenced, "PVC is still referenced", map[string]any{
+				"references": []domain.PVCReference{{
+					SourceType:      "applaunchpad",
+					SourceNamespace: "ns",
+					SourceName:      "demo-app",
+					SourceUID:       "app-uid",
+					MountPath:       "/data",
+					Evidence:        "metadata-annotation",
+				}, {
+					SourceType:      "devbox",
+					SourceNamespace: "other",
+					SourceName:      "other-devbox",
+					MountPath:       "/workspace",
+					Evidence:        "metadata-annotation",
+				}},
+			}),
+		},
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+	)
+	req := httptest.NewRequest(http.MethodDelete, "/pvcs/ns/data", nil)
+	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
+	recorder := httptest.NewRecorder()
+
+	handler.DeletePVC(recorder, req)
+
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	body := recorder.Body.String()
+	if !strings.Contains(body, "demo-app") || !strings.Contains(body, "/data") || !strings.Contains(body, "app-uid") {
+		t.Fatalf("body did not include own namespace reference details: %s", body)
+	}
+	if strings.Contains(body, "other-devbox") || strings.Contains(body, "/workspace") {
+		t.Fatalf("body leaked cross namespace reference details: %s", body)
 	}
 }
 

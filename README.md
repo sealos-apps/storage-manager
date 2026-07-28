@@ -22,6 +22,11 @@ cp config/viewer.debug.example.yaml config/viewer.debug.yaml
 cp config/viewer.integration.example.yaml config/viewer.integration.yaml
 ```
 
+## Documentation
+
+- [Product requirements](docs/storage-manager-prd.md)
+- [PVC reference contract](docs/pvc-reference-contract.md)
+
 ## Quality Gates
 
 ```sh

@@ -38,6 +38,11 @@ type ExpandPVCInput struct {
 	CapacityBytes int64
 }
 
+type pvcReferenceKey struct {
+	namespace string
+	name      string
+}
+
 func (s *ViewerService) ListNamespaces(ctx context.Context) (items []corev1.Namespace, err error) {
 	ctx, finish := s.recorder.TraceOperation(ctx, "viewer.list_namespaces")
 	defer func() {
@@ -64,9 +69,16 @@ func (s *ViewerService) ListPVCs(ctx context.Context, namespace string) (items [
 	if err != nil {
 		return nil, err
 	}
+	references := s.listPVCReferences(ctx, namespace, pvcs)
 	items = make([]domain.PVC, 0, len(pvcs))
 	for _, pvc := range pvcs {
-		items = append(items, s.domainPVCFromKubePVC(pvc, volumeStats, mounts, mountDetectionEnabled))
+		items = append(items, s.domainPVCFromKubePVC(
+			pvc,
+			volumeStats,
+			mounts,
+			mountDetectionEnabled,
+			references[pvcReferenceKey{namespace: pvc.Namespace, name: pvc.Name}],
+		))
 	}
 	s.recorder.Logger().LogAttrs(ctx, slog.LevelDebug, "viewer.list_pvcs.result",
 		slog.String("namespace", namespace),
@@ -132,11 +144,18 @@ func (s *ViewerService) ListPVCsInNamespaces(
 			mountsByNamespace[namespace] = kube.DetectPVCMountsFromPods(namespacePods)
 		}
 	}
+	references := s.listPVCReferencesInNamespaces(ctx, allowed, filteredPVCs)
 	items = make([]domain.PVC, 0, len(filteredPVCs))
 	for _, pvc := range filteredPVCs {
 		mounts := mountsByNamespace[pvc.Namespace]
 		volumeStats := statsByNamespace[pvc.Namespace]
-		items = append(items, s.domainPVCFromKubePVC(pvc, volumeStats, mounts, mountDetectionEnabled))
+		items = append(items, s.domainPVCFromKubePVC(
+			pvc,
+			volumeStats,
+			mounts,
+			mountDetectionEnabled,
+			references[pvcReferenceKey{namespace: pvc.Namespace, name: pvc.Name}],
+		))
 	}
 	slices.SortFunc(items, comparePVCs)
 	s.recorder.Logger().LogAttrs(ctx, slog.LevelDebug, "viewer.list_pvcs_batch.result",
@@ -199,11 +218,60 @@ func (s *ViewerService) listPVCVolumeStats(ctx context.Context, namespace string
 	return stats
 }
 
+func (s *ViewerService) listPVCReferences(
+	ctx context.Context,
+	namespace string,
+	pvcs []corev1.PersistentVolumeClaim,
+) map[pvcReferenceKey][]domain.PVCReference {
+	ctx, finish := s.recorder.TraceOperation(ctx,
+		"pvc.detect_references_batch",
+		slog.String("namespace", namespace),
+	)
+	var err error
+	defer func() {
+		finish(err)
+	}()
+	bindings, err := s.kube.ListPVCReferencesForPVCs(ctx, namespace, pvcs)
+	if err != nil {
+		s.recorder.Logger().LogAttrs(ctx, slog.LevelWarn, "pvc.references_unavailable",
+			slog.String("namespace", namespace),
+			slog.String("error", err.Error()),
+		)
+		return map[pvcReferenceKey][]domain.PVCReference{}
+	}
+	return pvcReferenceIndex(bindings, nil)
+}
+
+func (s *ViewerService) listPVCReferencesInNamespaces(
+	ctx context.Context,
+	allowed map[string]struct{},
+	pvcs []corev1.PersistentVolumeClaim,
+) map[pvcReferenceKey][]domain.PVCReference {
+	ctx, finish := s.recorder.TraceOperation(ctx,
+		"pvc.detect_references_batch_all",
+		slog.Int("namespace_count", len(allowed)),
+	)
+	var err error
+	defer func() {
+		finish(err)
+	}()
+	bindings, err := s.kube.ListAllPVCReferencesForPVCs(ctx, pvcs)
+	if err != nil {
+		s.recorder.Logger().LogAttrs(ctx, slog.LevelWarn, "pvc.references_unavailable",
+			slog.Int("namespace_count", len(allowed)),
+			slog.String("error", err.Error()),
+		)
+		return map[pvcReferenceKey][]domain.PVCReference{}
+	}
+	return pvcReferenceIndex(bindings, allowed)
+}
+
 func (s *ViewerService) domainPVCFromKubePVC(
 	pvc corev1.PersistentVolumeClaim,
 	volumeStats map[string]domain.PVCVolumeStats,
 	mounts map[string]*domain.PVCMountInfo,
 	mountDetectionEnabled bool,
+	references []domain.PVCReference,
 ) domain.PVC {
 	accessModes := make([]string, 0, len(pvc.Spec.AccessModes))
 	for _, mode := range pvc.Spec.AccessModes {
@@ -230,6 +298,7 @@ func (s *ViewerService) domainPVCFromKubePVC(
 		Mounted:          mountInfo.Mounted,
 		MountStatus:      mountStatus,
 		MountedPods:      mountInfo.MountedPods,
+		References:       normalizePVCReferences(references),
 		ViewerSupported:  supported,
 		ViewerMode:       viewerMode,
 		ViewerScheduling: kube.SchedulingForPVC(accessModes, mountInfo),
@@ -358,17 +427,29 @@ func (s *ViewerService) DeletePVC(ctx context.Context, input DeletePVCInput) (pv
 			"mounted_pods": mountInfo.MountedPods,
 		})
 	}
-	deleted, err := s.pvcToDomain(ctx, current)
+	references, err := s.detectPVCReferences(ctx, input.Namespace, input.Name)
 	if err != nil {
 		return nil, err
 	}
+	if len(references) > 0 {
+		return nil, apienv.NewError(409, apienv.CodePVCReferenced, "PVC is still referenced", map[string]any{
+			"references": references,
+		})
+	}
+	deleted := s.domainPVCFromKubePVC(
+		*current,
+		nil,
+		map[string]*domain.PVCMountInfo{current.Name: mountInfo},
+		true,
+		references,
+	)
 	if err := s.kube.DeletePVC(ctx, input.Namespace, input.Name); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, apienv.NewError(404, apienv.CodePVCNotFound, "PVC not found", nil)
 		}
 		return nil, err
 	}
-	return deleted, nil
+	return &deleted, nil
 }
 
 func (s *ViewerService) GetPVCYAML(ctx context.Context, namespace string, name string) (result *PVCYAML, err error) {
@@ -522,6 +603,36 @@ func (s *ViewerService) detectPVCMounts(
 	return mountInfo, nil
 }
 
+func (s *ViewerService) detectPVCReferences(
+	ctx context.Context,
+	namespace string,
+	pvcName string,
+) (references []domain.PVCReference, err error) {
+	ctx, finish := s.recorder.TraceOperation(ctx,
+		"pvc.detect_references",
+		slog.String("namespace", namespace),
+		slog.String("pvc_name", pvcName),
+	)
+	defer func() {
+		finish(err)
+	}()
+
+	bindings, err := s.kube.ListPVCReferencesForPVCs(ctx, namespace, []corev1.PersistentVolumeClaim{
+		{ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: pvcName}},
+	})
+	if err != nil {
+		return nil, err
+	}
+	index := pvcReferenceIndex(bindings, nil)
+	references = index[pvcReferenceKey{namespace: namespace, name: pvcName}]
+	s.recorder.Logger().LogAttrs(ctx, slog.LevelDebug, "pvc.references_detected",
+		slog.String("namespace", namespace),
+		slog.String("pvc_name", pvcName),
+		slog.Int("reference_count", len(references)),
+	)
+	return normalizePVCReferences(references), nil
+}
+
 func (s *ViewerService) pvcToDomain(
 	ctx context.Context,
 	pvc *corev1.PersistentVolumeClaim,
@@ -534,6 +645,7 @@ func (s *ViewerService) pvcToDomain(
 	if err != nil {
 		return nil, err
 	}
+	references := s.bestEffortDetectPVCReferences(ctx, pvc.Namespace, pvc.Name)
 	supported, viewerMode, reason := kube.ViewerSupportForAccessModes(accessModes)
 	return &domain.PVC{
 		Namespace:        pvc.Namespace,
@@ -545,11 +657,59 @@ func (s *ViewerService) pvcToDomain(
 		StorageClassName: pvcStorageClassName(pvc),
 		Mounted:          mountInfo.Mounted,
 		MountedPods:      mountInfo.MountedPods,
+		References:       references,
 		ViewerSupported:  supported,
 		ViewerMode:       viewerMode,
 		ViewerScheduling: kube.SchedulingForPVC(accessModes, mountInfo),
 		Reason:           reason,
 	}, nil
+}
+
+func (s *ViewerService) bestEffortDetectPVCReferences(
+	ctx context.Context,
+	namespace string,
+	pvcName string,
+) []domain.PVCReference {
+	references, err := s.detectPVCReferences(ctx, namespace, pvcName)
+	if err != nil {
+		s.recorder.Logger().LogAttrs(ctx, slog.LevelWarn, "pvc.references_unavailable",
+			slog.String("namespace", namespace),
+			slog.String("pvc_name", pvcName),
+			slog.String("error", err.Error()),
+		)
+		return []domain.PVCReference{}
+	}
+	return references
+}
+
+func pvcReferenceIndex(
+	bindings []kube.PVCReferenceBinding,
+	allowed map[string]struct{},
+) map[pvcReferenceKey][]domain.PVCReference {
+	index := map[pvcReferenceKey][]domain.PVCReference{}
+	for _, binding := range bindings {
+		if binding.PVCNamespace == "" || binding.PVCName == "" {
+			continue
+		}
+		if allowed != nil {
+			if _, ok := allowed[binding.PVCNamespace]; !ok {
+				continue
+			}
+		}
+		key := pvcReferenceKey{namespace: binding.PVCNamespace, name: binding.PVCName}
+		index[key] = append(index[key], binding.Reference)
+	}
+	for key, references := range index {
+		index[key] = normalizePVCReferences(references)
+	}
+	return index
+}
+
+func normalizePVCReferences(references []domain.PVCReference) []domain.PVCReference {
+	if references == nil {
+		return []domain.PVCReference{}
+	}
+	return references
 }
 
 func pvcStorageClassName(pvc *corev1.PersistentVolumeClaim) string {
