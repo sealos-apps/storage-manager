@@ -28,6 +28,12 @@ spec:
           ports:
             - name: http
               containerPort: {{ .Values.backend.containerPort }}
+          startupProbe:
+            {{- toYaml .Values.backend.startupProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.backend.readinessProbe | nindent 12 }}
+          livenessProbe:
+            {{- toYaml .Values.backend.livenessProbe | nindent 12 }}
           volumeMounts:
             - name: config
               mountPath: {{ .Values.backend.configMountPath | quote }}

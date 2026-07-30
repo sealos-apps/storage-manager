@@ -29,6 +29,9 @@ rules that must shape code changes. Do not turn it into a generic Encore manual.
   response structs, so OpenAPI/client generation has schemas.
 - Avoid raw endpoints. `GET /metrics` is the only allowed raw endpoint because
   it returns Prometheus text and is not a business API.
+- Use `/healthz` as the stable probe entrypoint for backend and web
+  deployments. Keep it local, lightweight, and independent of File Browser,
+  PVC, or cluster business flows.
 - When adding or changing endpoints, update tests and verify schema generation
   assumptions. Use Encore path/query/header/body tags intentionally.
 - Keep endpoint handlers thin. Put behavior in `internal/` packages or service

@@ -21,6 +21,12 @@ spec:
         - name: web
           image: {{ include "storage-manager.webImage" . | quote }}
           imagePullPolicy: {{ .Values.web.image.pullPolicy | quote }}
+          startupProbe:
+            {{- toYaml .Values.web.startupProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.web.readinessProbe | nindent 12 }}
+          livenessProbe:
+            {{- toYaml .Values.web.livenessProbe | nindent 12 }}
           ports:
             - name: http
               containerPort: {{ .Values.web.containerPort }}

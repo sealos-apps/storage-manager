@@ -90,6 +90,7 @@ Storage Manager 提供一个 Sealos Desktop 存储应用，由 typed Encore API 
 
 - 后端继续作为 Encore.go 服务运行，所有业务操作使用 typed public API。请求和响应结构显式声明 body、path、query 和 header tag。
 - raw endpoint 只保留 Prometheus 文本指标。所有产品操作使用 typed Encore API 和生成的 client schema。
+- `/healthz` 是 backend 和 web 部署的稳定健康入口，Helm 的 startup/readiness/liveness 探针统一指向它。健康检查只做本地、轻量、稳定的 runtime / config 初始化校验，不依赖 File Browser、PVC 或外部业务流。
 - API 面覆盖 context、PVC list/create/delete/expand、storage quota、StorageClass list、admin capabilities、admin namespaces、admin StorageClass CRUD/describe、viewer session create/get/token/heartbeat/close、pod session get/close 和 File Browser hook verification。
 - Endpoint handler 保持轻量。授权、Kubernetes 交互、会话生命周期、StorageClass 行为、配额查询和 File Browser 交互放在 service interface 后面。
 - 每条请求路径都把传入的 context 传递到 handler 和 service collaborator。

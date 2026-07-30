@@ -234,6 +234,9 @@ Expose `viewer-web` as the public entrypoint. The chart renders nginx config
 that serves the SPA, rewrites public `/api/*` requests to the backend's
 unprefixed routes, and proxies `/metrics` plus
 `/internal/filebrowser-hook/verify` to the internal `viewer-backend` service.
+The backend and web deployments also point their startup, readiness, and
+liveness probes at `/healthz`; keep that handler lightweight and free of
+business dependencies.
 
 Use `charts/storage-manager/storage-manager-values.yaml` as the user-level
 override entrypoint for Sealos installs. It exposes product-facing `config.*`
