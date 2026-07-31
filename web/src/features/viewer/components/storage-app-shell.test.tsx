@@ -679,9 +679,9 @@ describe('storageAppShell', () => {
 		const deleteMenuItem = await screen.findByRole('menuitem', { name: /^delete$/i })
 		expect(deleteMenuItem).toHaveAttribute('aria-disabled', 'true')
 		await user.hover(deleteMenuItem)
-		expect(
-			await screen.findByText('Referenced by applaunchpad/Demo App /data. Remove the reference before deleting it.'),
-		).toBeInTheDocument()
+		expect(await screen.findByRole('tooltip')).toHaveTextContent(
+			'Referenced by applaunchpad/Demo App /data. Remove the reference before deleting it.',
+		)
 		await user.click(deleteMenuItem)
 		expect(deletePVC).not.toHaveBeenCalled()
 	})
@@ -714,9 +714,9 @@ describe('storageAppShell', () => {
 		const deleteMenuItem = await screen.findByRole('menuitem', { name: /^delete$/i })
 		expect(deleteMenuItem).toHaveAttribute('aria-disabled', 'true')
 		await user.hover(deleteMenuItem)
-		expect(
-			await screen.findByText('Mounted by Pod mysql-0. Stop the related workload before deleting it.'),
-		).toBeInTheDocument()
+		expect(await screen.findByRole('tooltip')).toHaveTextContent(
+			'Mounted by Pod mysql-0. Stop the related workload before deleting it.',
+		)
 		await user.click(deleteMenuItem)
 		expect(deletePVC).not.toHaveBeenCalled()
 	})
