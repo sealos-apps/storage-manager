@@ -65,7 +65,12 @@ web-dev:
 fmt: backend-fmt web-fmt
 
 backend-fmt: check-go-version
-	GOTOOLCHAIN=local $(GO) fmt ./...
+	@set -eu; \
+	files="$$(git ls-files -co --exclude-standard '*.go')"; \
+	if [ -z "$$files" ]; then \
+		exit 0; \
+	fi; \
+	gofmt -w $$files
 
 web-fmt:
 	cd $(WEB_DIR) && $(PNPM) exec eslint . --fix
@@ -73,13 +78,14 @@ web-fmt:
 fmt-check: backend-fmt-check web-fmt-check
 
 backend-fmt-check: check-go-version
-	@out="$$(GOTOOLCHAIN=local $(GO) fmt ./... 2>&1)"; status=$$?; \
-	if [ $$status -ne 0 ]; then \
-		echo "$$out"; \
-		exit $$status; \
+	@set -eu; \
+	files="$$(git ls-files -co --exclude-standard '*.go')"; \
+	if [ -z "$$files" ]; then \
+		exit 0; \
 	fi; \
+	out="$$(gofmt -l $$files)"; \
 	if [ -n "$$out" ]; then \
-		echo "$$out"; \
+		printf '%s\n' "$$out"; \
 		echo "gofmt changed files; run make fmt"; \
 		exit 1; \
 	fi
