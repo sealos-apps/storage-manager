@@ -2,6 +2,7 @@ package viewer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -30,6 +31,8 @@ import (
 
 var runtimeOnce sync.Once
 var startRuntimeCleanupLoop = startCleanupLoop
+var loadRuntime = NewRuntime
+var runtimeInitErr error
 
 type Runtime struct {
 	Handler  *Handler
@@ -64,14 +67,7 @@ func (r *Runtime) Shutdown(ctx context.Context) error {
 }
 
 func runtimeHandler() *Handler {
-	runtimeOnce.Do(func() {
-		runtime, err := NewRuntime("")
-		if err != nil {
-			slog.Error("viewer runtime unavailable", "error", err)
-			return
-		}
-		defaultHandler = runtime.Handler
-	})
+	ensureRuntimeInitialized()
 	if defaultHandler != nil {
 		return defaultHandler
 	}
@@ -84,6 +80,29 @@ func runtimeHandler() *Handler {
 		denyAuthorizer{},
 		WithStorageClassService(unavailableStorageClassService{}),
 	)
+}
+
+func ensureRuntimeInitialized() {
+	runtimeOnce.Do(func() {
+		runtime, err := loadRuntime("")
+		if err != nil {
+			runtimeInitErr = err
+			slog.Error("viewer runtime unavailable", "error", err)
+			return
+		}
+		defaultHandler = runtime.Handler
+	})
+}
+
+func runtimeHealth() error {
+	ensureRuntimeInitialized()
+	if runtimeInitErr != nil {
+		return runtimeInitErr
+	}
+	if defaultHandler == nil {
+		return errors.New("viewer runtime unavailable")
+	}
+	return nil
 }
 
 func newRuntimeFromConfig(cfg config.Config) (*Runtime, error) {

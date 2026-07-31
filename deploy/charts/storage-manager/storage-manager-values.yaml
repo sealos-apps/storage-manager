@@ -51,6 +51,29 @@ backend:
 #    repository: ghcr.io/sealos-apps/storage-manager/storage-manager-backend
 #    tag: latest
 #    pullPolicy: IfNotPresent
+  startupProbe:
+    httpGet:
+      path: /healthz
+      port: http
+    periodSeconds: 2
+    timeoutSeconds: 3
+    failureThreshold: 60
+  readinessProbe:
+    httpGet:
+      path: /healthz
+      port: http
+    initialDelaySeconds: 3
+    periodSeconds: 5
+    timeoutSeconds: 2
+    successThreshold: 3
+    failureThreshold: 3
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 3
   config:
     observability:
       logs:
@@ -72,3 +95,26 @@ web:
 #    repository: ghcr.io/sealos-apps/storage-manager/storage-manager-web
 #    tag: latest
 #    pullPolicy: IfNotPresent
+  startupProbe:
+    httpGet:
+      path: /healthz
+      port: http
+    periodSeconds: 2
+    timeoutSeconds: 3
+    failureThreshold: 60
+  readinessProbe:
+    httpGet:
+      path: /healthz
+      port: http
+    initialDelaySeconds: 3
+    periodSeconds: 5
+    timeoutSeconds: 2
+    successThreshold: 3
+    failureThreshold: 3
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 3

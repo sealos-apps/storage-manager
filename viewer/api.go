@@ -3,6 +3,8 @@ package viewer
 import (
 	"context"
 	"net/http"
+
+	"github.com/nixieboluo/sealos-storage-manager/internal/apienv"
 )
 
 var defaultHandler *Handler
@@ -25,6 +27,21 @@ func ListPVCs(ctx context.Context, req *ListPVCsRequest) (*ListPVCsResponse, err
 //encore:api public method=GET path=/context
 func GetContext(ctx context.Context, req *AuthenticatedRequest) (*ContextResponse, error) {
 	return runtimeHandler().GetContextData(ctx, req)
+}
+
+// Health Check
+// Returns whether the backend runtime has initialized successfully and the
+// local deployment configuration is usable.
+//
+//encore:api public method=GET path=/healthz
+func Healthz(ctx context.Context) (*HealthzResponse, error) {
+	if err := runtimeHealth(); err != nil {
+		return nil, toEncoreError(apienv.NewError(http.StatusServiceUnavailable, apienv.CodeInternal, err.Error(), nil))
+	}
+	return &HealthzResponse{
+		Service: "storage-manager-viewer",
+		Status:  "ok",
+	}, nil
 }
 
 // Get Storage Quota

@@ -113,6 +113,13 @@ type ContextResponse struct {
 	Context ViewerContext `json:"context"`
 }
 
+type HealthzResponse struct {
+	// Service identifies the runtime surface reporting health.
+	Service string `json:"service"`
+	// Status is "ok" when the runtime is ready to serve requests.
+	Status string `json:"status"`
+}
+
 type StorageQuota struct {
 	// AvailableBytes is the remaining storage quota in bytes.
 	AvailableBytes int64 `json:"available_bytes"`
