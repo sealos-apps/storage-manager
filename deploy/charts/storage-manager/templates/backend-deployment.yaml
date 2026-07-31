@@ -24,15 +24,15 @@ spec:
           imagePullPolicy: {{ .Values.backend.image.pullPolicy | quote }}
           env:
             - name: CONFIG
-              value: {{ printf "%s/viewer.yaml" .Values.backend.configMountPath | quote }}
+              value: "/app/config/viewer.yaml"
           ports:
             - name: http
-              containerPort: {{ .Values.backend.containerPort }}
+              containerPort: 8080
           volumeMounts:
             - name: config
-              mountPath: {{ .Values.backend.configMountPath | quote }}
+              mountPath: "/app/config"
               readOnly: true
       volumes:
         - name: config
           configMap:
-            name: {{ .Values.backend.configMapName | quote }}
+            name: "viewer-backend-config"
