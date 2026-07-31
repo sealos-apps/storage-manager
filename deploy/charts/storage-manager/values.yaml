@@ -68,9 +68,6 @@ backend:
     type: ClusterIP
     port: 80
     targetPort: http
-  containerPort: 8080
-  configMapName: viewer-backend-config
-  configMountPath: /app/config
   config:
     viewer:
       service:
