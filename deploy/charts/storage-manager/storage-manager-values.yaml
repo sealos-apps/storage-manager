@@ -95,8 +95,6 @@ web:
 #    repository: ghcr.io/sealos-apps/storage-manager/storage-manager-web
 #    tag: latest
 #    pullPolicy: IfNotPresent
-  containerPort: 8080
-  configMapName: viewer-web-config
   startupProbe:
     httpGet:
       path: /healthz

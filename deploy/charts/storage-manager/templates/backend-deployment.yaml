@@ -24,10 +24,10 @@ spec:
           imagePullPolicy: {{ .Values.backend.image.pullPolicy | quote }}
           env:
             - name: CONFIG
-              value: "/app/config/viewer.yaml"
+              value: {{ printf "%s/viewer.yaml" .Values.backend.configMountPath | quote }}
           ports:
             - name: http
-              containerPort: 8080
+              containerPort: {{ .Values.backend.containerPort }}
           startupProbe:
             {{- toYaml .Values.backend.startupProbe | nindent 12 }}
           readinessProbe:
@@ -36,9 +36,9 @@ spec:
             {{- toYaml .Values.backend.livenessProbe | nindent 12 }}
           volumeMounts:
             - name: config
-              mountPath: "/app/config"
+              mountPath: {{ .Values.backend.configMountPath | quote }}
               readOnly: true
       volumes:
         - name: config
           configMap:
-            name: "viewer-backend-config"
+            name: {{ .Values.backend.configMapName | quote }}
