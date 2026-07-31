@@ -22,7 +22,7 @@ kind: ConfigMap
 {{- $accountBaseURL := default "" (get $configIntegrations "accountBaseUrl") }}
 {{- $prometheusBaseURL := default "" (get $configIntegrations "prometheusBaseUrl") }}
 metadata:
-  name: {{ .Values.backend.configMapName | quote }}
+  name: "viewer-backend-config"
   namespace: {{ include "storage-manager.namespace" . | quote }}
   labels:
     {{- include "storage-manager.labels" . | nindent 4 }}
