@@ -50,6 +50,40 @@ func TestClientStorageQuotaReturnsAvailableBytesAndQuantity(t *testing.T) {
 	}
 }
 
+func TestClientStorageQuotaAcceptsNumericQuantities(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		_, _ = w.Write([]byte(`{"quota":{"hard":{"requests.storage":21474836480},"used":{"requests.storage":5368709120}}}`))
+	}))
+	t.Cleanup(server.Close)
+	client := NewClient(config.StorageQuotaConfig{
+		AccountBaseURL: server.URL,
+		QueryTimeout:   time.Second,
+	}, server.Client(), nil)
+
+	quota, err := client.StorageQuota(context.Background(), "ns-demo", "")
+	if err != nil {
+		t.Fatalf("StorageQuota() error = %v", err)
+	}
+	if quota.AvailableBytes != 15*1024*1024*1024 {
+		t.Fatalf("available bytes = %d", quota.AvailableBytes)
+	}
+	if quota.LimitQuantity != "21474836480" || quota.UsedQuantity != "5368709120" {
+		t.Fatalf("quantities = (%q, %q)", quota.LimitQuantity, quota.UsedQuantity)
+	}
+}
+
+func TestQuotaQuantityRejectsNonStringNonNumber(t *testing.T) {
+	t.Parallel()
+
+	var response upstreamQuotaResponse
+	err := json.Unmarshal([]byte(`{"quota":{"hard":{"requests.storage":true}}}`), &response)
+	if err == nil {
+		t.Fatal("expected invalid quota quantity error")
+	}
+}
+
 func TestStorageQuotaFromStatusClampsNegativeAvailableStorage(t *testing.T) {
 	t.Parallel()
 
