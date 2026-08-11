@@ -1015,8 +1015,9 @@ describe('storageAppShell', () => {
 		const expandItem = await screen.findByRole('menuitem', { name: 'Expand PVC' })
 
 		expect(expandItem).toHaveAttribute('aria-disabled', 'true')
-		expect(expandItem).toHaveAttribute('data-disabled', '')
 		expect(expandItem).toHaveAttribute('title', 'This PVC cannot be expanded by its storage class.')
+		await user.hover(expandItem)
+		expect(await screen.findByRole('tooltip')).toHaveTextContent('This PVC cannot be expanded by its storage class.')
 		await user.click(expandItem)
 		expect(screen.queryByRole('dialog', { name: 'Expand PVC' })).not.toBeInTheDocument()
 	})
@@ -1036,7 +1037,8 @@ describe('storageAppShell', () => {
 		const expandItem = await screen.findByRole('menuitem', { name: 'Expand PVC' })
 
 		expect(expandItem).toHaveAttribute('aria-disabled', 'true')
-		expect(expandItem).toHaveAttribute('data-disabled', '')
+		await user.hover(expandItem)
+		expect(await screen.findByRole('tooltip')).toHaveTextContent('This PVC cannot be expanded by its storage class.')
 		await user.click(expandItem)
 		expect(screen.queryByRole('dialog', { name: 'Expand PVC' })).not.toBeInTheDocument()
 	})

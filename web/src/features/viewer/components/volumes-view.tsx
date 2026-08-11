@@ -234,13 +234,10 @@ function PVCRow({ fileManagementEnabled, onDelete, onDescribe, onEditYAML, onExp
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end">
 							<DropdownMenuGroup>
-								<DropdownMenuItem
+								<ExpandPVCMenuItem
 									disabled={expandUnsupported}
-									onSelect={() => onExpand(pvc)}
-									title={expandUnsupported ? t('errors.pvcExpandUnsupported') : undefined}
-								>
-									{t('volumes.expand')}
-								</DropdownMenuItem>
+									onExpand={() => onExpand(pvc)}
+								/>
 								<DropdownMenuItem onSelect={() => onDescribe(pvc)}>
 									{t('storageClasses.describe')}
 								</DropdownMenuItem>
@@ -257,6 +254,42 @@ function PVCRow({ fileManagementEnabled, onDelete, onDescribe, onEditYAML, onExp
 				</div>
 			</TableCell>
 		</TableRow>
+	)
+}
+
+function ExpandPVCMenuItem({ disabled, onExpand }: { disabled: boolean, onExpand: () => void }) {
+	const { t } = useTranslation()
+	const item = (
+		<DropdownMenuItem
+			aria-disabled={disabled ? 'true' : undefined}
+			className={disabled ? 'cursor-not-allowed text-muted-foreground focus:bg-accent focus:text-muted-foreground' : undefined}
+			onSelect={(event) => {
+				if (disabled) {
+					event.preventDefault()
+					return
+				}
+				onExpand()
+			}}
+			title={disabled ? t('errors.pvcExpandUnsupported') : undefined}
+		>
+			{t('volumes.expand')}
+		</DropdownMenuItem>
+	)
+
+	if (!disabled) {
+		return item
+	}
+
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>{item}</TooltipTrigger>
+			<TooltipContent
+				arrowClassName="bg-popover fill-popover"
+				className="max-w-[15rem] border bg-popover text-left text-wrap text-popover-foreground shadow-md"
+			>
+				{t('errors.pvcExpandUnsupported')}
+			</TooltipContent>
+		</Tooltip>
 	)
 }
 
