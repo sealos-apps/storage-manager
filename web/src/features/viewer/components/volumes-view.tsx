@@ -124,6 +124,7 @@ export function VolumesView({
 											onOpenFiles={onOpenFiles}
 											fileManagementEnabled={fileManagementEnabled}
 											pvc={pvc}
+											storageClass={storageClasses.find(storageClass => storageClass.name === pvc.storage_class_name)}
 											showNamespaceColumn={showNamespaceColumn}
 										/>
 									))}
@@ -162,14 +163,16 @@ interface PVCRowProps {
 	onExpand: (pvc: PVC) => void
 	onOpenFiles: (pvc: PVC) => void
 	pvc: PVC
+	storageClass?: StorageClass
 	showNamespaceColumn: boolean
 }
 
-function PVCRow({ fileManagementEnabled, onDelete, onDescribe, onEditYAML, onExpand, onOpenFiles, pvc, showNamespaceColumn }: PVCRowProps) {
+function PVCRow({ fileManagementEnabled, onDelete, onDescribe, onEditYAML, onExpand, onOpenFiles, pvc, showNamespaceColumn, storageClass }: PVCRowProps) {
 	const { t } = useTranslation()
 	const mountedTarget = pvc.mounted_pods[0]
 	const references = pvc.references ?? []
 	const deleteBlockedReason = pvcDeleteBlockedReason(pvc, references, t)
+	const expandUnsupported = storageClass?.allow_volume_expansion === false
 
 	return (
 		<TableRow>
@@ -230,7 +233,11 @@ function PVCRow({ fileManagementEnabled, onDelete, onDescribe, onEditYAML, onExp
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end">
 							<DropdownMenuGroup>
-								<DropdownMenuItem onSelect={() => onExpand(pvc)}>
+								<DropdownMenuItem
+									disabled={expandUnsupported}
+									onSelect={() => onExpand(pvc)}
+									title={expandUnsupported ? t('errors.pvcExpandUnsupported') : undefined}
+								>
 									{t('volumes.expand')}
 								</DropdownMenuItem>
 								<DropdownMenuItem onSelect={() => onDescribe(pvc)}>
