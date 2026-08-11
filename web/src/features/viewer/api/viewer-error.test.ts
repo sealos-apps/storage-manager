@@ -83,6 +83,29 @@ describe('viewer errors', () => {
 		expect(formatted.description).toBe(message)
 	})
 
+	it('keeps pending PVC expansion errors localized without backend English details', () => {
+		const instance = createI18nInstance('zh')
+		const formatted = formatViewerErrorToast(
+			new ViewerApiError({
+				code: 'PVC_EXPAND_PENDING',
+				details: { message: 'PVC must be bound before it can be expanded', phase: 'Pending' },
+				message: 'PVC must be bound before it can be expanded',
+				status: 400,
+			}),
+			instance.t,
+		)
+
+		expect(formatted.message).toBe('这个 PVC 还没有绑定存储卷，暂时无法扩容。请先创建使用它的工作负载，等待 PVC 绑定后再试。')
+		expect(formatted.description).toBeUndefined()
+		expect(translateViewerError(
+			new ViewerApiError({
+				code: 'PVC_EXPAND_PENDING',
+				message: 'PVC must be bound before it can be expanded',
+			}),
+			instance.t,
+		)).toBe(formatted.message)
+	})
+
 	it('formats structured backend details when no detail message is available', () => {
 		const instance = createI18nInstance('en')
 
