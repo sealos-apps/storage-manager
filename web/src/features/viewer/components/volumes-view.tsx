@@ -172,7 +172,8 @@ function PVCRow({ fileManagementEnabled, onDelete, onDescribe, onEditYAML, onExp
 	const mountedTarget = pvc.mounted_pods[0]
 	const references = pvc.references ?? []
 	const deleteBlockedReason = pvcDeleteBlockedReason(pvc, references, t)
-	const expandUnsupported = storageClass?.allow_volume_expansion === false
+	// Only an explicit StorageClass capability can safely enable expansion.
+	const expandUnsupported = storageClass?.allow_volume_expansion !== true
 
 	return (
 		<TableRow>

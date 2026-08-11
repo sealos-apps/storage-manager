@@ -1021,7 +1021,7 @@ describe('storageAppShell', () => {
 		expect(screen.queryByRole('dialog', { name: 'Expand PVC' })).not.toBeInTheDocument()
 	})
 
-	it('keeps PVC expansion available when its StorageClass capability is unknown', async () => {
+	it('disables PVC expansion when its StorageClass capability is unknown', async () => {
 		const user = userEvent.setup()
 		const api = createFakeViewerAPI({
 			listPVCs: vi.fn().mockResolvedValue([
@@ -1035,9 +1035,10 @@ describe('storageAppShell', () => {
 		await user.click(await screen.findByRole('button', { name: /more actions/i }))
 		const expandItem = await screen.findByRole('menuitem', { name: 'Expand PVC' })
 
-		expect(expandItem).not.toHaveAttribute('aria-disabled')
+		expect(expandItem).toHaveAttribute('aria-disabled', 'true')
+		expect(expandItem).toHaveAttribute('data-disabled', '')
 		await user.click(expandItem)
-		expect(await screen.findByRole('dialog', { name: 'Expand PVC' })).toBeInTheDocument()
+		expect(screen.queryByRole('dialog', { name: 'Expand PVC' })).not.toBeInTheDocument()
 	})
 
 	it('creates, edits, and deletes Storage types through the admin dialogs', async () => {
