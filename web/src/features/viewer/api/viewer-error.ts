@@ -17,6 +17,7 @@ export const viewerErrorMessageKeys = {
 	PVC_QUOTA_UNAVAILABLE: 'errors.pvcQuotaUnavailable',
 	PVC_EXPAND_UNSUPPORTED: 'errors.pvcExpandUnsupported',
 	PVC_EXPAND_PENDING: 'errors.pvcExpandPending',
+	PVC_EXPAND_LOST: 'errors.pvcExpandLost',
 	PVC_EXPAND_NOT_INCREASED: 'errors.pvcExpandNotIncreased',
 	UNSUPPORTED_ACCESS_MODE: 'errors.unsupportedAccessMode',
 	PVC_MOUNT_CONFLICT: 'errors.pvcMountConflict',
@@ -53,6 +54,7 @@ interface EncoreErrorDetails {
 
 const backendViewerErrorCodeSet = new Set<string>(backendViewerErrorCodes)
 const localizedOnlyViewerErrorCodes = new Set<ViewerErrorCode>([
+	'PVC_EXPAND_LOST',
 	'PVC_EXPAND_PENDING',
 ])
 

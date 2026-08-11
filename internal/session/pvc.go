@@ -562,8 +562,19 @@ func (s *ViewerService) ExpandPVC(ctx context.Context, input ExpandPVCInput) (pv
 	if target.Cmp(*currentStorage) <= 0 {
 		return nil, apienv.NewError(400, apienv.CodePVCExpandNotIncreased, "Target capacity must be greater than current capacity", nil)
 	}
-	if current.Status.Phase != corev1.ClaimBound {
+	switch current.Status.Phase {
+	case corev1.ClaimBound:
+		// Expansion is allowed only after the claim has been bound.
+	case corev1.ClaimPending:
 		return nil, apienv.NewError(400, apienv.CodePVCExpandPending, "PVC must be bound before it can be expanded", map[string]any{
+			"phase": current.Status.Phase,
+		})
+	case corev1.ClaimLost:
+		return nil, apienv.NewError(400, apienv.CodePVCExpandLost, "PVC backing volume was lost and cannot be expanded", map[string]any{
+			"phase": current.Status.Phase,
+		})
+	default:
+		return nil, apienv.NewError(400, apienv.CodePVCExpandUnsupported, "PVC is not in a state that supports expansion", map[string]any{
 			"phase": current.Status.Phase,
 		})
 	}

@@ -21,6 +21,7 @@ const (
 	CodePVCQuotaUnavailable         Code = "PVC_QUOTA_UNAVAILABLE"
 	CodePVCExpandUnsupported        Code = "PVC_EXPAND_UNSUPPORTED"
 	CodePVCExpandPending            Code = "PVC_EXPAND_PENDING"
+	CodePVCExpandLost               Code = "PVC_EXPAND_LOST"
 	CodePVCExpandNotIncreased       Code = "PVC_EXPAND_NOT_INCREASED"
 	CodeStorageClassNotFound        Code = "STORAGE_CLASS_NOT_FOUND"
 	CodeStorageClassYAMLInvalid     Code = "STORAGE_CLASS_YAML_INVALID"
@@ -61,6 +62,7 @@ var AllCodes = [...]Code{
 	CodePVCQuotaUnavailable,
 	CodePVCExpandUnsupported,
 	CodePVCExpandPending,
+	CodePVCExpandLost,
 	CodePVCExpandNotIncreased,
 	CodeStorageClassNotFound,
 	CodeStorageClassYAMLInvalid,

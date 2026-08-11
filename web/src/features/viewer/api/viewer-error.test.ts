@@ -106,6 +106,22 @@ describe('viewer errors', () => {
 		)).toBe(formatted.message)
 	})
 
+	it('keeps lost PVC expansion errors localized without backend English details', () => {
+		const instance = createI18nInstance('zh')
+		const formatted = formatViewerErrorToast(
+			new ViewerApiError({
+				code: 'PVC_EXPAND_LOST',
+				details: { message: 'PVC backing volume was lost and cannot be expanded', phase: 'Lost' },
+				message: 'PVC backing volume was lost and cannot be expanded',
+				status: 400,
+			}),
+			instance.t,
+		)
+
+		expect(formatted.message).toBe('这个 PVC 绑定的存储卷已丢失，无法扩容。')
+		expect(formatted.description).toBeUndefined()
+	})
+
 	it('formats structured backend details when no detail message is available', () => {
 		const instance = createI18nInstance('en')
 

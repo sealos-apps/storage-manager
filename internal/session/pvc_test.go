@@ -499,6 +499,41 @@ func TestViewerServiceExpandPVCDeniesPendingPVC(t *testing.T) {
 	}
 }
 
+func TestViewerServiceExpandPVCDeniesLostPVC(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	clientset := fake.NewSimpleClientset(&corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "lost", UID: types.UID("lost-uid")},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("10Gi")},
+			},
+		},
+		Status: corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimLost},
+	})
+	client := kube.New(clientset)
+	store := state.New(cfg.Cache)
+	recorder := observability.MustNew(cfg.Observability, nil)
+	service := NewViewerService(cfg, store, client, NewPodService(cfg, store, client, recorder), nil, recorder)
+
+	_, err := service.ExpandPVC(t.Context(), ExpandPVCInput{
+		Namespace: "default",
+		Name:      "lost",
+		Capacity:  "20Gi",
+	})
+	if err == nil {
+		t.Fatal("ExpandPVC() error = nil, want lost PVC error")
+	}
+	apiErr, ok := err.(*apienv.Error)
+	if !ok || apiErr.Code != apienv.CodePVCExpandLost || apiErr.Status != 400 {
+		t.Fatalf("ExpandPVC() error = %#v, want PVC_EXPAND_LOST 400", err)
+	}
+	if apiErr.Details["phase"] != corev1.ClaimLost {
+		t.Fatalf("lost phase detail = %#v", apiErr.Details["phase"])
+	}
+}
+
 func countListActions(actions []ktesting.Action, resource string) int {
 	count := 0
 	for _, action := range actions {
