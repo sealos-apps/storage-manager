@@ -16,6 +16,7 @@ export const viewerErrorMessageKeys = {
 	PVC_QUOTA_EXCEEDED: 'errors.pvcQuotaExceeded',
 	PVC_QUOTA_UNAVAILABLE: 'errors.pvcQuotaUnavailable',
 	PVC_EXPAND_UNSUPPORTED: 'errors.pvcExpandUnsupported',
+	PVC_EXPAND_PENDING: 'errors.pvcExpandPending',
 	PVC_EXPAND_NOT_INCREASED: 'errors.pvcExpandNotIncreased',
 	UNSUPPORTED_ACCESS_MODE: 'errors.unsupportedAccessMode',
 	PVC_MOUNT_CONFLICT: 'errors.pvcMountConflict',

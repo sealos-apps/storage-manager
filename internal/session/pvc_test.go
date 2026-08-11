@@ -437,6 +437,7 @@ func TestViewerServiceExpandPVC(t *testing.T) {
 				Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("1Gi")},
 			},
 		},
+		Status: corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound},
 	})
 	client := kube.New(clientset)
 	store := state.New(cfg.Cache)
@@ -460,6 +461,41 @@ func TestViewerServiceExpandPVC(t *testing.T) {
 	}
 	if updated.Spec.Resources.Requests.Storage().String() != "3Gi" {
 		t.Fatalf("storage = %s", updated.Spec.Resources.Requests.Storage().String())
+	}
+}
+
+func TestViewerServiceExpandPVCDeniesPendingPVC(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	clientset := fake.NewSimpleClientset(&corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "pending", UID: types.UID("pending-uid")},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("10Gi")},
+			},
+		},
+		Status: corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimPending},
+	})
+	client := kube.New(clientset)
+	store := state.New(cfg.Cache)
+	recorder := observability.MustNew(cfg.Observability, nil)
+	service := NewViewerService(cfg, store, client, NewPodService(cfg, store, client, recorder), nil, recorder)
+
+	_, err := service.ExpandPVC(t.Context(), ExpandPVCInput{
+		Namespace: "default",
+		Name:      "pending",
+		Capacity:  "20Gi",
+	})
+	if err == nil {
+		t.Fatal("ExpandPVC() error = nil, want pending PVC error")
+	}
+	apiErr, ok := err.(*apienv.Error)
+	if !ok || apiErr.Code != apienv.CodePVCExpandPending || apiErr.Status != 400 {
+		t.Fatalf("ExpandPVC() error = %#v, want PVC_EXPAND_PENDING 400", err)
+	}
+	if apiErr.Details["phase"] != corev1.ClaimPending {
+		t.Fatalf("pending phase detail = %#v", apiErr.Details["phase"])
 	}
 }
 

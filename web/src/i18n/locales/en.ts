@@ -47,6 +47,7 @@ export const en = {
 		pvcExpandForbidden: 'You do not have permission to expand this PVC.',
 		pvcExpandNotIncreased: 'The new capacity must be larger than the current PVC size.',
 		pvcExpandUnsupported: 'This PVC cannot be expanded by its storage class.',
+		pvcExpandPending: 'This PVC is not bound yet. Create a consumer first, then try expanding it again.',
 		pvcQuotaExceeded: 'Requested PVC storage exceeds your available storage quota.',
 		pvcQuotaUnavailable: 'Storage quota is unavailable. Refresh and try again.',
 		pvcInUse: 'This PVC is still mounted and cannot be deleted.',

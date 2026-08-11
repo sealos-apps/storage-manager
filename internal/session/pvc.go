@@ -562,6 +562,11 @@ func (s *ViewerService) ExpandPVC(ctx context.Context, input ExpandPVCInput) (pv
 	if target.Cmp(*currentStorage) <= 0 {
 		return nil, apienv.NewError(400, apienv.CodePVCExpandNotIncreased, "Target capacity must be greater than current capacity", nil)
 	}
+	if current.Status.Phase != corev1.ClaimBound {
+		return nil, apienv.NewError(400, apienv.CodePVCExpandPending, "PVC must be bound before it can be expanded", map[string]any{
+			"phase": current.Status.Phase,
+		})
+	}
 	updated, err := s.kube.UpdatePVCStorageRequest(ctx, input.Namespace, input.Name, target)
 	if err != nil {
 		return nil, err
