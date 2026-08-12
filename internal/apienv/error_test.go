@@ -39,6 +39,8 @@ func TestAllCodesContainsEveryPublicBusinessCode(t *testing.T) {
 		CodePVCQuotaExceeded,
 		CodePVCQuotaUnavailable,
 		CodePVCExpandUnsupported,
+		CodePVCExpandPending,
+		CodePVCExpandLost,
 		CodePVCExpandNotIncreased,
 		CodeStorageClassNotFound,
 		CodeStorageClassYAMLInvalid,

@@ -47,6 +47,8 @@ export const zh = {
 		pvcExpandForbidden: '你没有权限扩容这个 PVC。',
 		pvcExpandNotIncreased: '新容量必须大于当前 PVC 容量。',
 		pvcExpandUnsupported: '这个 PVC 的存储类型不支持扩容。',
+		pvcExpandPending: '这个 PVC 还没有绑定存储卷，暂时无法扩容。请先创建使用它的工作负载，等待 PVC 绑定后再试。',
+		pvcExpandLost: '这个 PVC 绑定的存储卷已丢失，无法扩容。',
 		pvcQuotaExceeded: '申请的 PVC 容量超过可用存储配额。',
 		pvcQuotaUnavailable: '存储配额暂时不可用，请刷新后重试。',
 		pvcInUse: '这个 PVC 仍在挂载中，不能删除。',

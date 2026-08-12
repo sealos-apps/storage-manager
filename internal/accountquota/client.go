@@ -34,9 +34,47 @@ type Client struct {
 
 type upstreamQuotaResponse struct {
 	Quota struct {
-		Hard map[string]string `json:"hard"`
-		Used map[string]string `json:"used"`
+		Hard map[string]quotaQuantity `json:"hard"`
+		Used map[string]quotaQuantity `json:"used"`
 	} `json:"quota"`
+}
+
+// quotaQuantity accepts both Kubernetes-style quantity strings and the byte
+// values returned by account-service versions that serialize quantities as JSON numbers.
+type quotaQuantity string
+
+func (q *quotaQuantity) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 {
+		return fmt.Errorf("quota quantity is empty")
+	}
+	if data[0] == '"' {
+		var value string
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		*q = quotaQuantity(value)
+		return nil
+	}
+	var number json.Number
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&number); err != nil {
+		return fmt.Errorf("expected string or number, got %s: %w", string(data), err)
+	}
+	if number.String() == "" {
+		return fmt.Errorf("quota quantity is empty")
+	}
+	*q = quotaQuantity(number.String())
+	return nil
+}
+
+func quantityStrings(values map[string]quotaQuantity) map[string]string {
+	result := make(map[string]string, len(values))
+	for key, value := range values {
+		result[key] = string(value)
+	}
+	return result
 }
 
 func NewClient(
@@ -101,7 +139,7 @@ func (c *Client) StorageQuota(ctx context.Context, workspace string, authorizati
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 		return StorageQuota{}, fmt.Errorf("decoding workspace quota response: %w", err)
 	}
-	return storageQuotaFromStatus(data.Quota.Hard, data.Quota.Used)
+	return storageQuotaFromStatus(quantityStrings(data.Quota.Hard), quantityStrings(data.Quota.Used))
 }
 
 func (c *Client) trace(ctx context.Context, name string, attrs ...slog.Attr) (context.Context, func(error)) {

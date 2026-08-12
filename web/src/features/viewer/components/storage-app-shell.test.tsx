@@ -998,6 +998,51 @@ describe('storageAppShell', () => {
 		expect(getPVCYAML).toHaveBeenCalledWith({ namespace: 'ns-admin', name: 'data' })
 	})
 
+	it('disables PVC expansion when its StorageClass does not allow expansion', async () => {
+		const user = userEvent.setup()
+		const api = createFakeViewerAPI({
+			listPVCs: vi.fn().mockResolvedValue([
+				pvcFixture({ name: 'data', namespace: 'ns-admin', storage_class_name: 'fixed' }),
+			]),
+			listStorageClasses: vi.fn().mockResolvedValue([
+				storageClassFixture({ name: 'fixed', allow_volume_expansion: false }),
+			]),
+		})
+
+		renderWithProviders(<StorageAppShell api={api} />)
+
+		await user.click(await screen.findByRole('button', { name: /more actions/i }))
+		const expandItem = await screen.findByRole('menuitem', { name: 'Expand PVC' })
+
+		expect(expandItem).toHaveAttribute('aria-disabled', 'true')
+		expect(expandItem).toHaveAttribute('title', 'This PVC cannot be expanded by its storage class.')
+		await user.hover(expandItem)
+		expect(await screen.findByRole('tooltip')).toHaveTextContent('This PVC cannot be expanded by its storage class.')
+		await user.click(expandItem)
+		expect(screen.queryByRole('dialog', { name: 'Expand PVC' })).not.toBeInTheDocument()
+	})
+
+	it('disables PVC expansion when its StorageClass capability is unknown', async () => {
+		const user = userEvent.setup()
+		const api = createFakeViewerAPI({
+			listPVCs: vi.fn().mockResolvedValue([
+				pvcFixture({ name: 'data', namespace: 'ns-admin', storage_class_name: 'missing' }),
+			]),
+			listStorageClasses: vi.fn().mockResolvedValue([]),
+		})
+
+		renderWithProviders(<StorageAppShell api={api} />)
+
+		await user.click(await screen.findByRole('button', { name: /more actions/i }))
+		const expandItem = await screen.findByRole('menuitem', { name: 'Expand PVC' })
+
+		expect(expandItem).toHaveAttribute('aria-disabled', 'true')
+		await user.hover(expandItem)
+		expect(await screen.findByRole('tooltip')).toHaveTextContent('This PVC cannot be expanded by its storage class.')
+		await user.click(expandItem)
+		expect(screen.queryByRole('dialog', { name: 'Expand PVC' })).not.toBeInTheDocument()
+	})
+
 	it('creates, edits, and deletes Storage types through the admin dialogs', async () => {
 		const user = userEvent.setup()
 		const adminCreateStorageClass = vi.fn().mockResolvedValue(storageClassFixture({ name: 'created' }))

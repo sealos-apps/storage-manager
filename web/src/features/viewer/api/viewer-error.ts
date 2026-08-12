@@ -16,6 +16,8 @@ export const viewerErrorMessageKeys = {
 	PVC_QUOTA_EXCEEDED: 'errors.pvcQuotaExceeded',
 	PVC_QUOTA_UNAVAILABLE: 'errors.pvcQuotaUnavailable',
 	PVC_EXPAND_UNSUPPORTED: 'errors.pvcExpandUnsupported',
+	PVC_EXPAND_PENDING: 'errors.pvcExpandPending',
+	PVC_EXPAND_LOST: 'errors.pvcExpandLost',
 	PVC_EXPAND_NOT_INCREASED: 'errors.pvcExpandNotIncreased',
 	UNSUPPORTED_ACCESS_MODE: 'errors.unsupportedAccessMode',
 	PVC_MOUNT_CONFLICT: 'errors.pvcMountConflict',
@@ -51,6 +53,10 @@ interface EncoreErrorDetails {
 }
 
 const backendViewerErrorCodeSet = new Set<string>(backendViewerErrorCodes)
+const localizedOnlyViewerErrorCodes = new Set<ViewerErrorCode>([
+	'PVC_EXPAND_LOST',
+	'PVC_EXPAND_PENDING',
+])
 
 export class ViewerApiError extends Error implements ViewerApiErrorShape {
 	readonly code: ViewerErrorCode
@@ -197,7 +203,7 @@ export function translateViewerError(error: unknown, t: TFunction) {
 		defaultValue: t('errors.generic'),
 		reason: apiError.message,
 	})
-	if (!apiError.message || localized.includes(apiError.message)) {
+	if (!apiError.message || localized.includes(apiError.message) || localizedOnlyViewerErrorCodes.has(apiError.code)) {
 		return localized
 	}
 	return `${localized}\n${apiError.message}`
@@ -209,7 +215,9 @@ export function formatViewerErrorToast(error: unknown, t: TFunction) {
 		defaultValue: t('errors.generic'),
 		reason: apiError.message,
 	})
-	const description = viewerErrorDetailDescription(apiError)
+	const description = localizedOnlyViewerErrorCodes.has(apiError.code)
+		? undefined
+		: viewerErrorDetailDescription(apiError)
 
 	return {
 		message,

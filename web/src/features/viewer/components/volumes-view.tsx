@@ -124,6 +124,7 @@ export function VolumesView({
 											onOpenFiles={onOpenFiles}
 											fileManagementEnabled={fileManagementEnabled}
 											pvc={pvc}
+											storageClass={storageClasses.find(storageClass => storageClass.name === pvc.storage_class_name)}
 											showNamespaceColumn={showNamespaceColumn}
 										/>
 									))}
@@ -162,14 +163,17 @@ interface PVCRowProps {
 	onExpand: (pvc: PVC) => void
 	onOpenFiles: (pvc: PVC) => void
 	pvc: PVC
+	storageClass?: StorageClass
 	showNamespaceColumn: boolean
 }
 
-function PVCRow({ fileManagementEnabled, onDelete, onDescribe, onEditYAML, onExpand, onOpenFiles, pvc, showNamespaceColumn }: PVCRowProps) {
+function PVCRow({ fileManagementEnabled, onDelete, onDescribe, onEditYAML, onExpand, onOpenFiles, pvc, showNamespaceColumn, storageClass }: PVCRowProps) {
 	const { t } = useTranslation()
 	const mountedTarget = pvc.mounted_pods[0]
 	const references = pvc.references ?? []
 	const deleteBlockedReason = pvcDeleteBlockedReason(pvc, references, t)
+	// Only an explicit StorageClass capability can safely enable expansion.
+	const expandUnsupported = storageClass?.allow_volume_expansion !== true
 
 	return (
 		<TableRow>
@@ -230,9 +234,10 @@ function PVCRow({ fileManagementEnabled, onDelete, onDescribe, onEditYAML, onExp
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end">
 							<DropdownMenuGroup>
-								<DropdownMenuItem onSelect={() => onExpand(pvc)}>
-									{t('volumes.expand')}
-								</DropdownMenuItem>
+								<ExpandPVCMenuItem
+									disabled={expandUnsupported}
+									onExpand={() => onExpand(pvc)}
+								/>
 								<DropdownMenuItem onSelect={() => onDescribe(pvc)}>
 									{t('storageClasses.describe')}
 								</DropdownMenuItem>
@@ -249,6 +254,42 @@ function PVCRow({ fileManagementEnabled, onDelete, onDescribe, onEditYAML, onExp
 				</div>
 			</TableCell>
 		</TableRow>
+	)
+}
+
+function ExpandPVCMenuItem({ disabled, onExpand }: { disabled: boolean, onExpand: () => void }) {
+	const { t } = useTranslation()
+	const item = (
+		<DropdownMenuItem
+			aria-disabled={disabled ? 'true' : undefined}
+			className={disabled ? 'cursor-not-allowed text-muted-foreground focus:bg-accent focus:text-muted-foreground' : undefined}
+			onSelect={(event) => {
+				if (disabled) {
+					event.preventDefault()
+					return
+				}
+				onExpand()
+			}}
+			title={disabled ? t('errors.pvcExpandUnsupported') : undefined}
+		>
+			{t('volumes.expand')}
+		</DropdownMenuItem>
+	)
+
+	if (!disabled) {
+		return item
+	}
+
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>{item}</TooltipTrigger>
+			<TooltipContent
+				arrowClassName="bg-popover fill-popover"
+				className="max-w-[15rem] border bg-popover text-left text-wrap text-popover-foreground shadow-md"
+			>
+				{t('errors.pvcExpandUnsupported')}
+			</TooltipContent>
+		</Tooltip>
 	)
 }
 
