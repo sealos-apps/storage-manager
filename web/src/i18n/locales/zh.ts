@@ -128,7 +128,6 @@ export const zh = {
 		viewerUrl: 'Viewer 地址',
 	},
 	files: {
-		backToVolumes: '返回存储卷',
 		browse: '浏览文件',
 		chooseFile: '选择文件',
 		clearCompleted: '清除已完成',

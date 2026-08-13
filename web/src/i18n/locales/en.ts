@@ -128,7 +128,6 @@ export const en = {
 		viewerUrl: 'Viewer URL',
 	},
 	files: {
-		backToVolumes: 'Back to volumes',
 		browse: 'Browse files',
 		chooseFile: 'Choose file',
 		clearCompleted: 'Clear completed',

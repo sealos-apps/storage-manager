@@ -29,6 +29,28 @@ describe('fileManagerView', () => {
 		expect(screen.queryByRole('button', { name: /new folder/i })).not.toBeInTheDocument()
 	})
 
+	it('does not duplicate volume navigation or mismatch status in the file manager header', async () => {
+		const session = sessionWithClient({
+			list: vi.fn(async () => resource('/', '', true, [])),
+		})
+
+		renderFileManager(session, {
+			pvc: pvcFixture({
+				volume_stats: {
+					available_bytes: 90 * 1024 * 1024 * 1024,
+					metric_capacity_bytes: 418 * 1024 * 1024 * 1024,
+					source: 'victoria-metrics',
+					status: 'mismatched',
+					used_bytes: 307 * 1024 * 1024 * 1024,
+				},
+			}),
+		})
+
+		await screen.findByText(/current directory is empty/i)
+		expect(screen.queryByRole('button', { name: /back to volumes/i })).not.toBeInTheDocument()
+		expect(screen.queryByText(/metrics mismatch/i)).not.toBeInTheDocument()
+	})
+
 	it('shows session details from the file manager title status popover', async () => {
 		const user = userEvent.setup()
 		const session = sessionWithClient({
@@ -312,7 +334,6 @@ describe('fileManagerView', () => {
 		const { rerender } = renderWithProviders(
 			<FileManagerView
 				currentPath="/"
-				onBackToVolumes={vi.fn()}
 				onPathChange={vi.fn()}
 				onRefreshSession={vi.fn()}
 				onRefreshStorageData={vi.fn()}
@@ -329,7 +350,6 @@ describe('fileManagerView', () => {
 		rerender(
 			<FileManagerView
 				currentPath="/docs"
-				onBackToVolumes={vi.fn()}
 				onPathChange={vi.fn()}
 				onRefreshSession={vi.fn()}
 				onRefreshStorageData={vi.fn()}
@@ -363,7 +383,6 @@ describe('fileManagerView', () => {
 		const { rerender } = renderWithProviders(
 			<FileManagerView
 				currentPath="/"
-				onBackToVolumes={vi.fn()}
 				onPathChange={vi.fn()}
 				onRefreshSession={vi.fn()}
 				onRefreshStorageData={vi.fn()}
@@ -382,7 +401,6 @@ describe('fileManagerView', () => {
 		rerender(
 			<FileManagerView
 				currentPath="/"
-				onBackToVolumes={vi.fn()}
 				onPathChange={vi.fn()}
 				onRefreshSession={vi.fn()}
 				onRefreshStorageData={vi.fn()}
