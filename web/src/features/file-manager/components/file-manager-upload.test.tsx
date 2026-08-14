@@ -33,7 +33,7 @@ describe('fileManagerUpload', () => {
 		vi.useRealTimers()
 	})
 
-	it('shows upload progress inside the dialog and tracks the viewer session identity', async () => {
+	it('closes the upload dialog while uploading and tracks the viewer session identity', async () => {
 		const user = userEvent.setup()
 		let resolveUpload: (() => void) | undefined
 		const uploadPromise = new Promise<void>((resolve) => {
@@ -71,7 +71,8 @@ describe('fileManagerUpload', () => {
 		await user.upload(input, new File(['contents'], 'demo.txt'))
 		await user.click(screen.getAllByRole('button', { name: /upload file/i }).at(-1)!)
 
-		expect(await screen.findByRole('status')).toHaveTextContent(/uploading file/i)
+		await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+		expect(await screen.findByText('0 file(s) uploaded')).toBeInTheDocument()
 		resolveUpload?.()
 		await waitFor(() => expect(uploadStore.state.tasks[0]).toMatchObject({
 			fileName: 'demo.txt',
@@ -235,7 +236,8 @@ describe('fileManagerUpload', () => {
 		})
 
 		expect(screen.getByText('readme.md')).toBeInTheDocument()
-		expect(await screen.findByText('large.bin')).toBeInTheDocument()
+		expect(screen.queryByText('large.bin')).not.toBeInTheDocument()
+		expect(await screen.findByText('0 file(s) uploaded')).toBeInTheDocument()
 		expect(list).toHaveBeenCalledTimes(1)
 	})
 

@@ -13,6 +13,8 @@ import { uploadActions } from '@/features/file-manager/stores/upload-store'
 import { resolveUploadPath as resolveSafeUploadPath, uploadRelativePathForFile } from '@/features/file-manager/utils/upload-path'
 
 export interface UploadFileInput {
+	batchID?: string
+	batchTotal?: number
 	currentPath: string
 	file: File
 	podSessionID?: string
@@ -27,6 +29,8 @@ export interface UploadBatchFileInput {
 }
 
 export interface UploadFilesInput {
+	batchID?: string
+	batchTotal?: number
 	currentPath: string
 	files: UploadBatchFileInput[]
 	podSessionID?: string
@@ -64,6 +68,11 @@ export interface UploadProgressSnapshot {
 export function createUploadTaskID(fileName: string): string {
 	const random = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2, 10)
 	return `${Date.now()}-${random}-${fileName}`
+}
+
+export function createUploadBatchID(): string {
+	const random = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2, 10)
+	return `batch-${Date.now()}-${random}`
 }
 
 export function shouldReportUploadProgress(input: {
@@ -130,6 +139,8 @@ async function uploadOne(
 	activeSession: FileBrowserSession,
 	throwOnError = false,
 ): Promise<UploadFileResult> {
+	const batchID = input.batchID ?? createUploadBatchID()
+	const batchTotal = input.batchTotal ?? 1
 	let resolved: ResolvedUploadPath
 	try {
 		resolved = resolveUploadPath(input.currentPath, input.file, input.relativePath)
@@ -139,6 +150,8 @@ async function uploadOne(
 		const errorMessage = error instanceof Error ? error.message : 'Upload failed'
 		uploadActions.addTask({
 			id,
+			batchID,
+			batchTotal,
 			fileName: input.relativePath || input.file.name,
 			targetPath: input.currentPath,
 			bytesUploaded: 0,
@@ -159,6 +172,8 @@ async function uploadOne(
 	const chunkTotal = Math.max(1, Math.ceil(input.file.size / chunkSizeBytes))
 	const task: UploadTask = {
 		id,
+		batchID,
+		batchTotal,
 		fileName: input.relativePath || resolved.fileName,
 		targetPath: resolved.parentPath,
 		bytesUploaded: 0,
@@ -269,6 +284,8 @@ export function uploadFilesMutationOptions(
 		mutationKey: fileManagerKeys.mutations.uploadFile(session?.pvcKey ?? 'inactive'),
 		mutationFn: async (input: UploadFilesInput): Promise<UploadFilesResult> => {
 			const activeSession = requireSession(session)
+			const batchID = input.batchID ?? createUploadBatchID()
+			const batchTotal = input.batchTotal ?? input.files.length
 			const results: UploadFileResult[] = []
 			const createdDirectories = new Set<string>()
 			for (const batchFile of input.files) {
@@ -295,6 +312,8 @@ export function uploadFilesMutationOptions(
 					const errorMessage = error instanceof Error ? error.message : 'Upload failed'
 					uploadActions.addTask({
 						id,
+						batchID,
+						batchTotal,
 						fileName: batchFile.relativePath || batchFile.file.name,
 						targetPath: resolved?.parentPath ?? input.currentPath,
 						bytesUploaded: 0,
@@ -310,6 +329,8 @@ export function uploadFilesMutationOptions(
 				}
 				results.push(await uploadOne({
 					currentPath: input.currentPath,
+					batchID,
+					batchTotal,
 					file: batchFile.file,
 					podSessionID: input.podSessionID,
 					relativePath: batchFile.relativePath,

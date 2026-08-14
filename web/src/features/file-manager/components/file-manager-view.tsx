@@ -33,7 +33,6 @@ import { fileListQueryOptions } from '@/features/file-manager/api/file-manager-q
 import { CreateFolderDialog, FileEditorDialog, UploadDialog } from '@/features/file-manager/components/file-dialogs'
 import { FileActions, FileNameCell, ModifiedTimeCell, SortableHead } from '@/features/file-manager/components/file-table-cells'
 import { FileListErrorState, SessionStatusPopover } from '@/features/file-manager/components/session-status-popover'
-import { UploadTaskList } from '@/features/file-manager/components/upload-task-list'
 import { hasPendingBranches } from '@/features/file-manager/utils/file-manager-format'
 import { tableColumnClassName } from '@/features/file-manager/utils/file-table'
 import {
@@ -466,7 +465,6 @@ export function FileManagerView({
 						</>
 					)}
 
-			<UploadTaskList />
 			{session && editingEntry
 				? (
 						<FileEditorDialog

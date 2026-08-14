@@ -253,9 +253,10 @@ describe('file manager mutation options', () => {
 		])
 		expect(uploadStore.state.tasks).toHaveLength(2)
 		expect(uploadStore.state.tasks).toEqual(expect.arrayContaining([
-			expect.objectContaining({ fileName: 'assets/one.txt', status: 'success', targetPath: '/docs/assets' }),
-			expect.objectContaining({ fileName: 'assets/nested/two.txt', status: 'success', targetPath: '/docs/assets/nested' }),
+			expect.objectContaining({ batchTotal: 2, fileName: 'assets/one.txt', status: 'success', targetPath: '/docs/assets' }),
+			expect.objectContaining({ batchTotal: 2, fileName: 'assets/nested/two.txt', status: 'success', targetPath: '/docs/assets/nested' }),
 		]))
+		expect(new Set(uploadStore.state.tasks.map(task => task.batchID)).size).toBe(1)
 	})
 
 	it('keeps failed files isolated so later files continue uploading', async () => {

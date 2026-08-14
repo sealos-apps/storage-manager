@@ -28,7 +28,7 @@ import {
 	uploadFilesMutationOptions,
 } from '@/features/file-manager/api/file-manager-mutations'
 import { fileListQueryOptions, fileTextQueryOptions } from '@/features/file-manager/api/file-manager-query-options'
-import { useUploadTask } from '@/features/file-manager/stores/upload-store'
+import { uploadActions, uploadStore, useUploadTask } from '@/features/file-manager/stores/upload-store'
 import { editorLanguage } from '@/features/file-manager/utils/file-manager-format'
 import { formatBytes } from '@/features/viewer/utils/format-capacity'
 import { cn } from '@/utils/cn'
@@ -36,6 +36,10 @@ import { cn } from '@/utils/cn'
 const MonacoEditor = lazy(() => import('@/components/monaco-editor'))
 const largeEditorDialogClassName = 'h-[88vh] max-h-[88vh] w-[min(96vw,90rem)] sm:max-w-[min(96vw,90rem)]'
 const emptyEntries: FileEntry[] = []
+
+function hasTrackedUploadFailure(taskID?: string | null) {
+	return uploadStore.state.tasks.some(task => task.status === 'failed' && (!taskID || task.id === taskID))
+}
 
 interface FileEditorDialogProps {
 	entry: FileEntry
@@ -280,7 +284,9 @@ export function UploadDialog({
 				return
 			}
 			const taskID = createUploadTaskID(file.relativePath)
+			uploadActions.clearCompleted()
 			setActiveTaskID(taskID)
+			setOpen(false)
 			mutation.mutate({
 				currentPath: targetPath,
 				file: file.file,
@@ -290,15 +296,21 @@ export function UploadDialog({
 				viewerSessionID: viewerSessionID ?? undefined,
 			}, {
 				onSuccess: () => {
-					toast.success(t('files.uploaded'))
 					resetDialogState()
 					setOpen(false)
 				},
-				onError: error => toast.error(error instanceof Error ? error.message : t('errors.generic')),
+				onError: (error) => {
+					if (!hasTrackedUploadFailure(taskID)) {
+						toast.error(error instanceof Error ? error.message : t('errors.generic'))
+					}
+					setOpen(true)
+				},
 			})
 			return
 		}
+		uploadActions.clearCompleted()
 		setActiveTaskID(null)
+		setOpen(false)
 		batchMutation.mutate({
 			currentPath: targetPath,
 			files,
@@ -310,20 +322,24 @@ export function UploadDialog({
 					const failedResults = result.results.filter(uploadResult => uploadResult.status === 'failed')
 					setFailedUploads(failedResults)
 					setFiles(currentFiles => currentFiles.filter(file => failedResults.some(uploadResult => uploadResult.fileName === file.relativePath)))
-					toast.error(t('files.uploadedPartial', { failed: result.failed, succeeded: result.succeeded }))
+					setOpen(true)
 					return
 				}
-				toast.success(files.length > 1 ? t('files.uploadedMultiple', { count: result.succeeded }) : t('files.uploaded'))
 				resetDialogState()
 				setOpen(false)
 			},
-			onError: error => toast.error(error instanceof Error ? error.message : t('errors.generic')),
+			onError: (error) => {
+				if (!hasTrackedUploadFailure()) {
+					toast.error(error instanceof Error ? error.message : t('errors.generic'))
+				}
+				setOpen(true)
+			},
 		})
 	}, [batchMutation, files, mutation, podSessionID, resetDialogState, t, targetPath, viewerSessionID])
 
 	return (
 		<>
-			<Button disabled={disabled} onClick={openUploadDialog} size="sm">
+			<Button disabled={disabled || isUploading} onClick={openUploadDialog} size="sm">
 				<Upload data-icon="inline-start" />
 				{t('files.upload')}
 			</Button>
@@ -344,14 +360,6 @@ export function UploadDialog({
 						<DialogTitle>{t('files.upload')}</DialogTitle>
 						<DialogDescription>{t('files.uploadTargetDescription')}</DialogDescription>
 					</DialogHeader>
-					{isUploading
-						? (
-								<ModalStatus
-									description={t('files.uploadingDescription')}
-									title={t('files.uploadingTitle')}
-								/>
-							)
-						: null}
 					<input
 						className="hidden"
 						disabled={isUploading}
