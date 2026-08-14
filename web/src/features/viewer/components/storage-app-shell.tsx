@@ -441,7 +441,6 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 								<FileManagerView
 									api={api}
 									currentPath={currentPath}
-									onBackToVolumes={() => viewerUIStore.actions.setView('volumes')}
 									onManualClose={handleManualClose}
 									onPathChange={(path) => {
 										if (path !== trashRootPath) {

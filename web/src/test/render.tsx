@@ -6,6 +6,7 @@ import { I18nextProvider } from 'react-i18next'
 
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { UploadProgressToast } from '@/features/file-manager/components/upload-progress-toast'
 import { createI18nInstance } from '@/i18n'
 
 function createTestQueryClient() {
@@ -37,6 +38,7 @@ export function renderWithProviders(
 			<QueryClientProvider client={queryClient}>
 				<I18nextProvider i18n={i18n}>
 					<TooltipProvider>{children}</TooltipProvider>
+					<UploadProgressToast />
 					<Toaster />
 				</I18nextProvider>
 			</QueryClientProvider>
@@ -60,6 +62,7 @@ export function renderHookWithProviders<Result, Props>(
 			<QueryClientProvider client={queryClient}>
 				<I18nextProvider i18n={i18n}>
 					<TooltipProvider>{children}</TooltipProvider>
+					<UploadProgressToast />
 					<Toaster />
 				</I18nextProvider>
 			</QueryClientProvider>

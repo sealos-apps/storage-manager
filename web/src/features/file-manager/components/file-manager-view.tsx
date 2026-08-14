@@ -33,7 +33,6 @@ import { fileListQueryOptions } from '@/features/file-manager/api/file-manager-q
 import { CreateFolderDialog, FileEditorDialog, UploadDialog } from '@/features/file-manager/components/file-dialogs'
 import { FileActions, FileNameCell, ModifiedTimeCell, SortableHead } from '@/features/file-manager/components/file-table-cells'
 import { FileListErrorState, SessionStatusPopover } from '@/features/file-manager/components/session-status-popover'
-import { UploadTaskList } from '@/features/file-manager/components/upload-task-list'
 import { hasPendingBranches } from '@/features/file-manager/utils/file-manager-format'
 import { tableColumnClassName } from '@/features/file-manager/utils/file-table'
 import {
@@ -50,7 +49,6 @@ import { formatQuantity, quantityPercent } from '@/features/viewer/utils/storage
 interface FileManagerViewProps {
 	api?: ViewerAPI
 	currentPath: string
-	onBackToVolumes: () => void
 	onManualClose?: (kind: ManualCloseKind) => void
 	onPathChange: (path: string) => void
 	onRefreshSession: () => void
@@ -99,7 +97,6 @@ function createBranchTreeState(scope: string): BranchTreeState {
 export function FileManagerView({
 	api = viewerApi,
 	currentPath,
-	onBackToVolumes,
 	onManualClose,
 	onPathChange,
 	onRefreshSession,
@@ -309,10 +306,6 @@ export function FileManagerView({
 				</div>
 				<div className="flex flex-wrap items-center gap-3">
 					{canShowFileList ? <StorageUsageSummary pvc={pvc} /> : null}
-					<Button onClick={onBackToVolumes} size="sm" variant="outline">
-						<ArrowLeft data-icon="inline-start" />
-						{t('files.backToVolumes')}
-					</Button>
 					{canShowFileList
 						? (
 								<>
@@ -472,7 +465,6 @@ export function FileManagerView({
 						</>
 					)}
 
-			<UploadTaskList />
 			{session && editingEntry
 				? (
 						<FileEditorDialog
@@ -509,11 +501,7 @@ function StorageUsageSummary({ pvc }: StorageUsageSummaryProps) {
 	}
 
 	if (stats.status !== 'ready') {
-		return (
-			<div className="rounded-lg border bg-card px-3 py-2 text-xs text-muted-foreground">
-				<span className="font-medium text-amber-700">{t('volumes.usageMismatch')}</span>
-			</div>
-		)
+		return null
 	}
 
 	return (

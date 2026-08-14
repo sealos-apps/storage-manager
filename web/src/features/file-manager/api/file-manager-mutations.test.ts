@@ -10,6 +10,7 @@ import {
 	saveFileTextMutationOptions,
 	shouldReportUploadProgress,
 	uploadFileMutationOptions,
+	uploadFilesMutationOptions,
 } from '@/features/file-manager/api/file-manager-mutations'
 import { fileManagerKeys } from '@/features/file-manager/api/file-manager-query-keys'
 import { uploadActions, uploadStore } from '@/features/file-manager/stores/upload-store'
@@ -205,6 +206,127 @@ describe('file manager mutation options', () => {
 
 		expect(result?.taskID).toBe('task-dialog-1')
 		expect(uploadStore.state.tasks[0]?.id).toBe('task-dialog-1')
+	})
+
+	it('uploads folder files sequentially, creates nested directories, and tolerates existing directories', async () => {
+		uploadActions.reset()
+		const queryClient = new QueryClient()
+		const calls: string[] = []
+		const createFolder = vi.fn(async (path: string) => {
+			calls.push(`mkdir:${path}`)
+			if (path === '/docs/assets') {
+				throw fileBrowserError(409)
+			}
+		})
+		const uploadFile = vi.fn(async (path: string, file: File) => {
+			calls.push(`upload:${path}/${file.name}`)
+		})
+		const session = createSession({ createFolder, uploadFile })
+		const options = uploadFilesMutationOptions(queryClient, session)
+		const result = await options.mutationFn?.({
+			currentPath: '/docs',
+			files: [
+				{ file: new File(['a'], 'one.txt'), relativePath: 'assets/one.txt' },
+				{ file: new File(['b'], 'two.txt'), relativePath: 'assets/nested/two.txt' },
+			],
+		}, mutationContext)
+
+		expect(result).toMatchObject({
+			createdDirectoryPaths: ['/docs/assets', '/docs/assets/nested'],
+			failed: 0,
+			succeeded: 2,
+			uploadedPaths: ['/docs/assets/one.txt', '/docs/assets/nested/two.txt'],
+		})
+		expect(createFolder.mock.calls.map(([path]) => path)).toEqual([
+			'/docs/assets',
+			'/docs/assets/nested',
+		])
+		expect(uploadFile.mock.calls.map(([path, file]) => `${path}/${(file as File).name}`)).toEqual([
+			'/docs/assets/one.txt',
+			'/docs/assets/nested/two.txt',
+		])
+		expect(calls).toEqual([
+			'mkdir:/docs/assets',
+			'upload:/docs/assets/one.txt',
+			'mkdir:/docs/assets/nested',
+			'upload:/docs/assets/nested/two.txt',
+		])
+		expect(uploadStore.state.tasks).toHaveLength(2)
+		expect(uploadStore.state.tasks).toEqual(expect.arrayContaining([
+			expect.objectContaining({ batchTotal: 2, fileName: 'assets/one.txt', status: 'success', targetPath: '/docs/assets' }),
+			expect.objectContaining({ batchTotal: 2, fileName: 'assets/nested/two.txt', status: 'success', targetPath: '/docs/assets/nested' }),
+		]))
+		expect(new Set(uploadStore.state.tasks.map(task => task.batchID)).size).toBe(1)
+	})
+
+	it('keeps failed files isolated so later files continue uploading', async () => {
+		uploadActions.reset()
+		const queryClient = new QueryClient()
+		const uploadFile = vi.fn(async (_path: string, file: File) => {
+			if (file.name === 'bad.txt') {
+				throw new Error('network down')
+			}
+		})
+		const session = createSession({ uploadFile })
+		const options = uploadFilesMutationOptions(queryClient, session)
+		const result = await options.mutationFn?.({
+			currentPath: '/',
+			files: [
+				{ file: new File(['bad'], 'bad.txt') },
+				{ file: new File(['good'], 'good.txt') },
+			],
+		}, mutationContext)
+
+		expect(result).toMatchObject({ failed: 1, succeeded: 1, uploadedPaths: ['/good.txt'] })
+		expect(uploadFile).toHaveBeenCalledTimes(2)
+		expect(uploadStore.state.tasks).toEqual(expect.arrayContaining([
+			expect.objectContaining({ fileName: 'bad.txt', status: 'failed', errorMessage: 'network down' }),
+			expect.objectContaining({ fileName: 'good.txt', status: 'success' }),
+		]))
+	})
+
+	it('invalidates created directories when every file upload fails', async () => {
+		uploadActions.reset()
+		const queryClient = new QueryClient()
+		const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+		const createFolder = vi.fn().mockResolvedValue(undefined)
+		const uploadFile = vi.fn().mockRejectedValue(new Error('network down'))
+		const session = createSession({ createFolder, uploadFile })
+		const options = uploadFilesMutationOptions(queryClient, session)
+		const input = {
+			currentPath: '/docs',
+			files: [{ file: new File(['bad'], 'bad.txt'), relativePath: 'assets/bad.txt' }],
+		}
+		const result = await options.mutationFn?.(input, mutationContext)
+		await options.onSuccess?.(result!, input, undefined, mutationContext)
+
+		expect(result).toMatchObject({
+			createdDirectoryPaths: ['/docs/assets'],
+			failed: 1,
+			succeeded: 0,
+		})
+		expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({
+			queryKey: fileManagerKeys.fileLists('pvc-1'),
+		}))
+	})
+
+	it('rejects traversal paths without touching the client', async () => {
+		uploadActions.reset()
+		const queryClient = new QueryClient()
+		const createFolder = vi.fn().mockResolvedValue(undefined)
+		const uploadFile = vi.fn().mockResolvedValue(undefined)
+		const session = createSession({ createFolder, uploadFile })
+		const options = uploadFilesMutationOptions(queryClient, session)
+		const result = await options.mutationFn?.({
+			currentPath: '/docs',
+			files: [{ file: new File(['x'], 'x.txt'), relativePath: '../x.txt' }],
+		}, mutationContext)
+
+		expect(result?.failed).toBe(1)
+		expect(result?.succeeded).toBe(0)
+		expect(createFolder).not.toHaveBeenCalled()
+		expect(uploadFile).not.toHaveBeenCalled()
+		expect(uploadStore.state.tasks[0]).toMatchObject({ status: 'failed', errorMessage: 'Upload paths cannot contain parent-directory segments' })
 	})
 
 	it('throttles high-frequency upload progress within the same chunk', () => {

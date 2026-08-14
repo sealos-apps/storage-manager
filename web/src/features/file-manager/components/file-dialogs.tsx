@@ -1,3 +1,4 @@
+import type { UploadFileResult } from '@/features/file-manager/api/file-manager-mutations'
 import type { FileBrowserSession, FileEntry } from '@/features/file-manager/types/file-manager'
 
 import { parentPath } from '@sealos-storage-manager/filebrowser-client'
@@ -24,9 +25,10 @@ import {
 	createUploadTaskID,
 	saveFileTextMutationOptions,
 	uploadFileMutationOptions,
+	uploadFilesMutationOptions,
 } from '@/features/file-manager/api/file-manager-mutations'
 import { fileListQueryOptions, fileTextQueryOptions } from '@/features/file-manager/api/file-manager-query-options'
-import { useUploadTask } from '@/features/file-manager/stores/upload-store'
+import { uploadActions, uploadStore, useUploadTask } from '@/features/file-manager/stores/upload-store'
 import { editorLanguage } from '@/features/file-manager/utils/file-manager-format'
 import { formatBytes } from '@/features/viewer/utils/format-capacity'
 import { cn } from '@/utils/cn'
@@ -34,6 +36,10 @@ import { cn } from '@/utils/cn'
 const MonacoEditor = lazy(() => import('@/components/monaco-editor'))
 const largeEditorDialogClassName = 'h-[88vh] max-h-[88vh] w-[min(96vw,90rem)] sm:max-w-[min(96vw,90rem)]'
 const emptyEntries: FileEntry[] = []
+
+function hasTrackedUploadFailure(taskID?: string | null) {
+	return uploadStore.state.tasks.some(task => task.status === 'failed' && (!taskID || task.id === taskID))
+}
 
 interface FileEditorDialogProps {
 	entry: FileEntry
@@ -143,6 +149,11 @@ interface DialogWithSessionProps {
 	viewerSessionID?: string | null
 }
 
+interface SelectedUploadFile {
+	file: File
+	relativePath: string
+}
+
 export function CreateFolderDialog({ currentPath, disabled, session }: DialogWithSessionProps) {
 	const { t } = useTranslation()
 	const queryClient = useQueryClient()
@@ -211,13 +222,16 @@ export function UploadDialog({
 	const { t } = useTranslation()
 	const queryClient = useQueryClient()
 	const [open, setOpen] = useState(false)
-	const [file, setFile] = useState<File | null>(null)
+	const [files, setFiles] = useState<SelectedUploadFile[]>([])
+	const [failedUploads, setFailedUploads] = useState<UploadFileResult[]>([])
 	const [targetPath, setTargetPath] = useState(currentPath)
 	const [activeTaskID, setActiveTaskID] = useState<string | null>(null)
 	const inputRef = useRef<HTMLInputElement | null>(null)
+	const folderInputRef = useRef<HTMLInputElement | null>(null)
 	const mutation = useMutation(uploadFileMutationOptions(queryClient, session))
+	const batchMutation = useMutation(uploadFilesMutationOptions(queryClient, session))
 	const activeTask = useUploadTask(activeTaskID)
-	const isUploading = mutation.isPending
+	const isUploading = mutation.isPending || batchMutation.isPending
 	const uploadProgress = activeTask && activeTask.bytesTotal > 0
 		? Math.round((activeTask.bytesUploaded / activeTask.bytesTotal) * 100)
 		: 0
@@ -227,13 +241,18 @@ export function UploadDialog({
 				total: activeTask.chunkTotal,
 			})
 		: t('files.uploadPreparing')
+	const failedUploadErrors = new Map(failedUploads.map(result => [result.fileName, result.errorMessage || t('errors.generic')]))
 
 	const resetDialogState = useCallback(() => {
-		setFile(null)
+		setFiles([])
+		setFailedUploads([])
 		setTargetPath(currentPath)
 		setActiveTaskID(null)
 		if (inputRef.current) {
 			inputRef.current.value = ''
+		}
+		if (folderInputRef.current) {
+			folderInputRef.current.value = ''
 		}
 	}, [currentPath])
 
@@ -242,31 +261,85 @@ export function UploadDialog({
 		setOpen(true)
 	}, [resetDialogState])
 
-	const uploadFile = useCallback(() => {
-		if (!file) {
+	const selectFiles = useCallback((selectedFiles: FileList | null) => {
+		if (!selectedFiles) {
 			return
 		}
-		const taskID = createUploadTaskID(file.name)
-		setActiveTaskID(taskID)
-		mutation.mutate({
-			currentPath: targetPath,
+		const nextFiles = Array.from(selectedFiles).map(file => ({
 			file,
+			relativePath: (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name,
+		}))
+		setFiles(nextFiles)
+		setFailedUploads([])
+	}, [])
+
+	const uploadFiles = useCallback(() => {
+		if (files.length === 0) {
+			return
+		}
+		const isBatch = files.length > 1 || files.some(file => file.relativePath.includes('/'))
+		if (!isBatch) {
+			const file = files[0]
+			if (!file) {
+				return
+			}
+			const taskID = createUploadTaskID(file.relativePath)
+			uploadActions.clearCompleted()
+			setActiveTaskID(taskID)
+			setOpen(false)
+			mutation.mutate({
+				currentPath: targetPath,
+				file: file.file,
+				podSessionID: podSessionID ?? undefined,
+				relativePath: file.relativePath,
+				taskID,
+				viewerSessionID: viewerSessionID ?? undefined,
+			}, {
+				onSuccess: () => {
+					resetDialogState()
+					setOpen(false)
+				},
+				onError: (error) => {
+					if (!hasTrackedUploadFailure(taskID)) {
+						toast.error(error instanceof Error ? error.message : t('errors.generic'))
+					}
+					setOpen(true)
+				},
+			})
+			return
+		}
+		uploadActions.clearCompleted()
+		setActiveTaskID(null)
+		setOpen(false)
+		batchMutation.mutate({
+			currentPath: targetPath,
+			files,
 			podSessionID: podSessionID ?? undefined,
-			taskID,
 			viewerSessionID: viewerSessionID ?? undefined,
 		}, {
-			onSuccess: () => {
-				toast.success(t('files.uploaded'))
+			onSuccess: (result) => {
+				if (result.failed > 0) {
+					const failedResults = result.results.filter(uploadResult => uploadResult.status === 'failed')
+					setFailedUploads(failedResults)
+					setFiles(currentFiles => currentFiles.filter(file => failedResults.some(uploadResult => uploadResult.fileName === file.relativePath)))
+					setOpen(true)
+					return
+				}
 				resetDialogState()
 				setOpen(false)
 			},
-			onError: error => toast.error(error instanceof Error ? error.message : t('errors.generic')),
+			onError: (error) => {
+				if (!hasTrackedUploadFailure()) {
+					toast.error(error instanceof Error ? error.message : t('errors.generic'))
+				}
+				setOpen(true)
+			},
 		})
-	}, [file, mutation, podSessionID, resetDialogState, t, targetPath, viewerSessionID])
+	}, [batchMutation, files, mutation, podSessionID, resetDialogState, t, targetPath, viewerSessionID])
 
 	return (
 		<>
-			<Button disabled={disabled} onClick={openUploadDialog} size="sm">
+			<Button disabled={disabled || isUploading} onClick={openUploadDialog} size="sm">
 				<Upload data-icon="inline-start" />
 				{t('files.upload')}
 			</Button>
@@ -287,19 +360,25 @@ export function UploadDialog({
 						<DialogTitle>{t('files.upload')}</DialogTitle>
 						<DialogDescription>{t('files.uploadTargetDescription')}</DialogDescription>
 					</DialogHeader>
-					{isUploading
-						? (
-								<ModalStatus
-									description={t('files.uploadingDescription')}
-									title={t('files.uploadingTitle')}
-								/>
-							)
-						: null}
 					<input
 						className="hidden"
 						disabled={isUploading}
-						onChange={event => setFile(event.target.files?.[0] ?? null)}
+						multiple
+						onChange={event => selectFiles(event.target.files)}
 						ref={inputRef}
+						type="file"
+					/>
+					<input
+						className="hidden"
+						disabled={isUploading}
+						multiple
+						onChange={event => selectFiles(event.target.files)}
+						ref={(node) => {
+							folderInputRef.current = node
+							if (node) {
+								node.setAttribute('webkitdirectory', '')
+							}
+						}}
 						type="file"
 					/>
 					<div className="grid gap-3">
@@ -309,15 +388,30 @@ export function UploadDialog({
 							session={session}
 							targetPath={targetPath}
 						/>
-						<Button disabled={isUploading} onClick={() => inputRef.current?.click()} type="button" variant="outline">
-							{t('files.chooseFile')}
-						</Button>
-						{file
+						<div className="flex flex-wrap gap-2">
+							<Button disabled={isUploading} onClick={() => inputRef.current?.click()} type="button" variant="outline">
+								{t('files.chooseFile')}
+							</Button>
+							<Button disabled={isUploading} onClick={() => folderInputRef.current?.click()} type="button" variant="outline">
+								{t('files.chooseFolder')}
+							</Button>
+						</div>
+						{files.length > 0
 							? (
 									<div className="grid gap-2 rounded-md border bg-muted px-3 py-2 text-sm">
-										<div>
-											{file.name}
-											<span className="ml-2 text-muted-foreground">{formatBytes(file.size)}</span>
+										<div className="font-medium">{t('files.selectedFiles', { count: files.length })}</div>
+										<div className="max-h-32 space-y-1 overflow-auto text-xs text-muted-foreground">
+											{files.map(({ file, relativePath }) => (
+												<div className="grid gap-1" key={`${relativePath}-${file.lastModified}-${file.size}`}>
+													<div className="flex justify-between gap-3">
+														<span className="min-w-0 truncate">{relativePath}</span>
+														<span className="shrink-0">{formatBytes(file.size)}</span>
+													</div>
+													{failedUploadErrors.has(relativePath)
+														? <div className="text-destructive">{failedUploadErrors.get(relativePath)}</div>
+														: null}
+												</div>
+											))}
 										</div>
 										{isUploading || activeTask?.status === 'failed'
 											? (
@@ -331,7 +425,7 @@ export function UploadDialog({
 															<span>
 																{formatBytes(activeTask?.bytesUploaded ?? 0)}
 																{' / '}
-																{formatBytes(activeTask?.bytesTotal ?? file.size)}
+																{formatBytes(activeTask?.bytesTotal ?? files.at(0)?.file.size ?? 0)}
 															</span>
 														</div>
 														{activeTask?.errorMessage
@@ -348,7 +442,7 @@ export function UploadDialog({
 						<Button disabled={isUploading} onClick={() => setOpen(false)} variant="outline">
 							{t('actions.cancel')}
 						</Button>
-						<Button disabled={!file || isUploading} onClick={uploadFile}>
+						<Button disabled={files.length === 0 || isUploading} onClick={uploadFiles}>
 							{t('files.upload')}
 						</Button>
 					</DialogFooter>

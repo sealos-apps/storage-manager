@@ -101,7 +101,6 @@ export function renderFileManager(
 		<FileManagerView
 			api={options.api}
 			currentPath={options.currentPath ?? '/'}
-			onBackToVolumes={vi.fn()}
 			onManualClose={options.onManualClose}
 			onPathChange={options.onPathChange ?? vi.fn()}
 			onRefreshSession={options.onRefreshSession ?? vi.fn()}

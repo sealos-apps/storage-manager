@@ -4,6 +4,8 @@ import { createStore } from '@tanstack/store'
 export type UploadTaskStatus = 'queued' | 'uploading' | 'success' | 'failed' | 'aborted'
 
 export interface UploadTask {
+	batchID?: string
+	batchTotal?: number
 	bytesTotal: number
 	bytesUploaded: number
 	chunkIndex?: number
@@ -21,6 +23,14 @@ export interface UploadTask {
 
 export interface UploadState {
 	tasks: UploadTask[]
+}
+
+export interface UploadBatchSummary {
+	batchID: string
+	failed: number
+	isComplete: boolean
+	total: number
+	uploaded: number
 }
 
 export const uploadStore = createStore<UploadState>({ tasks: [] })
@@ -60,6 +70,33 @@ export function hasActiveUploadsForSession(input: {
 	viewerSessionID?: string | null
 }) {
 	return uploadStore.state.tasks.some(task => isActiveSessionUpload(task, input))
+}
+
+export function summarizeUploadBatches(tasks: UploadTask[]): UploadBatchSummary[] {
+	const groupedTasks = new Map<string, UploadTask[]>()
+	for (const task of tasks) {
+		const batchID = task.batchID ?? `task:${task.id}`
+		const batchTasks = groupedTasks.get(batchID) ?? []
+		batchTasks.push(task)
+		groupedTasks.set(batchID, batchTasks)
+	}
+
+	return [...groupedTasks].map(([batchID, batchTasks]) => {
+		const uploaded = batchTasks.filter(task => task.status === 'success').length
+		const failed = batchTasks.filter(task => task.status === 'failed' || task.status === 'aborted').length
+		const total = Math.max(
+			batchTasks.length,
+			...batchTasks.map(task => task.batchTotal ?? 0),
+		)
+
+		return {
+			batchID,
+			failed,
+			isComplete: uploaded + failed >= total,
+			total,
+			uploaded,
+		}
+	})
 }
 
 export function useUploadTasks() {

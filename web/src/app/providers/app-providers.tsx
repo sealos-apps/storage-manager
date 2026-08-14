@@ -7,6 +7,7 @@ import { I18nProvider } from '@/app/providers/i18n-provider'
 import { TanStackDevtoolsPanel } from '@/app/providers/tanstack-devtools-panel'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { UploadProgressToast } from '@/features/file-manager/components/upload-progress-toast'
 import { queryClient } from '@/services/query-client'
 
 interface AppProvidersProps {
@@ -20,6 +21,7 @@ export function AppProviders({ children }: AppProvidersProps) {
 				<TooltipProvider>
 					<AuthBootstrap>{children}</AuthBootstrap>
 				</TooltipProvider>
+				<UploadProgressToast />
 			</I18nProvider>
 			<Toaster richColors />
 			<ReactQueryDevtools buttonPosition="bottom-left" initialIsOpen={false} />
