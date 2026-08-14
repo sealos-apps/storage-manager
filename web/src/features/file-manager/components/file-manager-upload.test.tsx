@@ -141,6 +141,47 @@ describe('fileManagerUpload', () => {
 		expect(uploadFile).toHaveBeenNthCalledWith(2, '/', expect.objectContaining({ name: 'two.txt' }), expect.any(Object))
 	})
 
+	it('keeps only failed files for retry and shows each failure reason', async () => {
+		const user = userEvent.setup()
+		const calls: string[] = []
+		let badAttempts = 0
+		const uploadFile = vi.fn(async (_path: string, file: File) => {
+			calls.push(file.name)
+			if (file.name === 'bad.txt' && badAttempts++ === 0) {
+				throw new Error('network down')
+			}
+		})
+		const session = sessionWithClient({
+			list: vi.fn(async () => resource('/', '', true, [])),
+			uploadFile,
+		})
+
+		renderFileManager(session)
+
+		await screen.findByText(/current directory is empty/i)
+		await user.click(screen.getByRole('button', { name: /upload file/i }))
+		const input = document.querySelector('input[type="file"]') as HTMLInputElement
+		await user.upload(input, [
+			new File(['good'], 'good.txt'),
+			new File(['bad'], 'bad.txt'),
+		])
+
+		let dialog = screen.getByRole('dialog')
+		await user.click(within(dialog).getByRole('button', { name: /upload file/i }))
+
+		await waitFor(() => expect(uploadFile).toHaveBeenCalledTimes(2))
+		dialog = screen.getByRole('dialog')
+		expect(within(dialog).getByText(/1 file\(s\) selected/i)).toBeInTheDocument()
+		expect(within(dialog).getByText('bad.txt')).toBeInTheDocument()
+		expect(within(dialog).queryByText('good.txt')).not.toBeInTheDocument()
+		expect(within(dialog).getByText('network down')).toBeInTheDocument()
+
+		await user.click(within(dialog).getByRole('button', { name: /upload file/i }))
+		await waitFor(() => expect(uploadFile).toHaveBeenCalledTimes(3))
+		expect(calls).toEqual(['good.txt', 'bad.txt', 'bad.txt'])
+		await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+	})
+
 	it('keeps relative paths when selecting a folder', async () => {
 		const user = userEvent.setup()
 		const uploadFile = vi.fn(async () => undefined)

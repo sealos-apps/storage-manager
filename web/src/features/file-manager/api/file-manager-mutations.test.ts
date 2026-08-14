@@ -231,7 +231,12 @@ describe('file manager mutation options', () => {
 			],
 		}, mutationContext)
 
-		expect(result).toMatchObject({ failed: 0, succeeded: 2, uploadedPaths: ['/docs/assets/one.txt', '/docs/assets/nested/two.txt'] })
+		expect(result).toMatchObject({
+			createdDirectoryPaths: ['/docs/assets', '/docs/assets/nested'],
+			failed: 0,
+			succeeded: 2,
+			uploadedPaths: ['/docs/assets/one.txt', '/docs/assets/nested/two.txt'],
+		})
 		expect(createFolder.mock.calls.map(([path]) => path)).toEqual([
 			'/docs/assets',
 			'/docs/assets/nested',
@@ -277,6 +282,31 @@ describe('file manager mutation options', () => {
 			expect.objectContaining({ fileName: 'bad.txt', status: 'failed', errorMessage: 'network down' }),
 			expect.objectContaining({ fileName: 'good.txt', status: 'success' }),
 		]))
+	})
+
+	it('invalidates created directories when every file upload fails', async () => {
+		uploadActions.reset()
+		const queryClient = new QueryClient()
+		const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+		const createFolder = vi.fn().mockResolvedValue(undefined)
+		const uploadFile = vi.fn().mockRejectedValue(new Error('network down'))
+		const session = createSession({ createFolder, uploadFile })
+		const options = uploadFilesMutationOptions(queryClient, session)
+		const input = {
+			currentPath: '/docs',
+			files: [{ file: new File(['bad'], 'bad.txt'), relativePath: 'assets/bad.txt' }],
+		}
+		const result = await options.mutationFn?.(input, mutationContext)
+		await options.onSuccess?.(result!, input, undefined, mutationContext)
+
+		expect(result).toMatchObject({
+			createdDirectoryPaths: ['/docs/assets'],
+			failed: 1,
+			succeeded: 0,
+		})
+		expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({
+			queryKey: fileManagerKeys.fileLists('pvc-1'),
+		}))
 	})
 
 	it('rejects traversal paths without touching the client', async () => {

@@ -35,12 +35,14 @@ export interface UploadFilesInput {
 
 export interface UploadFileResult {
 	errorMessage?: string
+	fileName: string
 	path: string
 	status: 'failed' | 'success'
 	taskID: string
 }
 
 export interface UploadFilesResult {
+	createdDirectoryPaths: string[]
 	failed: number
 	results: UploadFileResult[]
 	succeeded: number
@@ -150,7 +152,7 @@ async function uploadOne(
 		if (throwOnError) {
 			throw error
 		}
-		return { errorMessage, path: joinPath(input.currentPath, input.file.name), status: 'failed', taskID: id }
+		return { errorMessage, fileName: input.relativePath || input.file.name, path: joinPath(input.currentPath, input.file.name), status: 'failed', taskID: id }
 	}
 	const id = input.taskID ?? createUploadTaskID(resolved.fileName)
 	const chunkSizeBytes = env.fileUploadTusChunkBytes
@@ -224,7 +226,7 @@ async function uploadOne(
 			chunkIndex: chunkTotal,
 			status: 'success',
 		})
-		return { path: resolved.path, status: 'success', taskID: id }
+		return { fileName: input.relativePath || input.file.name, path: resolved.path, status: 'success', taskID: id }
 	}
 	catch (error) {
 		const errorMessage = error instanceof Error ? error.message : 'Upload failed'
@@ -235,7 +237,7 @@ async function uploadOne(
 		if (throwOnError) {
 			throw error
 		}
-		return { errorMessage, path: resolved.path, status: 'failed', taskID: id }
+		return { errorMessage, fileName: input.relativePath || input.file.name, path: resolved.path, status: 'failed', taskID: id }
 	}
 }
 
@@ -303,7 +305,7 @@ export function uploadFilesMutationOptions(
 						viewerSessionID: input.viewerSessionID,
 						errorMessage,
 					})
-					results.push({ errorMessage, path: resolved?.path ?? joinPath(input.currentPath, batchFile.file.name), status: 'failed', taskID: id })
+					results.push({ errorMessage, fileName: batchFile.relativePath || batchFile.file.name, path: resolved?.path ?? joinPath(input.currentPath, batchFile.file.name), status: 'failed', taskID: id })
 					continue
 				}
 				results.push(await uploadOne({
@@ -316,15 +318,17 @@ export function uploadFilesMutationOptions(
 			}
 			const uploadedPaths = results.filter(result => result.status === 'success').map(result => result.path)
 			return {
+				createdDirectoryPaths: [...createdDirectories],
 				failed: results.filter(result => result.status === 'failed').length,
 				results,
 				succeeded: uploadedPaths.length,
 				uploadedPaths,
 			}
 		},
-		onSuccess: ({ uploadedPaths }) => {
-			if (session && uploadedPaths.length > 0) {
-				invalidateFileManagerAfterMutation(queryClient, session, uploadedPaths)
+		onSuccess: ({ createdDirectoryPaths, uploadedPaths }) => {
+			const affectedPaths = [...new Set([...createdDirectoryPaths, ...uploadedPaths])]
+			if (session && affectedPaths.length > 0) {
+				invalidateFileManagerAfterMutation(queryClient, session, affectedPaths)
 			}
 		},
 	})

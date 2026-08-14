@@ -1,3 +1,4 @@
+import type { UploadFileResult } from '@/features/file-manager/api/file-manager-mutations'
 import type { FileBrowserSession, FileEntry } from '@/features/file-manager/types/file-manager'
 
 import { parentPath } from '@sealos-storage-manager/filebrowser-client'
@@ -218,6 +219,7 @@ export function UploadDialog({
 	const queryClient = useQueryClient()
 	const [open, setOpen] = useState(false)
 	const [files, setFiles] = useState<SelectedUploadFile[]>([])
+	const [failedUploads, setFailedUploads] = useState<UploadFileResult[]>([])
 	const [targetPath, setTargetPath] = useState(currentPath)
 	const [activeTaskID, setActiveTaskID] = useState<string | null>(null)
 	const inputRef = useRef<HTMLInputElement | null>(null)
@@ -235,9 +237,11 @@ export function UploadDialog({
 				total: activeTask.chunkTotal,
 			})
 		: t('files.uploadPreparing')
+	const failedUploadErrors = new Map(failedUploads.map(result => [result.fileName, result.errorMessage || t('errors.generic')]))
 
 	const resetDialogState = useCallback(() => {
 		setFiles([])
+		setFailedUploads([])
 		setTargetPath(currentPath)
 		setActiveTaskID(null)
 		if (inputRef.current) {
@@ -262,6 +266,7 @@ export function UploadDialog({
 			relativePath: (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name,
 		}))
 		setFiles(nextFiles)
+		setFailedUploads([])
 	}, [])
 
 	const uploadFiles = useCallback(() => {
@@ -302,6 +307,9 @@ export function UploadDialog({
 		}, {
 			onSuccess: (result) => {
 				if (result.failed > 0) {
+					const failedResults = result.results.filter(uploadResult => uploadResult.status === 'failed')
+					setFailedUploads(failedResults)
+					setFiles(currentFiles => currentFiles.filter(file => failedResults.some(uploadResult => uploadResult.fileName === file.relativePath)))
 					toast.error(t('files.uploadedPartial', { failed: result.failed, succeeded: result.succeeded }))
 					return
 				}
@@ -386,9 +394,14 @@ export function UploadDialog({
 										<div className="font-medium">{t('files.selectedFiles', { count: files.length })}</div>
 										<div className="max-h-32 space-y-1 overflow-auto text-xs text-muted-foreground">
 											{files.map(({ file, relativePath }) => (
-												<div className="flex justify-between gap-3" key={`${relativePath}-${file.lastModified}-${file.size}`}>
-													<span className="min-w-0 truncate">{relativePath}</span>
-													<span className="shrink-0">{formatBytes(file.size)}</span>
+												<div className="grid gap-1" key={`${relativePath}-${file.lastModified}-${file.size}`}>
+													<div className="flex justify-between gap-3">
+														<span className="min-w-0 truncate">{relativePath}</span>
+														<span className="shrink-0">{formatBytes(file.size)}</span>
+													</div>
+													{failedUploadErrors.has(relativePath)
+														? <div className="text-destructive">{failedUploadErrors.get(relativePath)}</div>
+														: null}
 												</div>
 											))}
 										</div>
