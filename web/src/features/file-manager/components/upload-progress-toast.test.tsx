@@ -32,6 +32,7 @@ describe('uploadProgressToast', () => {
 		uploadActions.updateTask('upload-1', { bytesUploaded: 8, status: 'success' })
 
 		expect(await screen.findByText('1 file(s) uploaded')).toBeInTheDocument()
+		expect(screen.queryByText('Clear completed')).not.toBeInTheDocument()
 		expect(screen.queryByText(/of 2/i)).not.toBeInTheDocument()
 	})
 

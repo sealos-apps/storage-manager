@@ -130,7 +130,6 @@ export const zh = {
 	files: {
 		browse: '浏览文件',
 		chooseFile: '选择文件',
-		clearCompleted: '清除已完成',
 		columns: {
 			actions: '操作',
 			modified: '修改时间',

@@ -130,7 +130,6 @@ export const en = {
 	files: {
 		browse: 'Browse files',
 		chooseFile: 'Choose file',
-		clearCompleted: 'Clear completed',
 		columns: {
 			actions: 'Actions',
 			modified: 'Modified time',

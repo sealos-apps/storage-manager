@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { summarizeUploadBatches, uploadActions, useUploadTasks } from '@/features/file-manager/stores/upload-store'
+import { summarizeUploadBatches, useUploadTasks } from '@/features/file-manager/stores/upload-store'
 
 function toastID(batchID: string) {
 	return `upload-progress:${batchID}`
@@ -43,18 +43,11 @@ export function UploadProgressToast() {
 				}
 				settledBatchIDsRef.current.add(summary.batchID)
 				lastMessagesRef.current.delete(summary.batchID)
-				const action = {
-					label: t('files.clearCompleted'),
-					onClick: () => {
-						uploadActions.clearCompleted()
-						toast.dismiss(id)
-					},
-				}
 				if (summary.failed > 0) {
-					toast.error(message, { action, duration: 8000, id })
+					toast.error(message, { duration: 8000, id })
 				}
 				else {
-					toast.success(message, { action, duration: 5000, id })
+					toast.success(message, { duration: 5000, id })
 				}
 				continue
 			}
