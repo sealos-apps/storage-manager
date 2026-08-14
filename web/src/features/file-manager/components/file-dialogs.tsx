@@ -177,7 +177,7 @@ export function CreateFolderDialog({ currentPath, disabled, session }: DialogWit
 
 	return (
 		<>
-			<Button disabled={disabled} onClick={() => setOpen(true)} size="sm" variant="outline">
+			<Button disabled={disabled} onClick={() => setOpen(true)} variant="outline">
 				<FolderPlus data-icon="inline-start" />
 				{t('files.newFolder')}
 			</Button>
@@ -339,7 +339,7 @@ export function UploadDialog({
 
 	return (
 		<>
-			<Button disabled={disabled || isUploading} onClick={openUploadDialog} size="sm">
+			<Button disabled={disabled || isUploading} onClick={openUploadDialog}>
 				<Upload data-icon="inline-start" />
 				{t('files.upload')}
 			</Button>

@@ -128,6 +128,7 @@ export const en = {
 		viewerUrl: 'Viewer URL',
 	},
 	files: {
+		backToVolumes: 'Back to volumes',
 		browse: 'Browse files',
 		chooseFile: 'Choose file',
 		columns: {
@@ -160,7 +161,6 @@ export const en = {
 		savingDescription: 'The editor is saving the current file. Keep this dialog open until it finishes.',
 		savingTitle: 'Saving file',
 		sessionStatus: 'Session status',
-		subtitle: 'Managing files in {{pvc}}',
 		title: 'File management',
 		toggleFolder: 'Toggle folder',
 		up: 'Up one level',

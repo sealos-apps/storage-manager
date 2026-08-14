@@ -66,6 +66,7 @@ export interface RenderFileManagerOptions {
 	api?: ComponentProps<typeof FileManagerView>['api']
 	currentPath?: string
 	onManualClose?: ComponentProps<typeof FileManagerView>['onManualClose']
+	onBackToVolumes?: ComponentProps<typeof FileManagerView>['onBackToVolumes']
 	onPathChange?: (path: string) => void
 	onRefreshSession?: () => void
 	onRefreshStorageData?: () => void
@@ -102,6 +103,7 @@ export function renderFileManager(
 			api={options.api}
 			currentPath={options.currentPath ?? '/'}
 			onManualClose={options.onManualClose}
+			onBackToVolumes={options.onBackToVolumes ?? vi.fn()}
 			onPathChange={options.onPathChange ?? vi.fn()}
 			onRefreshSession={options.onRefreshSession ?? vi.fn()}
 			onRefreshStorageData={options.onRefreshStorageData ?? vi.fn()}

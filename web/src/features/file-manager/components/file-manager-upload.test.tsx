@@ -51,6 +51,7 @@ describe('fileManagerUpload', () => {
 		renderWithProviders(
 			<FileManagerView
 				currentPath="/"
+				onBackToVolumes={vi.fn()}
 				onPathChange={vi.fn()}
 				onRefreshSession={vi.fn()}
 				onRefreshStorageData={vi.fn()}

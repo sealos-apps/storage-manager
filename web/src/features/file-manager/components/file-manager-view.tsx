@@ -50,6 +50,7 @@ interface FileManagerViewProps {
 	api?: ViewerAPI
 	currentPath: string
 	onManualClose?: (kind: ManualCloseKind) => void
+	onBackToVolumes: () => void
 	onPathChange: (path: string) => void
 	onRefreshSession: () => void
 	onRefreshStorageData: () => void
@@ -98,6 +99,7 @@ export function FileManagerView({
 	api = viewerApi,
 	currentPath,
 	onManualClose,
+	onBackToVolumes,
 	onPathChange,
 	onRefreshSession,
 	onRefreshStorageData,
@@ -297,30 +299,44 @@ export function FileManagerView({
 
 	return (
 		<section className="flex min-h-0 flex-1 flex-col gap-4">
-			<header className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-				<div className="min-w-0">
-					<h2 className="text-xl font-semibold">{t('files.title')}</h2>
-					<p className="text-sm text-muted-foreground">
-						{pvcName ? t('files.subtitle', { pvc: pvcName }) : t('files.noSelection')}
-					</p>
+			<header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+				<div className="flex min-w-0 items-start gap-2">
+					<Button
+						aria-label={t('files.backToVolumes')}
+						className="mt-0.5 shrink-0"
+						onClick={onBackToVolumes}
+						size="icon"
+						title={t('files.backToVolumes')}
+						variant="ghost"
+					>
+						<ArrowLeft />
+					</Button>
+					<div className="min-w-0">
+						<div className="flex min-w-0 items-center gap-1.5">
+							<h2 className="shrink-0 whitespace-nowrap text-xl font-semibold">{t('files.title')}</h2>
+							<SessionStatusPopover
+								api={api}
+								onManualClose={onManualClose}
+								onRefreshSession={onRefreshSession}
+								podSessionID={podSessionID ?? null}
+								session={viewerSession ?? null}
+								sessionCapability={sessionCapability}
+								viewerSessionID={viewerSessionID ?? null}
+							/>
+							{pvcName
+								? (
+										<span className="min-w-0 truncate text-sm text-muted-foreground" title={pvcName}>
+											{pvcName}
+										</span>
+									)
+								: null}
+						</div>
+					</div>
 				</div>
 				<div className="flex flex-wrap items-center gap-3">
-					{canShowFileList ? <StorageUsageSummary pvc={pvc} /> : null}
 					{canShowFileList
 						? (
 								<>
-									<CreateFolderDialog
-										currentPath={currentPath}
-										disabled={operationsDisabled}
-										session={session}
-									/>
-									<UploadDialog
-										currentPath={currentPath}
-										disabled={operationsDisabled}
-										podSessionID={podSessionID}
-										session={session}
-										viewerSessionID={viewerSessionID}
-									/>
 									<Button
 										aria-label={t('actions.refresh')}
 										disabled={!canUseFiles || operationsDisabled}
@@ -334,19 +350,21 @@ export function FileManagerView({
 									>
 										<RefreshCw />
 									</Button>
+									<CreateFolderDialog
+										currentPath={currentPath}
+										disabled={operationsDisabled}
+										session={session}
+									/>
+									<UploadDialog
+										currentPath={currentPath}
+										disabled={operationsDisabled}
+										podSessionID={podSessionID}
+										session={session}
+										viewerSessionID={viewerSessionID}
+									/>
 								</>
 							)
 						: null}
-
-					<SessionStatusPopover
-						api={api}
-						onManualClose={onManualClose}
-						onRefreshSession={onRefreshSession}
-						podSessionID={podSessionID ?? null}
-						session={viewerSession ?? null}
-						sessionCapability={sessionCapability}
-						viewerSessionID={viewerSessionID ?? null}
-					/>
 				</div>
 			</header>
 			<Separator />
@@ -360,96 +378,101 @@ export function FileManagerView({
 				: (
 						<>
 							<div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-								<Button
-									disabled={currentPath === '/' || operationsDisabled}
-									onClick={() => onPathChange(parentPath(currentPath))}
-									size="sm"
-									variant="ghost"
-								>
-									<ArrowLeft data-icon="inline-start" />
-									{t('files.up')}
-								</Button>
-								<span className="rounded-md border bg-muted px-2 py-1 font-mono text-xs text-foreground">
-									{visiblePath}
-								</span>
-								{currentPath !== visiblePath
-									? (
-											<span className="rounded-md border bg-muted px-2 py-1 text-xs">
-												{t('files.pendingPath', { path: currentPath })}
-											</span>
-										)
-									: null}
-								{!canUseFiles ? <span>{t(sessionCapability.messageKey)}</span> : null}
+								<div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+									<Button
+										disabled={currentPath === '/' || operationsDisabled}
+										onClick={() => onPathChange(parentPath(currentPath))}
+										size="sm"
+										variant="ghost"
+									>
+										<ArrowLeft data-icon="inline-start" />
+										{t('files.up')}
+									</Button>
+									<span className="rounded-md border bg-muted px-2 py-1 font-mono text-xs text-foreground">
+										{visiblePath}
+									</span>
+									{currentPath !== visiblePath
+										? (
+												<span className="rounded-md border bg-muted px-2 py-1 text-xs">
+													{t('files.pendingPath', { path: currentPath })}
+												</span>
+											)
+										: null}
+									{!canUseFiles ? <span>{t(sessionCapability.messageKey)}</span> : null}
+								</div>
+								{canShowFileList ? <StorageUsageSummary pvc={pvc} /> : null}
 							</div>
 
 							<div className="relative min-h-0 rounded-lg border bg-card">
-								<Table className="table-fixed">
-									<colgroup>
-										<col className="w-[52%]" />
-										<col className="w-28" />
-										<col className="w-44" />
-										<col className="w-36" />
-									</colgroup>
-									<TableHeader>
-										{table.getHeaderGroups().map(headerGroup => (
-											<TableRow key={headerGroup.id}>
-												{headerGroup.headers.map(header => (
-													<TableHead className={tableColumnClassName(header.id)} key={header.id}>
-														{header.isPlaceholder
-															? null
-															: flexRender(header.column.columnDef.header, header.getContext())}
-													</TableHead>
-												))}
-											</TableRow>
-										))}
-									</TableHeader>
-									<TableBody>
-										{fileQuery.isLoading && rows.length === 0
-											? (
-													<TableRow>
-														<TableCell className="py-12 text-center text-muted-foreground" colSpan={4}>
-															{t('files.pending')}
+								<div className="overflow-x-auto rounded-lg">
+									<Table className="min-w-[720px] table-fixed">
+										<colgroup>
+											<col className="w-[52%]" />
+											<col className="w-28" />
+											<col className="w-44" />
+											<col className="w-36" />
+										</colgroup>
+										<TableHeader>
+											{table.getHeaderGroups().map(headerGroup => (
+												<TableRow key={headerGroup.id}>
+													{headerGroup.headers.map(header => (
+														<TableHead className={tableColumnClassName(header.id)} key={header.id}>
+															{header.isPlaceholder
+																? null
+																: flexRender(header.column.columnDef.header, header.getContext())}
+														</TableHead>
+													))}
+												</TableRow>
+											))}
+										</TableHeader>
+										<TableBody>
+											{fileQuery.isLoading && rows.length === 0
+												? (
+														<TableRow>
+															<TableCell className="py-12 text-center text-muted-foreground" colSpan={4}>
+																{t('files.pending')}
+															</TableCell>
+														</TableRow>
+													)
+												: null}
+											{fileQuery.error && rows.length === 0
+												? (
+														<TableRow>
+															<TableCell className="py-10" colSpan={4}>
+																<FileListErrorState
+																	api={api}
+																	error={fileQuery.error}
+																	onManualClose={onManualClose}
+																	onRetry={() => void fileQuery.refetch()}
+																	podSessionID={podSessionID ?? null}
+																	sessionCapability={sessionCapability}
+																	viewerSessionID={viewerSessionID ?? null}
+																/>
+															</TableCell>
+														</TableRow>
+													)
+												: null}
+											{table.getRowModel().rows.map(row => (
+												<TableRow key={row.id}>
+													{row.getVisibleCells().map(cell => (
+														<TableCell className={tableColumnClassName(cell.column.id)} key={cell.id}>
+															{flexRender(cell.column.columnDef.cell, cell.getContext())}
 														</TableCell>
-													</TableRow>
-												)
-											: null}
-										{fileQuery.error && rows.length === 0
-											? (
-													<TableRow>
-														<TableCell className="py-10" colSpan={4}>
-															<FileListErrorState
-																api={api}
-																error={fileQuery.error}
-																onManualClose={onManualClose}
-																onRetry={() => void fileQuery.refetch()}
-																podSessionID={podSessionID ?? null}
-																sessionCapability={sessionCapability}
-																viewerSessionID={viewerSessionID ?? null}
-															/>
-														</TableCell>
-													</TableRow>
-												)
-											: null}
-										{table.getRowModel().rows.map(row => (
-											<TableRow key={row.id}>
-												{row.getVisibleCells().map(cell => (
-													<TableCell className={tableColumnClassName(cell.column.id)} key={cell.id}>
-														{flexRender(cell.column.columnDef.cell, cell.getContext())}
-													</TableCell>
-												))}
-											</TableRow>
-										))}
-										{!fileQuery.isLoading && !fileQuery.error && rows.length === 0
-											? (
-													<TableRow>
-														<TableCell className="py-12 text-center text-muted-foreground" colSpan={4}>
-															{t('files.empty')}
-														</TableCell>
-													</TableRow>
-												)
-											: null}
-									</TableBody>
-								</Table>
+													))}
+												</TableRow>
+											))}
+											{!fileQuery.isLoading && !fileQuery.error && rows.length === 0
+												? (
+														<TableRow>
+															<TableCell className="py-12 text-center text-muted-foreground" colSpan={4}>
+																{t('files.empty')}
+															</TableCell>
+														</TableRow>
+													)
+												: null}
+										</TableBody>
+									</Table>
+								</div>
 								{showOverlay
 									? (
 											<div className="absolute inset-0 flex items-center justify-center rounded-lg bg-background/70 backdrop-blur-[1px]" role="status">
@@ -494,7 +517,7 @@ function StorageUsageSummary({ pvc }: StorageUsageSummaryProps) {
 
 	if (!stats) {
 		return (
-			<div className="rounded-lg border bg-card px-3 py-2 text-xs text-muted-foreground">
+			<div className="w-full max-w-56 shrink-0 rounded-lg border bg-card px-3 py-2 text-xs text-muted-foreground">
 				{t('volumes.usageUnavailable')}
 			</div>
 		)
@@ -505,7 +528,7 @@ function StorageUsageSummary({ pvc }: StorageUsageSummaryProps) {
 	}
 
 	return (
-		<div className="grid min-w-56 gap-1.5 rounded-lg border bg-card px-3 py-2">
+		<div className="grid w-full max-w-56 shrink-0 gap-1.5 rounded-lg border bg-card px-3 py-2">
 			<div className="flex items-center justify-between gap-2 text-xs">
 				<span className="font-medium text-foreground">
 					{`${formatQuantity(stats.used)} / ${formatQuantity(pvc.capacity)}`}
@@ -515,9 +538,6 @@ function StorageUsageSummary({ pvc }: StorageUsageSummaryProps) {
 				</span>
 			</div>
 			<Progress aria-label={t('volumes.usageProgressLabel', { pvc: pvc.name })} value={percent} />
-			<div className="text-xs text-muted-foreground">
-				{t('volumes.usageFree', { size: formatQuantity(stats.available) })}
-			</div>
 		</div>
 	)
 }
