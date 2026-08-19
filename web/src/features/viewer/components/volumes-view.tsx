@@ -110,7 +110,7 @@ export function VolumesView({
 										<TableHead>{t('volumes.usage')}</TableHead>
 										<TableHead>{t('viewer.storageClass')}</TableHead>
 										<TableHead>{t('viewer.accessModes')}</TableHead>
-										<TableHead className="text-right">{t('files.columns.actions')}</TableHead>
+										<TableHead>{t('files.columns.actions')}</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
@@ -213,7 +213,7 @@ function PVCRow({ fileManagementEnabled, onDelete, onDescribe, onEditYAML, onExp
 				</div>
 			</TableCell>
 			<TableCell>
-				<div className="flex justify-end items-center gap-2">
+				<div className="flex items-center justify-start gap-2">
 					{fileManagementEnabled
 						? (
 								<Button

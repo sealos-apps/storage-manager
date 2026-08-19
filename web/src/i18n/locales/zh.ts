@@ -128,6 +128,7 @@ export const zh = {
 		viewerUrl: 'Viewer 地址',
 	},
 	files: {
+		backToVolumes: '返回存储卷',
 		browse: '浏览文件',
 		chooseFile: '选择文件',
 		columns: {
@@ -160,7 +161,6 @@ export const zh = {
 		savingDescription: '编辑器正在保存当前文件。完成前请保持这个对话框打开。',
 		savingTitle: '正在保存文件',
 		sessionStatus: '会话状态',
-		subtitle: '正在管理 {{pvc}} 中的文件',
 		title: '文件管理',
 		toggleFolder: '展开或收起文件夹',
 		up: '上一级',

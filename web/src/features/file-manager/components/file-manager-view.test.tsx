@@ -30,11 +30,13 @@ describe('fileManagerView', () => {
 	})
 
 	it('does not duplicate volume navigation or mismatch status in the file manager header', async () => {
+		const onBackToVolumes = vi.fn()
 		const session = sessionWithClient({
 			list: vi.fn(async () => resource('/', '', true, [])),
 		})
 
 		renderFileManager(session, {
+			onBackToVolumes,
 			pvc: pvcFixture({
 				volume_stats: {
 					available_bytes: 90 * 1024 * 1024 * 1024,
@@ -47,7 +49,8 @@ describe('fileManagerView', () => {
 		})
 
 		await screen.findByText(/current directory is empty/i)
-		expect(screen.queryByRole('button', { name: /back to volumes/i })).not.toBeInTheDocument()
+		await userEvent.setup().click(screen.getByRole('button', { name: /back to volumes/i }))
+		expect(onBackToVolumes).toHaveBeenCalledTimes(1)
 		expect(screen.queryByText(/metrics mismatch/i)).not.toBeInTheDocument()
 	})
 
@@ -205,7 +208,8 @@ describe('fileManagerView', () => {
 
 		expect(await screen.findByText('readme.md')).toBeInTheDocument()
 		expect(await screen.findByText((_, element) => element?.textContent === '5 GiB / 20 GiB')).toBeInTheDocument()
-		expect(screen.getByText('Free 15 GiB')).toBeInTheDocument()
+		expect(screen.getByText('data', { exact: true })).toBeInTheDocument()
+		expect(screen.queryByText(/Managing files in data/i)).not.toBeInTheDocument()
 		expect(screen.getByRole('progressbar', { name: /data PVC usage/i }).querySelector('[data-slot="progress-indicator"]')).toHaveStyle({
 			width: '25%',
 		})
@@ -334,6 +338,7 @@ describe('fileManagerView', () => {
 		const { rerender } = renderWithProviders(
 			<FileManagerView
 				currentPath="/"
+				onBackToVolumes={vi.fn()}
 				onPathChange={vi.fn()}
 				onRefreshSession={vi.fn()}
 				onRefreshStorageData={vi.fn()}
@@ -350,6 +355,7 @@ describe('fileManagerView', () => {
 		rerender(
 			<FileManagerView
 				currentPath="/docs"
+				onBackToVolumes={vi.fn()}
 				onPathChange={vi.fn()}
 				onRefreshSession={vi.fn()}
 				onRefreshStorageData={vi.fn()}
@@ -383,6 +389,7 @@ describe('fileManagerView', () => {
 		const { rerender } = renderWithProviders(
 			<FileManagerView
 				currentPath="/"
+				onBackToVolumes={vi.fn()}
 				onPathChange={vi.fn()}
 				onRefreshSession={vi.fn()}
 				onRefreshStorageData={vi.fn()}
@@ -401,6 +408,7 @@ describe('fileManagerView', () => {
 		rerender(
 			<FileManagerView
 				currentPath="/"
+				onBackToVolumes={vi.fn()}
 				onPathChange={vi.fn()}
 				onRefreshSession={vi.fn()}
 				onRefreshStorageData={vi.fn()}

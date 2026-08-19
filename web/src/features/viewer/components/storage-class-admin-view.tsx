@@ -68,7 +68,7 @@ export function StorageClassAdminView({
 							<TableHead>{t('storageClasses.volumeBindingMode')}</TableHead>
 							<TableHead>{t('storageClasses.allowVolumeExpansion')}</TableHead>
 							<TableHead>{t('storageClasses.pvcUsage')}</TableHead>
-							<TableHead className="text-right">{t('files.columns.actions')}</TableHead>
+							<TableHead>{t('files.columns.actions')}</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>
@@ -89,7 +89,7 @@ export function StorageClassAdminView({
 								<TableCell>{storageClass.allow_volume_expansion ? t('common.yes') : t('common.no')}</TableCell>
 								<TableCell>{storageClass.in_use_pvc_count}</TableCell>
 								<TableCell>
-									<div className="flex justify-end gap-2">
+									<div className="flex justify-start gap-2">
 										<Button onClick={() => onDescribe(storageClass.name)} size="sm" type="button" variant="outline">
 											{t('storageClasses.describe')}
 										</Button>
