@@ -1,11 +1,12 @@
 import type { UploadOptions } from './upload'
 import { errorFromResponse } from './errors'
-import { encodePath, joinPath } from './path'
+import { joinPath, normalizePath } from './path'
 import { shouldUseTus, uploadTus } from './upload'
 
 export interface FileBrowserClientOptions {
 	readonly baseUrl: string
-	readonly token: string
+	readonly viewerSessionID: string
+	readonly authorization?: string
 	readonly fetcher?: typeof fetch
 }
 
@@ -35,40 +36,31 @@ export interface RecursiveEntry {
 
 export class FileBrowserClient {
 	private readonly baseUrl: string
-	private readonly token: string
+	private readonly viewerSessionID: string
+	private readonly authorization?: string
 	private readonly fetcher: typeof fetch
 
 	constructor(options: FileBrowserClientOptions) {
 		this.baseUrl = options.baseUrl.replace(/\/$/, '')
-		this.token = options.token
+		this.viewerSessionID = options.viewerSessionID
+		this.authorization = options.authorization
 		this.fetcher = options.fetcher ?? globalThis.fetch.bind(globalThis)
 	}
 
 	async list(path = '/', signal?: AbortSignal): Promise<FileBrowserResource> {
-		return this.json<FileBrowserResource>('GET', `/api/resources${encodePath(path)}`, { signal })
+		return this.json<FileBrowserResource>('GET', 'resources', path, { signal })
 	}
 
 	async listRecursive(path = '/', signal?: AbortSignal): Promise<RecursiveEntry[]> {
-		return this.json<RecursiveEntry[]>('GET', `/api/resources/recursive${encodePath(path)}`, { signal })
+		return this.json<RecursiveEntry[]>('GET', 'recursive', path, { signal })
 	}
 
 	async usage(path = '/', signal?: AbortSignal): Promise<FileBrowserUsage> {
-		return this.json<FileBrowserUsage>('GET', `/api/usage${encodePath(path)}`, { signal })
-	}
-
-	downloadUrl(path: string, inline = false): string {
-		const query = new URLSearchParams({
-			auth: this.token,
-		})
-		if (inline) {
-			query.set('inline', 'true')
-		}
-		return `${this.baseUrl}/api/raw${encodePath(path)}?${query.toString()}`
+		return this.json<FileBrowserUsage>('GET', 'usage', path, { signal })
 	}
 
 	async createFolder(path: string): Promise<void> {
-		const folderPath = encodePath(path).replace(/\/?$/, '/')
-		await this.request('POST', `/api/resources${folderPath}`)
+		await this.request('POST', 'resources', path)
 	}
 
 	async uploadFile(parent: string, file: Blob & { name?: string }, options: UploadOptions = {}): Promise<void> {
@@ -76,37 +68,38 @@ export class FileBrowserClient {
 		if (shouldUseTus(file, options.thresholdBytes)) {
 			await uploadTus({
 				...options,
-				endpoint: this.baseUrl,
+				endpoint: this.gatewayURL('tus', filePath, { override: String(options.overwrite === true) }),
 				fetcher: this.fetcher,
 				file,
 				path: filePath,
-				token: this.token,
+				headers: this.requestHeaders(),
 			})
 			return
 		}
-		await this.request('POST', `/api/resources${encodePath(filePath)}?override=${options.overwrite === true}`, {
+		await this.request('POST', 'resources', filePath, {
 			body: file,
 			signal: options.signal,
+			query: { override: String(options.overwrite === true) },
 		})
 		options.onProgress?.({ bytesUploaded: file.size, bytesTotal: file.size })
 	}
 
 	async readText(path: string, signal?: AbortSignal): Promise<string> {
-		const response = await this.request('GET', `/api/raw${encodePath(path)}?inline=true`, { signal })
+		const response = await this.request('GET', 'raw', path, { signal, query: { inline: 'true' } })
 		return response.text()
 	}
 
 	async downloadBlob(path: string, signal?: AbortSignal): Promise<Blob> {
-		const response = await this.request('GET', `/api/raw${encodePath(path)}`, { signal })
+		const response = await this.request('GET', 'raw', path, { signal })
 		return response.blob()
 	}
 
 	async saveText(path: string, content: string): Promise<void> {
-		await this.request('PUT', `/api/resources${encodePath(path)}`, { body: content })
+		await this.request('PUT', 'resources', path, { body: content })
 	}
 
 	async writeText(path: string, content: string, overwrite = true): Promise<void> {
-		await this.request('POST', `/api/resources${encodePath(path)}?override=${overwrite}`, { body: content })
+		await this.request('POST', 'resources', path, { body: content, query: { override: String(overwrite) } })
 	}
 
 	async move(source: string, destination: string, overwrite = false): Promise<void> {
@@ -118,33 +111,51 @@ export class FileBrowserClient {
 	}
 
 	async deletePermanent(path: string): Promise<void> {
-		await this.request('DELETE', `/api/resources${encodePath(path)}`)
+		await this.request('DELETE', 'resources', path)
 	}
 
 	private async patchAction(action: 'rename' | 'copy', source: string, destination: string, overwrite: boolean): Promise<void> {
-		const destinationParam = encodeURIComponent(encodePath(destination))
-		const query = `action=${action}&destination=${destinationParam}&override=${overwrite}&rename=false`
-		await this.request('PATCH', `/api/resources${encodePath(source)}?${query}`)
+		await this.request('PATCH', 'resources', source, {
+			query: {
+				action,
+				destination,
+				override: String(overwrite),
+			},
+		})
 	}
 
-	private async json<T>(method: string, path: string, init: RequestInit = {}): Promise<T> {
-		const response = await this.request(method, path, init)
+	private async json<T>(method: string, endpoint: string, path: string, init: FileBrowserRequestInit = {}): Promise<T> {
+		const response = await this.request(method, endpoint, path, init)
 		return response.json() as Promise<T>
 	}
 
-	private async request(method: string, path: string, init: RequestInit = {}): Promise<Response> {
-		const response = await this.fetcher(`${this.baseUrl}${path}`, {
-			...init,
+	private async request(method: string, endpoint: string, path: string, init: FileBrowserRequestInit = {}): Promise<Response> {
+		const { query: _query, ...requestInit } = init
+		const response = await this.fetcher(this.gatewayURL(endpoint, path, _query), {
+			...requestInit,
 			method,
-			headers: {
-				'Authorization': `Bearer ${this.token}`,
-				'X-Auth': this.token,
-				...init.headers,
-			},
+			headers: { ...this.requestHeaders(), ...init.headers },
 		})
 		if (!response.ok) {
 			throw await errorFromResponse(response)
 		}
 		return response
 	}
+
+	private gatewayURL(endpoint: string, path: string, query: Record<string, string> = {}) {
+		const params = new URLSearchParams({
+			viewer_session_id: this.viewerSessionID,
+			path: normalizePath(path),
+			...query,
+		})
+		return `${this.baseUrl}/viewer-files/${endpoint}?${params.toString()}`
+	}
+
+	private requestHeaders(): Record<string, string> {
+		return this.authorization ? { Authorization: this.authorization } : {}
+	}
+}
+
+interface FileBrowserRequestInit extends RequestInit {
+	readonly query?: Record<string, string>
 }

@@ -1,7 +1,6 @@
 import * as tus from 'tus-js-client'
 
 import { FileBrowserError } from './errors'
-import { encodePath } from './path'
 
 export const defaultTusThresholdBytes = 32 * 1024 * 1024
 export const defaultTusChunkBytes = 8 * 1024 * 1024
@@ -24,7 +23,7 @@ export interface UploadOptions {
 export interface TusUploadOptions extends UploadOptions {
 	readonly endpoint: string
 	readonly fetcher?: typeof fetch
-	readonly token: string
+	readonly headers?: Readonly<Record<string, string>>
 	readonly file: Blob
 	readonly path: string
 }
@@ -47,8 +46,7 @@ export function retryDelays(retryCount = 5): number[] {
 }
 
 export function uploadTus(options: TusUploadOptions): Promise<void> {
-	const uploadPath = encodePath(options.path)
-	const uploadUrl = `${options.endpoint.replace(/\/$/, '')}/api/tus${uploadPath}?override=${options.overwrite === true}`
+	const uploadUrl = options.endpoint
 	const fetcher = options.fetcher ?? globalThis.fetch.bind(globalThis)
 	return new Promise((resolve, reject) => {
 		let settled = false
@@ -70,10 +68,7 @@ export function uploadTus(options: TusUploadOptions): Promise<void> {
 		const createUpload = async () => {
 			const response = await fetcher(uploadUrl, {
 				method: 'POST',
-				headers: {
-					'Authorization': `Bearer ${options.token}`,
-					'X-Auth': options.token,
-				},
+				headers: options.headers,
 				signal: options.signal,
 			})
 			if (response.status !== 201) {
@@ -91,10 +86,7 @@ export function uploadTus(options: TusUploadOptions): Promise<void> {
 			retryDelays: retryDelays(options.retryCount ?? 5),
 			parallelUploads: 1,
 			storeFingerprintForResuming: false,
-			headers: {
-				'Authorization': `Bearer ${options.token}`,
-				'X-Auth': options.token,
-			},
+			headers: options.headers,
 			onShouldRetry(error) {
 				const status = error.originalResponse?.getStatus() ?? 0
 				return status !== 409

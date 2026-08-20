@@ -32,6 +32,32 @@ type LoginResponse struct {
 	Token string `json:"token"`
 }
 
+// Proxy sends a File Browser request using a token that remains inside the
+// backend. The source request's body and protocol headers are preserved for
+// streaming file operations such as TUS uploads.
+func (c *Client) Proxy(ctx context.Context, targetURL string, source *http.Request, token string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, source.Method, targetURL, source.Body)
+	if err != nil {
+		return nil, fmt.Errorf("building filebrowser proxy request: %w", err)
+	}
+	req.ContentLength = source.ContentLength
+	for key, values := range source.Header {
+		if strings.EqualFold(key, "Authorization") || strings.EqualFold(key, "X-Auth") || strings.EqualFold(key, "Host") || strings.EqualFold(key, "Cookie") || strings.EqualFold(key, "Proxy-Authorization") {
+			continue
+		}
+		for _, value := range values {
+			req.Header.Add(key, value)
+		}
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-Auth", token)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("calling filebrowser proxy: %w", err)
+	}
+	return resp, nil
+}
+
 func NewClient(timeout time.Duration) *Client {
 	return &Client{
 		httpClient: &http.Client{Timeout: timeout},

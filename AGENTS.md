@@ -27,8 +27,10 @@ rules that must shape code changes. Do not turn it into a generic Encore manual.
 
 - All business endpoints must be typed Encore APIs with explicit request and
   response structs, so OpenAPI/client generation has schemas.
-- Avoid raw endpoints. `GET /metrics` is the only allowed raw endpoint because
-  it returns Prometheus text and is not a business API.
+- Avoid raw endpoints. `GET /metrics` and the explicitly allowlisted
+  `/viewer-files/*` streaming data-plane routes are the only raw endpoints. The
+  latter never accept upstream URLs or viewer tokens and exist because typed
+  Encore responses cannot represent File Browser downloads and TUS streams.
 - Use `/healthz` as the stable probe entrypoint for backend and web
   deployments. Keep it local, lightweight, and independent of File Browser,
   PVC, or cluster business flows.

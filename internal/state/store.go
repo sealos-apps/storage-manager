@@ -17,6 +17,7 @@ type Store struct {
 	viewerSessions  *cache[string, *domain.ViewerSession]
 	authRequests    *cache[string, *domain.AuthRequest]
 	tokenRecords    *cache[string, *domain.TokenRecord]
+	tokenByViewer   map[string]string
 	podSessionByPVC *cache[string, string]
 
 	viewerByPod map[string]map[string]struct{}
@@ -33,6 +34,7 @@ func New(cfg config.CacheConfig) *Store {
 		viewerSessions:  newCache[string, *domain.ViewerSession](cfg.ViewerSessionsMaxEntries),
 		authRequests:    newCache[string, *domain.AuthRequest](cfg.AuthRequestsMaxEntries),
 		tokenRecords:    newCache[string, *domain.TokenRecord](cfg.TokenRecordsMaxEntries),
+		tokenByViewer:   map[string]string{},
 		podSessionByPVC: newCache[string, string](cfg.IndexesMaxEntries),
 		viewerByPod:     map[string]map[string]struct{}{},
 	}
@@ -214,7 +216,30 @@ func (s *Store) PutTokenRecord(record *domain.TokenRecord) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if previousHash, ok := s.tokenByViewer[record.ViewerSessionID]; ok && previousHash != record.TokenHash {
+		s.tokenRecords.delete(previousHash)
+	}
 	s.tokenRecords.put(record.TokenHash, cloneTokenRecord(record), record.ExpiresAt)
+	s.tokenByViewer[record.ViewerSessionID] = record.TokenHash
+}
+
+func (s *Store) GetTokenRecord(viewerSessionID string, podSessionID string, now time.Time) (*domain.TokenRecord, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	hash, ok := s.tokenByViewer[viewerSessionID]
+	if !ok {
+		return nil, false
+	}
+	record, ok := s.tokenRecords.get(hash, now)
+	if !ok {
+		delete(s.tokenByViewer, viewerSessionID)
+		return nil, false
+	}
+	if record.ViewerSessionID != viewerSessionID || record.PodSessionID != podSessionID || record.RawToken == "" {
+		return nil, false
+	}
+	return cloneTokenRecord(record), true
 }
 
 func (s *Store) PurgeExpired(now time.Time) []ExpiredItem {
@@ -234,7 +259,15 @@ func (s *Store) PurgeExpired(now time.Time) []ExpiredItem {
 		}
 	}
 	expired = append(expired, purgeCacheLocked("auth_request", s.authRequests, now)...)
-	expired = append(expired, purgeCacheLocked("token_record", s.tokenRecords, now)...)
+	tokenExpired := purgeCacheLocked("token_record", s.tokenRecords, now)
+	expired = append(expired, tokenExpired...)
+	for _, item := range tokenExpired {
+		for viewerSessionID, tokenHash := range s.tokenByViewer {
+			if tokenHash == item.ID {
+				delete(s.tokenByViewer, viewerSessionID)
+			}
+		}
+	}
 	_ = s.podSessionByPVC.purgeExpired(now)
 	return expired
 }

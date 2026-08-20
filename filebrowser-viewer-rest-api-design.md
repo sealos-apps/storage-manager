@@ -2,7 +2,7 @@
 
 ## 1. 目标
 
-后端提供一组 REST API，供前端创建 Viewer 会话、等待 Viewer Pod ready、获取 File Browser token、保持会话活跃、关闭会话或 Pod。
+后端提供一组 REST API，供前端创建 Viewer 会话、等待 Viewer Pod ready、初始化后端持有的 File Browser access、保持会话活跃、关闭会话或 Pod。
 
 整体流程：
 
@@ -10,8 +10,9 @@
 Frontend
   -> Backend: 创建 Viewer Session
   -> Backend: 轮询 Pod/Session 状态
-  -> Backend: 请求 File Browser token
-  -> File Browser: 使用 token 调文件管理 API
+  -> Backend: 请求并保存 File Browser token
+  -> Frontend: 使用 viewer session ID 调固定文件代理
+  -> Backend: 使用内存中的 token 调 File Browser 文件 API
   -> Backend: heartbeat / close
 ```
 
@@ -37,7 +38,7 @@ Viewer Session
 Pod Session
 Viewer Session
 Auth Request
-File Browser token hash
+File Browser token hash 与短期明文 token（仅供后端代理使用）
 Pod 与 Session 的映射
 ```
 
@@ -128,11 +129,12 @@ type StateStore struct {
 }
 ```
 
-`TokenRecord` 只保存 token hash，不保存明文 token：
+`TokenRecord` 保存 token hash 和供后端代理使用的短期明文 token；明文不序列化、不进入日志或响应：
 
 ```go
 type TokenRecord struct {
 	TokenHash       string
+	RawToken        string // backend memory only
 	ViewerSessionID string
 	PodSessionID    string
 	IssuedAt         time.Time
@@ -174,6 +176,12 @@ POST   /api/viewer-sessions/{viewerSessionID}/token
 POST   /api/viewer-sessions/{viewerSessionID}/heartbeat
 DELETE /api/viewer-sessions/{viewerSessionID}
 DELETE /api/pod-sessions/{podSessionID}
+
+GET/POST/PUT/PATCH/DELETE /viewer-files/resources
+GET                    /viewer-files/recursive
+GET                    /viewer-files/usage
+GET                    /viewer-files/raw
+POST/HEAD/PATCH        /viewer-files/tus
 ```
 
 面向 File Browser hook：
@@ -364,18 +372,20 @@ resource_type 使用 snake_case 单数或集合名。
 }
 ```
 
-### 4.8 ViewerToken DTO
+### 4.8 ViewerAccess DTO
 
 ```json
 {
-  "viewer_session_id": "vs_123",
-  "pod_session_id": "ps_456",
-  "viewer_url": "https://viewer-ps-456.example.com",
-  "token": "file-browser-token",
-  "token_type": "Bearer",
-  "expires_at": "2026-05-13T10:30:00+08:00"
+  "viewer_access": {
+    "viewer_session_id": "vs_123",
+    "ready": true,
+    "expires_at": "2026-05-13T10:30:00+08:00"
+  }
 }
 ```
+
+响应不包含 File Browser bearer token。token 仅保存在后端内存中，供固定
+`/viewer-files/*` 代理调用。
 
 ### 4.9 Heartbeat DTO
 
@@ -596,11 +606,15 @@ expired
 POST /api/viewer-sessions/{viewerSessionID}/token
 ```
 
-响应 `viewer_token`：
+响应 `viewer_access`：
 
 ```json
 {
-  "viewer_token": "ViewerToken"
+  "viewer_access": {
+    "viewer_session_id": "vs_123",
+    "ready": true,
+    "expires_at": "2026-05-13T10:30:00+08:00"
+  }
 }
 ```
 
@@ -616,7 +630,7 @@ POST /api/viewer-sessions/{viewerSessionID}/token
 7. File Browser 触发 hook。
 8. hook 调后端验证 Auth Request。
 9. File Browser 返回 token 给后端。
-10. 后端返回 token 给前端。
+10. 后端保存 token，仅返回 access ready 状态。
 ```
 
 响应头：
@@ -1277,9 +1291,9 @@ MVP 可以只做 periodic list，简单可靠。
 3. 调 POST /api/viewer-sessions。
 4. 进入 loading 状态。
 5. 轮询 GET /api/viewer-sessions/{id}。
-6. ready 后调用 POST /token。
-7. 保存 token 到内存。
-8. 使用 token 初始化文件管理 UI。
+6. ready 后调用 POST /token 初始化后端文件访问能力。
+7. 使用 viewer session ID 和调用者授权初始化固定 `/viewer-files/*` 代理 client。
+8. 文件列表、读写、下载和 TUS 都通过后端代理完成。
 9. 定时 heartbeat。
 10. 页面关闭或用户退出时 DELETE viewer session。
 ```
@@ -1287,20 +1301,19 @@ MVP 可以只做 periodic list，简单可靠。
 ### 11.2 Token 使用
 
 ```text
-token 只存 React state / memory。
-不放 localStorage。
-不放 URL。
-刷新页面后重新走 token 获取流程。
+token 只存后端有界内存。
+不进入 React state、localStorage、URL、日志、trace 或响应体。
+刷新页面后重新走 viewer session 和后端 access 初始化流程。
 ```
 
 ### 11.3 文件管理 API
 
-如果前端直接使用 File Browser 原生 UI，可以把 token 注入 File Browser 所需的前端状态。
-
-如果前端自己实现文件管理 UI，则调用 File Browser API：
+前端文件管理 UI 调用后端固定文件代理。浏览器只发送调用者授权和
+`viewer_session_id`，由后端使用内存中的 token 调 File Browser API：
 
 ```http
-Authorization: Bearer <token>
+Authorization: Bearer <caller-authorization>
+GET /viewer-files/resources?viewer_session_id=vs_123&path=/
 ```
 
 ## 12. 错误码
@@ -1345,8 +1358,8 @@ HOOK_VERIFY_FAILED
 4. 创建 Viewer Session API。
 5. 轮询状态 API。
 6. auth request 和 hook verify API。
-7. 后端调用 File Browser login 并返回 token。
-8. 前端使用 token 访问 File Browser。
+7. 后端调用 File Browser login 并保留 token。
+8. 前端使用 viewer session ID 访问后端文件代理。
 9. heartbeat 和空闲清理。
 10. ReadWriteOnce 节点约束。
 11. Pod 异常 watch 和状态回写。
@@ -1360,7 +1373,7 @@ HOOK_VERIFY_FAILED
 PASSWORD 一次性、短 TTL、只使用一次
 hook 在线调用后端验证
 hook 根据后端返回权限输出 user.perm.*
-File Browser token 只存内存
+File Browser token 只存后端内存，浏览器不接收 token
 File Browser database 不放在 PVC 内
 ReadOnlyMany 同时使用只读挂载和只读权限
 ReadWriteOncePod 直接禁用

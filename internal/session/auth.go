@@ -68,6 +68,18 @@ func (s *AuthService) IssueToken(
 		finish(err)
 	}()
 
+	now := s.now()
+	if record, ok := s.store.GetTokenRecord(viewer.ID, pod.ID, now); ok {
+		return &domain.ViewerToken{
+			ViewerSessionID:   viewer.ID,
+			PodSessionID:      pod.ID,
+			ViewerURL:         pod.ViewerURL,
+			InternalViewerURL: pod.InternalViewerURL,
+			Token:             record.RawToken,
+			TokenType:         "Bearer",
+			ExpiresAt:         record.ExpiresAt,
+		}, nil
+	}
 	authID, err := newID("ar")
 	if err != nil {
 		return nil, err
@@ -76,7 +88,6 @@ func (s *AuthService) IssueToken(
 	if err != nil {
 		return nil, err
 	}
-	now := s.now()
 	passwordHash := filebrowser.HashSecret(secret)
 	s.store.CreateAuthRequest(&domain.AuthRequest{
 		ID:              authID,
@@ -109,6 +120,7 @@ func (s *AuthService) IssueToken(
 	expiresAt := now.Add(s.cfg.Viewer.FileBrowser.TokenTTL)
 	s.store.PutTokenRecord(&domain.TokenRecord{
 		TokenHash:       tokenHash,
+		RawToken:        token,
 		ViewerSessionID: viewer.ID,
 		PodSessionID:    pod.ID,
 		IssuedAt:        now,
@@ -120,12 +132,13 @@ func (s *AuthService) IssueToken(
 		slog.Time("expires_at", expiresAt),
 	)
 	return &domain.ViewerToken{
-		ViewerSessionID: viewer.ID,
-		PodSessionID:    pod.ID,
-		ViewerURL:       pod.ViewerURL,
-		Token:           token,
-		TokenType:       "Bearer",
-		ExpiresAt:       expiresAt,
+		ViewerSessionID:   viewer.ID,
+		PodSessionID:      pod.ID,
+		ViewerURL:         pod.ViewerURL,
+		InternalViewerURL: pod.InternalViewerURL,
+		Token:             token,
+		TokenType:         "Bearer",
+		ExpiresAt:         expiresAt,
 	}, nil
 }
 

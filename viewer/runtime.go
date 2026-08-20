@@ -140,10 +140,11 @@ func newRuntimeFromConfig(cfg config.Config) (*Runtime, error) {
 		return nil, err
 	}
 	pods := session.NewPodService(cfg, store, kubeClient, recorder)
+	fileBrowserClient := filebrowser.NewObservedClient(cfg.Viewer.FileBrowser.LoginTimeout, tracerProvider)
 	auth := session.NewAuthService(
 		cfg,
 		store,
-		filebrowser.NewObservedClient(cfg.Viewer.FileBrowser.LoginTimeout, tracerProvider),
+		fileBrowserClient,
 		recorder,
 	)
 	viewers := session.NewViewerService(
@@ -174,6 +175,7 @@ func newRuntimeFromConfig(cfg config.Config) (*Runtime, error) {
 		WithStorageQuotaService(newStorageQuotaService(cfg.Viewer.StorageQuota, recorder)),
 		WithStorageClassService(storageClasses),
 		WithAdminAuthorizer(newKubernetesAdminAuthorizer(cfg.Admin, recorder, restConfig)),
+		WithFileBrowserProxy(fileBrowserClient),
 	)
 	return &Runtime{
 		Handler:  handler,

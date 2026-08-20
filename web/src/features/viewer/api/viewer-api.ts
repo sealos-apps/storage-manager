@@ -20,10 +20,10 @@ import type {
 	StorageClassYAML,
 	StorageClassYAMLInput,
 	StorageQuota,
+	ViewerAccess,
 	ViewerAPI,
 	ViewerContext,
 	ViewerSession,
-	ViewerToken,
 } from '@/features/viewer/types/viewer'
 
 import Client from '@sealos-storage-manager/encore-client'
@@ -357,12 +357,12 @@ export function createViewerApi(
 			}
 		},
 
-		async issueViewerToken(viewerSessionID: string): Promise<ViewerToken> {
+		async issueViewerToken(viewerSessionID: string): Promise<ViewerAccess> {
 			try {
 				const response = await activeClient.viewer.IssueViewerToken(viewerSessionID, {
 					Authorization: authorization(),
 				})
-				return response.viewer_token
+				return response.viewer_access
 			}
 			catch (error) {
 				throw normalizeViewerError(error)

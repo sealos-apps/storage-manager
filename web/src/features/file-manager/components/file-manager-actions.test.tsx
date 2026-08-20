@@ -87,7 +87,6 @@ describe('fileManagerActions', () => {
 		const readText = vi.fn().mockResolvedValue('old content')
 		const saveText = vi.fn().mockReturnValue(savePromise)
 		const session = sessionWithClient({
-			downloadUrl: vi.fn(() => 'https://viewer.example.test/api/raw/readme.md?auth=token'),
 			list: vi.fn(async () => resource('/', '', true, [
 				resource('/readme.md', 'readme.md', false),
 			])),
@@ -116,7 +115,6 @@ describe('fileManagerActions', () => {
 		const user = userEvent.setup()
 		const readText = vi.fn()
 		const session = sessionWithClient({
-			downloadUrl: vi.fn(() => 'https://viewer.example.test/api/raw/large.log?auth=token'),
 			list: vi.fn(async () => resource('/', '', true, [
 				{ ...resource('/large.log', 'large.log', false), size: 33 * 1024 * 1024 },
 			])),
@@ -132,9 +130,12 @@ describe('fileManagerActions', () => {
 		expect(screen.queryByLabelText(/monaco editor/i)).not.toBeInTheDocument()
 	})
 
-	it('uses browser-owned download URLs without fetching blobs in React', async () => {
+	it('downloads through the authenticated client and clicks a temporary blob URL', async () => {
 		const user = userEvent.setup()
 		const click = vi.fn()
+		const downloadBlob = vi.fn().mockResolvedValue(new Blob(['file contents']))
+		const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:download')
+		const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined)
 		const originalCreateElement = document.createElement.bind(document)
 		const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tagName, options) => {
 			const element = originalCreateElement(tagName, options)
@@ -143,11 +144,8 @@ describe('fileManagerActions', () => {
 			}
 			return element
 		})
-		const downloadBlob = vi.fn()
-		const downloadUrl = vi.fn(() => 'https://viewer.example.test/api/raw/readme.md?auth=token')
 		const session = sessionWithClient({
 			downloadBlob,
-			downloadUrl,
 			list: vi.fn(async () => resource('/', '', true, [
 				resource('/readme.md', 'readme.md', false),
 			])),
@@ -159,12 +157,15 @@ describe('fileManagerActions', () => {
 			await screen.findByText('readme.md')
 			await user.click(screen.getByRole('button', { name: /download/i }))
 
-			expect(downloadUrl).toHaveBeenCalledWith('/readme.md')
-			expect(downloadBlob).not.toHaveBeenCalled()
+			expect(downloadBlob).toHaveBeenCalledWith('/readme.md')
+			expect(createObjectURL).toHaveBeenCalled()
 			expect(click).toHaveBeenCalled()
+			await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith('blob:download'))
 		}
 		finally {
 			createElementSpy.mockRestore()
+			createObjectURL.mockRestore()
+			revokeObjectURL.mockRestore()
 		}
 	})
 })

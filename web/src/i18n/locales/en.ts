@@ -174,7 +174,6 @@ export const en = {
 		uploadProgress: '{{count}} file(s) uploaded',
 		uploadProgressWithFailures: '{{succeeded}} file(s) uploaded, {{failed}} failed',
 		noFolders: 'No folders in this directory',
-		viewerPending: 'The pod session is available. File access will appear when the viewer session is ready.',
 		viewerUnavailable: 'The viewer session is unavailable. Retry launching the viewer.',
 	},
 	trash: {

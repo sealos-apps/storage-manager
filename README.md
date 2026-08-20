@@ -146,9 +146,12 @@ request and response schemas:
 encore gen client --lang=openapi --output openapi.json
 ```
 
-`GET /metrics` is the only raw endpoint. It is reserved for Prometheus text
-scraping and local debugging, so it is exempt from the business endpoint schema
-rule.
+`GET /metrics` and the fixed `/viewer-files/*` streaming data-plane routes are
+the only raw endpoints. Metrics are reserved for Prometheus text scraping and
+the file routes proxy a fixed File Browser operation through a server-owned
+session; neither is a general business response. The browser sends only its
+viewer session ID and caller authorization, and never receives the File
+Browser bearer token.
 
 Application metrics use `encore.dev/metrics` counters. In self-hosted images,
 Encore exports them according to `infra-config.json`, for example through the

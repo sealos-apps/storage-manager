@@ -111,6 +111,7 @@ type AuthRequest struct {
 
 type TokenRecord struct {
 	TokenHash       string    `json:"-"`
+	RawToken        string    `json:"-"`
 	ViewerSessionID string    `json:"viewer_session_id"`
 	PodSessionID    string    `json:"pod_session_id"`
 	IssuedAt        time.Time `json:"issued_at"`
@@ -255,8 +256,10 @@ type ViewerToken struct {
 	PodSessionID string `json:"pod_session_id"`
 	// ViewerURL is the File Browser URL associated with the token.
 	ViewerURL string `json:"viewer_url"`
+	// InternalViewerURL is used only for server-side File Browser proxy calls.
+	InternalViewerURL string `json:"-"`
 	// Token is the short-lived bearer token accepted by File Browser.
-	Token string `json:"token"`
+	Token string `json:"-"`
 	// TokenType describes how the token should be presented to File Browser.
 	TokenType string `json:"token_type"`
 	// ExpiresAt is when the File Browser token expires.

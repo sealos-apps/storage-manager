@@ -1,6 +1,6 @@
 import type { RecycleEntry } from '@/features/file-manager/types/file-manager'
 
-import { RotateCcw } from 'lucide-react'
+import { Loader2, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -43,7 +43,7 @@ export function RecycleBinTable({ isLoading, items, onRestore, sessionReady }: R
 						? (
 								<TableRow>
 									<TableCell className="py-12 text-center text-muted-foreground" colSpan={6}>
-										{sessionReady ? t('common.loading') : t('files.preparingViewer')}
+										<Loader2 aria-label={t('common.loading')} className="mx-auto size-5 animate-spin" />
 									</TableCell>
 								</TableRow>
 							)

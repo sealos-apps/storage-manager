@@ -16,14 +16,12 @@ describe('viewerLaunchPanel', () => {
 		)
 		const api = createFakeViewerAPI({ createViewerSession })
 		const pvc = pvcFixture()
-		const setToken = vi.fn()
 
 		const { rerender } = renderWithProviders(
 			<ViewerLaunchPanel
 				api={api}
 				autoStartKey="pvc-uid:1"
 				pvc={pvc}
-				setToken={setToken}
 			/>,
 		)
 
@@ -35,7 +33,6 @@ describe('viewerLaunchPanel', () => {
 				autoStartKey="pvc-uid:1"
 				onFlowChange={() => undefined}
 				pvc={pvc}
-				setToken={setToken}
 			/>,
 		)
 		await Promise.resolve()

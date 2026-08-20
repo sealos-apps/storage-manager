@@ -1,6 +1,8 @@
 package viewer
 
 import (
+	"time"
+
 	"github.com/nixieboluo/sealos-storage-manager/internal/apienv"
 	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
 	"github.com/nixieboluo/sealos-storage-manager/internal/session"
@@ -228,13 +230,22 @@ type ViewerSessionResponse struct {
 	ViewerSession *domain.ViewerSession `json:"viewer_session"`
 }
 
-type ViewerTokenResponse struct {
-	// CacheControl instructs clients and intermediaries not to store the token response.
+type ViewerAccess struct {
+	// ViewerSessionID identifies the session whose access is ready.
+	ViewerSessionID string `json:"viewer_session_id"`
+	// Ready reports whether the backend has initialized server-side File Browser access.
+	Ready bool `json:"ready"`
+	// ExpiresAt is the expiry time of the server-side access record.
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+type ViewerAccessResponse struct {
+	// CacheControl instructs clients and intermediaries not to store the access response.
 	CacheControl string `header:"Cache-Control"`
-	// Pragma provides legacy no-cache behavior for token responses.
+	// Pragma provides legacy no-cache behavior for access responses.
 	Pragma string `header:"Pragma"`
-	// ViewerToken contains the short-lived File Browser login token.
-	ViewerToken *domain.ViewerToken `json:"viewer_token"`
+	// ViewerAccess confirms server-side access readiness without returning a credential.
+	ViewerAccess *ViewerAccess `json:"viewer_access"`
 }
 
 type HeartbeatResponse struct {

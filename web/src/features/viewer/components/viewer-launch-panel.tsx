@@ -1,5 +1,5 @@
 import type { ViewerSessionFlow } from '@/features/viewer/hooks/use-viewer-session-flow'
-import type { PVC, ViewerAPI, ViewerToken } from '@/features/viewer/types/viewer'
+import type { PVC, ViewerAPI } from '@/features/viewer/types/viewer'
 
 import { useEffect, useRef } from 'react'
 import { useHasActiveUploadsForSession } from '@/features/file-manager/stores/upload-store'
@@ -26,7 +26,6 @@ interface ViewerLaunchPanelProps {
 	onFlowChange?: (flow: ViewerFlowSnapshot) => void
 	onSessionStatusChange?: (status: string) => void
 	pvc: PVC | null
-	setToken: (token: ViewerToken | null) => void
 }
 
 export function ViewerLaunchPanel({
@@ -35,7 +34,6 @@ export function ViewerLaunchPanel({
 	onFlowChange,
 	onSessionStatusChange,
 	pvc,
-	setToken,
 }: ViewerLaunchPanelProps) {
 	const flow = useViewerSessionFlow({ api })
 	const active = flow.status === 'ready'
@@ -70,10 +68,6 @@ export function ViewerLaunchPanel({
 			viewerUIStore.actions.setActiveSession(flow.session.id, flow.session.pod_session_id)
 		}
 	}, [flow.session])
-
-	useEffect(() => {
-		setToken(flow.token)
-	}, [flow.token, setToken])
 
 	useEffect(() => {
 		onSessionStatusChange?.(flow.status)

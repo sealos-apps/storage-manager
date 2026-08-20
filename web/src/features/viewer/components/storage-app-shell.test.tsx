@@ -16,8 +16,8 @@ import {
 	storageClassFixture,
 	storageClassYAMLFixture,
 	storageQuotaFixture,
+	viewerAccessFixture,
 	viewerSessionFixture,
-	viewerTokenFixture,
 } from '@/features/viewer/test/fakes'
 import { renderWithProviders } from '@/test/render'
 import { Quantity } from '@/utils/quantities'
@@ -96,9 +96,8 @@ describe('storageAppShell', () => {
 				status: 'ready',
 				token_ready: true,
 			})),
-			issueViewerToken: vi.fn().mockResolvedValue(viewerTokenFixture({
+			issueViewerToken: vi.fn().mockResolvedValue(viewerAccessFixture({
 				viewer_session_id: 'vs_1',
-				viewer_url: 'https://viewer.example.test',
 			})),
 			listPVCs,
 		})
@@ -358,9 +357,8 @@ describe('storageAppShell', () => {
 				{ is_current_context: false, name: 'kube-system' },
 			]),
 			createViewerSession,
-			issueViewerToken: vi.fn().mockResolvedValue(viewerTokenFixture({
+			issueViewerToken: vi.fn().mockResolvedValue(viewerAccessFixture({
 				viewer_session_id: 'vs_system',
-				viewer_url: 'https://viewer.example.test',
 			})),
 			listPVCs,
 		})
@@ -1250,27 +1248,12 @@ describe('storageAppShell', () => {
 		await user.hover(mountedButton)
 	})
 
-	it('stops restarting the viewer flow after token recovery is exhausted', async () => {
+	it('does not request a browser token when opening the file manager', async () => {
 		const user = userEvent.setup()
 		const createViewerSession = vi
 			.fn()
-			.mockResolvedValueOnce(viewerSessionFixture({
-				id: 'vs_old',
-				pod_session_id: 'ps_old',
-				status: 'ready',
-				token_ready: true,
-			}))
-			.mockResolvedValueOnce(viewerSessionFixture({
-				id: 'vs_new',
-				pod_session_id: 'ps_new',
-				status: 'ready',
-				token_ready: true,
-			}))
-		const issueViewerToken = vi.fn().mockRejectedValue(new ViewerApiError({
-			code: 'POD_SESSION_NOT_FOUND',
-			message: 'Pod session no longer exists',
-			status: 404,
-		}))
+			.mockResolvedValue(viewerSessionFixture({ id: 'vs_1', status: 'ready', token_ready: true }))
+		const issueViewerToken = vi.fn()
 		const api = createFakeViewerAPI({
 			createViewerSession,
 			issueViewerToken,
@@ -1283,9 +1266,8 @@ describe('storageAppShell', () => {
 
 		await user.click(await screen.findByRole('button', { name: /browse files/i }))
 
-		await waitFor(() => expect(createViewerSession).toHaveBeenCalledTimes(2), { timeout: 3_000 })
-		await waitFor(() => expect(issueViewerToken).toHaveBeenCalledTimes(2), { timeout: 3_000 })
-		await new Promise(resolve => window.setTimeout(resolve, 100))
-		expect(createViewerSession).toHaveBeenCalledTimes(2)
+		await waitFor(() => expect(screen.getByRole('button', { name: /new folder/i })).toBeInTheDocument())
+		expect(createViewerSession).toHaveBeenCalledTimes(1)
+		expect(issueViewerToken).not.toHaveBeenCalled()
 	})
 })

@@ -244,7 +244,7 @@ func writeHTTPResponse(w http.ResponseWriter, response any, apiErr *apienv.Error
 		apienv.WriteError(w, apiErr)
 		return
 	}
-	if headered, ok := response.(*ViewerTokenResponse); ok {
+	if headered, ok := response.(*ViewerAccessResponse); ok {
 		w.Header().Set("Cache-Control", headered.CacheControl)
 		w.Header().Set("Pragma", headered.Pragma)
 	}
@@ -270,10 +270,10 @@ func httpBody(response any) any {
 		return struct {
 			ViewerSession *domain.ViewerSession `json:"viewer_session"`
 		}{ViewerSession: typed.ViewerSession}
-	case *ViewerTokenResponse:
+	case *ViewerAccessResponse:
 		return struct {
-			ViewerToken *domain.ViewerToken `json:"viewer_token"`
-		}{ViewerToken: typed.ViewerToken}
+			ViewerAccess *ViewerAccess `json:"viewer_access"`
+		}{ViewerAccess: typed.ViewerAccess}
 	default:
 		return response
 	}

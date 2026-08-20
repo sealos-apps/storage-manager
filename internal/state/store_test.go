@@ -86,6 +86,33 @@ func TestStoreExpiresViewerSessionsAndMapping(t *testing.T) {
 	}
 }
 
+func TestStoreTokenRecordIsScopedToViewerAndPodAndCloned(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 13, 10, 0, 0, 0, time.UTC)
+	store := New(config.Default().Cache)
+	store.PutTokenRecord(&domain.TokenRecord{
+		TokenHash:       "hash-1",
+		RawToken:        "server-only-token",
+		ViewerSessionID: "vs_1",
+		PodSessionID:    "ps_1",
+		ExpiresAt:       now.Add(time.Minute),
+	})
+
+	record, ok := store.GetTokenRecord("vs_1", "ps_1", now)
+	if !ok || record.RawToken != "server-only-token" {
+		t.Fatalf("GetTokenRecord() = %#v ok=%v", record, ok)
+	}
+	record.RawToken = "mutated"
+	again, ok := store.GetTokenRecord("vs_1", "ps_1", now)
+	if !ok || again.RawToken != "server-only-token" {
+		t.Fatalf("GetTokenRecord() returned mutable record: %#v ok=%v", again, ok)
+	}
+	if _, ok := store.GetTokenRecord("vs_1", "ps_2", now); ok {
+		t.Fatal("token was reused for a different pod session")
+	}
+}
+
 func TestStoreViewerSessionByPodReplacesStaleIndex(t *testing.T) {
 	t.Parallel()
 

@@ -62,6 +62,9 @@ func TestHandlerIssueTokenNoStore(t *testing.T) {
 	if strings.Contains(recorder.Body.String(), "kubeconfig") {
 		t.Fatalf("body leaked sensitive data: %s", recorder.Body.String())
 	}
+	if strings.Contains(recorder.Body.String(), "fb-token") {
+		t.Fatalf("body leaked File Browser token: %s", recorder.Body.String())
+	}
 }
 
 func TestHandlerFileManagementDisabledBlocksSessionEndpoints(t *testing.T) {

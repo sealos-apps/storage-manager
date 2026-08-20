@@ -1,7 +1,7 @@
 import type { ViewerApiError } from '@/features/viewer/api/viewer-error'
-import type { PVC, ViewerSession, ViewerToken } from '@/features/viewer/types/viewer'
+import type { PVC, ViewerSession } from '@/features/viewer/types/viewer'
 
-export type ViewerFlowStatus = 'idle' | 'creating' | 'polling' | 'issuing-token' | 'ready' | 'failed'
+export type ViewerFlowStatus = 'idle' | 'creating' | 'polling' | 'ready' | 'failed'
 export type ManualCloseKind = 'viewer' | 'pod'
 export type SessionCapabilityKind
 	= | 'none'
@@ -19,7 +19,6 @@ export interface SessionCapabilityInput {
 	selectedPVC: PVC | null
 	session: ViewerSession | null
 	status: ViewerFlowStatus
-	token: ViewerToken | null
 }
 
 export interface SessionCapability {
@@ -39,7 +38,6 @@ export function deriveSessionCapability({
 	selectedPVC,
 	session,
 	status,
-	token,
 }: SessionCapabilityInput): SessionCapability {
 	if (!selectedPVC) {
 		return capability('none', 'viewer.noSelection', false, false, false, error, manualCloseKind)
@@ -53,7 +51,7 @@ export function deriveSessionCapability({
 		return capability('viewer-reconnecting', 'files.reconnecting', true, true, false, error, manualCloseKind)
 	}
 
-	if (token && session?.status === 'ready' && session.token_ready) {
+	if (session?.status === 'ready' && session.token_ready) {
 		return capability('viewer-ready', 'files.ready', true, true, true, error, manualCloseKind)
 	}
 
@@ -62,14 +60,14 @@ export function deriveSessionCapability({
 	}
 
 	if (session) {
-		return capability('pod-only', 'files.viewerPending', true, false, false, error, manualCloseKind)
+		return capability('pod-only', 'common.loading', true, false, false, error, manualCloseKind)
 	}
 
-	if (status === 'creating' || status === 'polling' || status === 'issuing-token') {
-		return capability('starting-pod', 'files.preparingViewer', true, false, false, error, manualCloseKind)
+	if (status === 'creating' || status === 'polling') {
+		return capability('starting-pod', 'common.loading', true, false, false, error, manualCloseKind)
 	}
 
-	return capability('starting-pod', 'files.preparingViewer', true, false, false, error, manualCloseKind)
+	return capability('starting-pod', 'common.loading', true, false, false, error, manualCloseKind)
 }
 
 function capability(

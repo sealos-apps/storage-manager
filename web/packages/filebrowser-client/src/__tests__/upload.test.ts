@@ -60,9 +60,9 @@ describe('tUS upload policy', () => {
 		const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 201 }))
 
 		await uploadTus({
-			endpoint: 'https://viewer.example.test/',
+			endpoint: 'https://viewer.example.test/viewer-files/tus?viewer_session_id=vs_1&path=%2Fdata.bin&override=true',
 			fetcher,
-			token: 'token',
+			headers: { Authorization: 'Bearer user-auth' },
 			file: new Blob(['payload']),
 			path: '/data.bin',
 			overwrite: true,
@@ -72,22 +72,20 @@ describe('tUS upload policy', () => {
 		})
 
 		expect(tusState.start).toHaveBeenCalled()
-		expect(fetcher).toHaveBeenCalledWith('https://viewer.example.test/api/tus/data.bin?override=true', expect.objectContaining({
+		expect(fetcher).toHaveBeenCalledWith('https://viewer.example.test/viewer-files/tus?viewer_session_id=vs_1&path=%2Fdata.bin&override=true', expect.objectContaining({
 			method: 'POST',
 			headers: expect.objectContaining({
-				'Authorization': 'Bearer token',
-				'X-Auth': 'token',
+				Authorization: 'Bearer user-auth',
 			}),
 		}))
 		expect(tusState.options).toMatchObject({
-			uploadUrl: 'https://viewer.example.test/api/tus/data.bin?override=true',
+			uploadUrl: 'https://viewer.example.test/viewer-files/tus?viewer_session_id=vs_1&path=%2Fdata.bin&override=true',
 			chunkSize: 8,
 			retryDelays: [0, 1000],
 			parallelUploads: 1,
 			storeFingerprintForResuming: false,
 			headers: {
-				'Authorization': 'Bearer token',
-				'X-Auth': 'token',
+				Authorization: 'Bearer user-auth',
 			},
 		})
 		expect(onProgress).toHaveBeenCalledTimes(1)
@@ -98,19 +96,19 @@ describe('tUS upload policy', () => {
 		const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 201 }))
 
 		await uploadTus({
-			endpoint: 'https://viewer.example.test',
+			endpoint: 'https://viewer.example.test/viewer-files/tus?viewer_session_id=vs_1&path=%2Fa+folder%2F%E4%B8%AD%E6%96%87%2F%25+done.bin&override=false',
 			fetcher,
-			token: 'token',
+			headers: { Authorization: 'Bearer user-auth' },
 			file: new Blob(['payload']),
 			path: '/a folder/中文/% done.bin',
 		})
 
 		expect(fetcher).toHaveBeenCalledWith(
-			'https://viewer.example.test/api/tus/a%20folder/%E4%B8%AD%E6%96%87/%25%20done.bin?override=false',
+			'https://viewer.example.test/viewer-files/tus?viewer_session_id=vs_1&path=%2Fa+folder%2F%E4%B8%AD%E6%96%87%2F%25+done.bin&override=false',
 			expect.objectContaining({ method: 'POST' }),
 		)
 		expect(tusState.options).toMatchObject({
-			uploadUrl: 'https://viewer.example.test/api/tus/a%20folder/%E4%B8%AD%E6%96%87/%25%20done.bin?override=false',
+			uploadUrl: 'https://viewer.example.test/viewer-files/tus?viewer_session_id=vs_1&path=%2Fa+folder%2F%E4%B8%AD%E6%96%87%2F%25+done.bin&override=false',
 		})
 	})
 
@@ -121,9 +119,9 @@ describe('tUS upload policy', () => {
 		}))
 
 		await expect(uploadTus({
-			endpoint: 'https://viewer.example.test',
+			endpoint: 'https://viewer.example.test/viewer-files/tus?viewer_session_id=vs_1&path=%2Fdata.bin',
 			fetcher,
-			token: 'token',
+			headers: { Authorization: 'Bearer user-auth' },
 			file: new Blob(['payload']),
 			path: '/data.bin',
 		})).rejects.toMatchObject({
@@ -139,9 +137,9 @@ describe('tUS upload policy', () => {
 		const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 201 }))
 
 		await uploadTus({
-			endpoint: 'https://viewer.example.test',
+			endpoint: 'https://viewer.example.test/viewer-files/tus?viewer_session_id=vs_1&path=%2Fdata.bin',
 			fetcher,
-			token: 'token',
+			headers: { Authorization: 'Bearer user-auth' },
 			file: new Blob(['payload']),
 			path: '/data.bin',
 		})
