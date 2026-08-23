@@ -29,12 +29,13 @@ func newCache[K comparable, V any](maxEntries int) *cache[K, V] {
 	}
 }
 
-func (c *cache[K, V]) put(key K, value V, expiresAt time.Time) {
+func (c *cache[K, V]) put(key K, value V, expiresAt time.Time) (K, bool) {
+	var zero K
 	if item, ok := c.items[key]; ok {
 		item.value = value
 		item.expiresAt = expiresAt
 		c.order.MoveToFront(item.element)
-		return
+		return zero, false
 	}
 	item := &cacheItem[K, V]{
 		key:       key,
@@ -46,12 +47,14 @@ func (c *cache[K, V]) put(key K, value V, expiresAt time.Time) {
 	for len(c.items) > c.maxEntries {
 		back := c.order.Back()
 		if back == nil {
-			return
+			return zero, false
 		}
 		evicted := back.Value.(*cacheItem[K, V])
 		delete(c.items, evicted.key)
 		c.order.Remove(back)
+		return evicted.key, true
 	}
+	return zero, false
 }
 
 func (c *cache[K, V]) get(key K, now time.Time) (V, bool) {

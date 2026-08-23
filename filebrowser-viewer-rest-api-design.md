@@ -588,7 +588,8 @@ closed
 expired
 ```
 
-前端轮询到 `status=ready` 后，请求 token。
+前端轮询到 `status=ready` 后，初始化固定的文件代理 client。首次文件请求
+到达代理时，后端按 viewer session 懒加载或复用 File Browser token。
 
 如果后端重启导致内存中的 Viewer Session 丢失，返回：
 
@@ -1291,8 +1292,8 @@ MVP 可以只做 periodic list，简单可靠。
 3. 调 POST /api/viewer-sessions。
 4. 进入 loading 状态。
 5. 轮询 GET /api/viewer-sessions/{id}。
-6. ready 后调用 POST /token 初始化后端文件访问能力。
-7. 使用 viewer session ID 和调用者授权初始化固定 `/viewer-files/*` 代理 client。
+6. ready 后使用 viewer session ID 和调用者授权初始化固定 `/viewer-files/*` 代理 client。
+7. 首次文件请求到达后端代理时，后端懒加载或复用 File Browser token。
 8. 文件列表、读写、下载和 TUS 都通过后端代理完成。
 9. 定时 heartbeat。
 10. 页面关闭或用户退出时 DELETE viewer session。

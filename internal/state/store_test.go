@@ -113,6 +113,92 @@ func TestStoreTokenRecordIsScopedToViewerAndPodAndCloned(t *testing.T) {
 	}
 }
 
+func TestStoreTokenRecordCleansReverseIndexWhenEvicted(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	cfg := config.Default().Cache
+	cfg.TokenRecordsMaxEntries = 1
+	store := New(cfg)
+	store.PutTokenRecord(&domain.TokenRecord{
+		TokenHash:       "hash-1",
+		RawToken:        "token-1",
+		ViewerSessionID: "vs_1",
+		PodSessionID:    "ps_1",
+		ExpiresAt:       now.Add(time.Hour),
+	})
+	store.PutTokenRecord(&domain.TokenRecord{
+		TokenHash:       "hash-2",
+		RawToken:        "token-2",
+		ViewerSessionID: "vs_2",
+		PodSessionID:    "ps_2",
+		ExpiresAt:       now.Add(time.Hour),
+	})
+
+	if _, ok := store.GetTokenRecord("vs_1", "ps_1", now); ok {
+		t.Fatal("evicted token record was returned")
+	}
+	if got := len(store.tokenByViewer); got != 1 {
+		t.Fatalf("token reverse index length = %d, want 1", got)
+	}
+}
+
+func TestStoreDeleteViewerSessionRemovesTokenRecord(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	store := New(config.Default().Cache)
+	store.PutViewerSession(&domain.ViewerSession{
+		ID:           "vs_1",
+		PodSessionID: "ps_1",
+		ExpiresAt:    now.Add(time.Hour),
+	})
+	store.PutTokenRecord(&domain.TokenRecord{
+		TokenHash:       "hash-1",
+		RawToken:        "token-1",
+		ViewerSessionID: "vs_1",
+		PodSessionID:    "ps_1",
+		ExpiresAt:       now.Add(time.Hour),
+	})
+
+	store.DeleteViewerSession("vs_1")
+
+	if _, ok := store.GetTokenRecord("vs_1", "ps_1", now); ok {
+		t.Fatal("token record remained after viewer session deletion")
+	}
+	if got := len(store.tokenByViewer); got != 0 {
+		t.Fatalf("token reverse index length = %d, want 0", got)
+	}
+}
+
+func TestStoreViewerSessionExpiryRemovesTokenRecord(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	store := New(config.Default().Cache)
+	store.PutViewerSession(&domain.ViewerSession{
+		ID:           "vs_1",
+		PodSessionID: "ps_1",
+		ExpiresAt:    now.Add(time.Second),
+	})
+	store.PutTokenRecord(&domain.TokenRecord{
+		TokenHash:       "hash-1",
+		RawToken:        "token-1",
+		ViewerSessionID: "vs_1",
+		PodSessionID:    "ps_1",
+		ExpiresAt:       now.Add(time.Hour),
+	})
+
+	store.PurgeExpired(now.Add(2 * time.Second))
+
+	if _, ok := store.GetTokenRecord("vs_1", "ps_1", now); ok {
+		t.Fatal("token record remained after viewer session expiry")
+	}
+	if got := len(store.tokenByViewer); got != 0 {
+		t.Fatalf("token reverse index length = %d, want 0", got)
+	}
+}
+
 func TestStoreViewerSessionByPodReplacesStaleIndex(t *testing.T) {
 	t.Parallel()
 

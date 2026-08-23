@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -56,7 +57,7 @@ func TestLoginSendsCredentialsAsFileBrowserJSON(t *testing.T) {
 
 	var path string
 	var body []byte
-	client := &Client{httpClient: &http.Client{
+	client := &Client{loginHTTPClient: &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			path = req.URL.Path
 			data, err := io.ReadAll(req.Body)
@@ -97,7 +98,7 @@ func TestProxyReplacesAuthorizationAndDropsBrowserCookies(t *testing.T) {
 
 	var upstream *http.Request
 	var body []byte
-	client := &Client{httpClient: &http.Client{
+	client := &Client{proxyHTTPClient: &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			upstream = req
 			body, _ = io.ReadAll(req.Body)
@@ -184,6 +185,19 @@ func TestObservedClientInjectsTraceContext(t *testing.T) {
 	extracted := propagation.TraceContext{}.Extract(context.Background(), carrier)
 	if got := trace.SpanContextFromContext(extracted).TraceID().String(); got != "4bf92f3577b34da6a3ce929d0e0e4736" {
 		t.Fatalf("injected trace id = %s", got)
+	}
+}
+
+func TestObservedClientUsesLoginTimeoutOnlyForLogin(t *testing.T) {
+	provider := sdktrace.NewTracerProvider()
+	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+
+	client := NewObservedClient(2*time.Second, provider)
+	if got := client.loginHTTPClient.Timeout; got != 2*time.Second {
+		t.Fatalf("login timeout = %s, want %s", got, 2*time.Second)
+	}
+	if got := client.proxyHTTPClient.Timeout; got != 0 {
+		t.Fatalf("proxy timeout = %s, want zero", got)
 	}
 }
 

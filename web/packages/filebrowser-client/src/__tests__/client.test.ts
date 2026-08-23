@@ -173,6 +173,20 @@ describe('fileBrowserClient', () => {
 		})
 	})
 
+	it('keeps a trailing slash when creating a folder', async () => {
+		const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 201 }))
+		const client = new FileBrowserClient({
+			baseUrl: 'https://viewer.example.test',
+			viewerSessionID: 'vs_1',
+			fetcher,
+		})
+
+		await client.createFolder('/docs')
+
+		const [url] = fetcher.mock.calls[0]!
+		expect(new URL(url).searchParams.get('path')).toBe('/docs/')
+	})
+
 	it('maps File Browser HTTP statuses to a closed error-code union', () => {
 		expect(fileBrowserErrorCodeFromStatus(403)).toBe('FILEBROWSER_FORBIDDEN')
 		expect(fileBrowserErrorCodeFromStatus(404)).toBe('FILEBROWSER_NOT_FOUND')

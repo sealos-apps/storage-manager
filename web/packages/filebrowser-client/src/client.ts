@@ -60,7 +60,9 @@ export class FileBrowserClient {
 	}
 
 	async createFolder(path: string): Promise<void> {
-		await this.request('POST', 'resources', path)
+		const normalizedPath = normalizePath(path)
+		const folderPath = normalizedPath === '/' ? normalizedPath : `${normalizedPath}/`
+		await this.request('POST', 'resources', folderPath)
 	}
 
 	async uploadFile(parent: string, file: Blob & { name?: string }, options: UploadOptions = {}): Promise<void> {
@@ -143,9 +145,13 @@ export class FileBrowserClient {
 	}
 
 	private gatewayURL(endpoint: string, path: string, query: Record<string, string> = {}) {
+		const normalizedPath = normalizePath(path)
+		const gatewayPath = normalizedPath !== '/' && path.trim().endsWith('/')
+			? `${normalizedPath}/`
+			: normalizedPath
 		const params = new URLSearchParams({
 			viewer_session_id: this.viewerSessionID,
-			path: normalizePath(path),
+			path: gatewayPath,
 			...query,
 		})
 		return `${this.baseUrl}/viewer-files/${endpoint}?${params.toString()}`

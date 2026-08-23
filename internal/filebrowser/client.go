@@ -21,7 +21,8 @@ import (
 var defaultTransport = http.DefaultTransport
 
 type Client struct {
-	httpClient *http.Client
+	loginHTTPClient *http.Client
+	proxyHTTPClient *http.Client
 }
 
 type LoginRequest struct {
@@ -51,7 +52,7 @@ func (c *Client) Proxy(ctx context.Context, targetURL string, source *http.Reque
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("X-Auth", token)
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.proxyHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("calling filebrowser proxy: %w", err)
 	}
@@ -60,7 +61,8 @@ func (c *Client) Proxy(ctx context.Context, targetURL string, source *http.Reque
 
 func NewClient(timeout time.Duration) *Client {
 	return &Client{
-		httpClient: &http.Client{Timeout: timeout},
+		loginHTTPClient: &http.Client{Timeout: timeout},
+		proxyHTTPClient: &http.Client{},
 	}
 }
 
@@ -69,21 +71,26 @@ func NewObservedClient(timeout time.Duration, provider trace.TracerProvider) *Cl
 		return NewClient(timeout)
 	}
 	return &Client{
-		httpClient: &http.Client{
-			Timeout: timeout,
-			Transport: otelhttp.NewTransport(
-				cloneTransport(defaultTransport),
-				otelhttp.WithTracerProvider(provider),
-				otelhttp.WithMeterProvider(noop.NewMeterProvider()),
-				otelhttp.WithPropagators(propagation.NewCompositeTextMapPropagator(
-					propagation.TraceContext{},
-					propagation.Baggage{},
-				)),
-				otelhttp.WithSpanNameFormatter(func(_ string, _ *http.Request) string {
-					return "filebrowser.http.login"
-				}),
-			),
-		},
+		loginHTTPClient: newObservedHTTPClient(timeout, provider, "filebrowser.http.login"),
+		proxyHTTPClient: newObservedHTTPClient(0, provider, "filebrowser.http.proxy"),
+	}
+}
+
+func newObservedHTTPClient(timeout time.Duration, provider trace.TracerProvider, spanName string) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+		Transport: otelhttp.NewTransport(
+			cloneTransport(defaultTransport),
+			otelhttp.WithTracerProvider(provider),
+			otelhttp.WithMeterProvider(noop.NewMeterProvider()),
+			otelhttp.WithPropagators(propagation.NewCompositeTextMapPropagator(
+				propagation.TraceContext{},
+				propagation.Baggage{},
+			)),
+			otelhttp.WithSpanNameFormatter(func(_ string, _ *http.Request) string {
+				return spanName
+			}),
+		),
 	}
 }
 
@@ -109,7 +116,7 @@ func (c *Client) Login(ctx context.Context, viewerURL string, username string, p
 		return "", fmt.Errorf("building filebrowser login request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.loginHTTPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("calling filebrowser login: %w", err)
 	}

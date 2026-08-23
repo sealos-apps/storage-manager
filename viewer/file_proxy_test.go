@@ -102,6 +102,31 @@ func TestProxyViewerFilesKeepsFileBrowserTokenServerSide(t *testing.T) {
 	}
 }
 
+func TestProxyViewerFilesPreservesDirectoryTrailingSlash(t *testing.T) {
+	proxy := &recordingFileBrowserProxy{
+		response: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader("{}")),
+		},
+	}
+	handler := newFileProxyTestHandler(proxy)
+	recorder := httptest.NewRecorder()
+
+	handler.ProxyViewerFiles(
+		recorder,
+		newFileProxyRequest(http.MethodPost, "/viewer-files/resources?viewer_session_id=vs_1&path=/docs/"),
+		fileProxyResources,
+	)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if proxy.lastTarget != "https://viewer.example.test/api/resources/docs/?override=false" {
+		t.Fatalf("upstream target = %q", proxy.lastTarget)
+	}
+}
+
 func TestProxyViewerFilesRewritesTUSLocationToTheProxy(t *testing.T) {
 	proxy := &recordingFileBrowserProxy{
 		response: &http.Response{

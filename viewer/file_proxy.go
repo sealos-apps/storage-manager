@@ -229,7 +229,11 @@ func proxyPath(raw string) (string, *apienv.Error) {
 	if clean == "." {
 		return "/", nil
 	}
-	return "/" + strings.TrimPrefix(clean, "/"), nil
+	result := "/" + strings.TrimPrefix(clean, "/")
+	if result != "/" && strings.HasSuffix(raw, "/") {
+		result += "/"
+	}
+	return result, nil
 }
 
 func queryBool(value string) bool {
