@@ -42,7 +42,7 @@ func newFileProxyTestHandler(proxy fileBrowserProxy) *Handler {
 				PodSessionID:      "ps_1",
 				ViewerURL:         "https://viewer.example.test",
 				InternalViewerURL: "https://viewer.example.test",
-				Token:             "server-only-fb-token",
+				Token:             "fb",
 				ExpiresAt:         time.Now().Add(time.Minute),
 			},
 		},
@@ -66,8 +66,8 @@ func TestProxyViewerFilesKeepsFileBrowserTokenServerSide(t *testing.T) {
 		response: &http.Response{
 			StatusCode: http.StatusOK,
 			Header: http.Header{
-				"Authorization": {"Bearer server-only-fb-token"},
-				"X-Auth":        {"server-only-fb-token"},
+				"Authorization": {"Bearer fb"},
+				"X-Auth":        {"fb"},
 				"Set-Cookie":    {"filebrowser=session"},
 				"Content-Type":  {"application/octet-stream"},
 			},
@@ -89,7 +89,7 @@ func TestProxyViewerFilesKeepsFileBrowserTokenServerSide(t *testing.T) {
 	if recorder.Body.String() != "file contents" {
 		t.Fatalf("body = %q", recorder.Body.String())
 	}
-	if proxy.lastToken != "server-only-fb-token" {
+	if proxy.lastToken != "fb" {
 		t.Fatalf("upstream token = %q", proxy.lastToken)
 	}
 	if proxy.lastTarget != "https://viewer.example.test/api/raw/docs/readme.md" {

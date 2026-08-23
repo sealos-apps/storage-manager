@@ -52,7 +52,9 @@ func (c *Client) Proxy(ctx context.Context, targetURL string, source *http.Reque
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("X-Auth", token)
-	resp, err := c.proxyHTTPClient.Do(req)
+	// targetURL is assembled by viewer.fileBrowserTarget from server-owned
+	// viewer session URLs; browser input is limited to the validated file path.
+	resp, err := c.proxyHTTPClient.Do(req) //nolint:gosec // The proxy target never comes from the browser.
 	if err != nil {
 		return nil, fmt.Errorf("calling filebrowser proxy: %w", err)
 	}

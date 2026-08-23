@@ -122,7 +122,7 @@ func TestProxyReplacesAuthorizationAndDropsBrowserCookies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Proxy() error = %v", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if upstream == nil {
 		t.Fatal("upstream request was not captured")
 	}

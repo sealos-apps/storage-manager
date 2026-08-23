@@ -44,7 +44,7 @@ func (c *cache[K, V]) put(key K, value V, expiresAt time.Time) (K, bool) {
 	}
 	item.element = c.order.PushFront(item)
 	c.items[key] = item
-	for len(c.items) > c.maxEntries {
+	if len(c.items) > c.maxEntries {
 		back := c.order.Back()
 		if back == nil {
 			return zero, false
