@@ -4,7 +4,7 @@ import type { FileSortState } from '@/features/file-manager/utils/file-tree'
 import type { ViewerFlowSnapshot } from '@/features/viewer/components/viewer-launch-panel'
 import type { DeletePVCState } from '@/features/viewer/components/volume-dialogs'
 import type { ViewerView } from '@/features/viewer/stores/viewer-ui-store'
-import type { AdminNamespace, PVC, ViewerAPI, ViewerSession, ViewerToken } from '@/features/viewer/types/viewer'
+import type { AdminNamespace, PVC, ViewerAPI, ViewerSession } from '@/features/viewer/types/viewer'
 import type { ManualCloseKind, ViewerFlowStatus } from '@/features/viewer/utils/session-capability'
 import { FileBrowserClient } from '@sealos-storage-manager/filebrowser-client'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -25,7 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { FileManagerView } from '@/features/file-manager/components/file-manager-view'
 import { RecycleBinView } from '@/features/file-manager/components/recycle-bin-view'
 import { trashRootPath } from '@/features/file-manager/utils/file-tree'
-import { viewerApi } from '@/features/viewer/api/viewer-api'
+import { apiTarget, viewerApi } from '@/features/viewer/api/viewer-api'
 import { ALL_NAMESPACES } from '@/features/viewer/api/viewer-constants'
 import { translateViewerError } from '@/features/viewer/api/viewer-error'
 import {
@@ -98,7 +98,6 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 	const lastFileSessionRef = useRef<FileBrowserSession | null>(null)
 	const [launchKey, setLaunchKey] = useState<string | null>(null)
 	const [selectedPVC, setSelectedPVC] = useState<PVC | null>(null)
-	const [token, setToken] = useState<ViewerToken | null>(null)
 	const [viewerSession, setViewerSession] = useState<ViewerSession | null>(null)
 	const [viewerFlow, setViewerFlow] = useState<ViewerFlowState>(idleViewerFlowState)
 	const [currentPath, setCurrentPath] = useState('/')
@@ -157,17 +156,18 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 		return pvcs.find(pvc => pvc.uid === selectedPVC.uid) ?? selectedPVC
 	}, [pvcs, selectedPVC])
 	const fileSession = useMemo<FileBrowserSession | null>(() => {
-		if (!token || !selectedPVC || viewerSession?.status !== 'ready' || !viewerSession.token_ready) {
+		if (!selectedPVC || !viewerSession || viewerSession.status !== 'ready' || !viewerSession.token_ready) {
 			return null
 		}
 		return {
 			client: new FileBrowserClient({
-				baseUrl: token.viewer_url,
-				token: token.token,
+				authorization: authorization?.authorizationHeader,
+				baseUrl: apiTarget(),
+				viewerSessionID: viewerSession.id,
 			}),
 			pvcKey: selectedPVC.uid,
 		}
-	}, [selectedPVC, token, viewerSession])
+	}, [authorization, selectedPVC, viewerSession])
 	const sessionCapability = useMemo(
 		() => deriveSessionCapability({
 			error: viewerFlow.error,
@@ -176,9 +176,8 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 			selectedPVC,
 			session: viewerSession,
 			status: viewerFlow.status,
-			token,
 		}),
-		[selectedPVC, token, viewerFlow, viewerSession],
+		[selectedPVC, viewerFlow, viewerSession],
 	)
 	const displayFileSession = (() => {
 		if (!fileManagementEnabled) {
@@ -211,7 +210,6 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 
 	function resetFileSessionState() {
 		setSelectedPVC(null)
-		setToken(null)
 		setViewerSession(null)
 		lastFileSessionRef.current = null
 		setViewerFlow(idleViewerFlowState)
@@ -232,7 +230,6 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 
 	function openFiles(pvc: PVC) {
 		setSelectedPVC(pvc)
-		setToken(null)
 		setViewerSession(null)
 		lastFileSessionRef.current = null
 		setViewerFlow(idleViewerFlowState)
@@ -436,7 +433,6 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 									autoStartKey={launchKey}
 									onFlowChange={handleFlowChange}
 									pvc={selectedPVC}
-									setToken={setToken}
 								/>
 								<FileManagerView
 									api={api}
@@ -507,7 +503,6 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 				onSuccess={() => {
 					if (deleteState?.pvc.uid === selectedPVC?.uid) {
 						setSelectedPVC(null)
-						setToken(null)
 						setViewerSession(null)
 						lastFileSessionRef.current = null
 						setViewerFlow(idleViewerFlowState)

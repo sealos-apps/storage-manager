@@ -13,6 +13,7 @@ import (
 )
 
 type fakeLogin struct {
+	calls     int
 	viewerURL string
 	username  string
 	password  string
@@ -21,6 +22,7 @@ type fakeLogin struct {
 }
 
 func (f *fakeLogin) Login(_ context.Context, viewerURL string, username string, password string) (string, error) {
+	f.calls++
 	f.viewerURL = viewerURL
 	f.username = username
 	f.password = password
@@ -92,6 +94,47 @@ func TestIssueTokenUsesPublicViewerURLWhenConfigured(t *testing.T) {
 	}
 	if login.viewerURL != "https://viewer.example.test" {
 		t.Fatalf("login viewer URL = %q, want public URL", login.viewerURL)
+	}
+}
+
+func TestIssueTokenReusesServerSideTokenForViewerAndPod(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	store := state.New(cfg.Cache)
+	login := &fakeLogin{token: "fb-token"}
+	auth := NewAuthService(cfg, store, login, observability.MustNew(cfg.Observability, nil))
+	auth.now = fixedNow
+	viewer := &domain.ViewerSession{ID: "vs_1", Permission: domain.ModeReadWrite}
+	pod := &domain.PodSession{
+		ID:        "ps_1",
+		ViewerURL: "https://viewer.example.test",
+		Status:    domain.PodStatusReady,
+	}
+
+	first, err := auth.IssueToken(t.Context(), viewer, pod)
+	if err != nil {
+		t.Fatalf("first IssueToken() error = %v", err)
+	}
+	second, err := auth.IssueToken(t.Context(), viewer, pod)
+	if err != nil {
+		t.Fatalf("second IssueToken() error = %v", err)
+	}
+	if login.calls != 1 {
+		t.Fatalf("login calls = %d, want 1", login.calls)
+	}
+	if first.Token != second.Token || first.Token != "fb-token" {
+		t.Fatalf("reused token = %#v / %#v", first, second)
+	}
+
+	otherPod := *pod
+	otherPod.ID = "ps_2"
+	otherPod.ViewerURL = "https://viewer-2.example.test"
+	if _, err := auth.IssueToken(t.Context(), viewer, &otherPod); err != nil {
+		t.Fatalf("other pod IssueToken() error = %v", err)
+	}
+	if login.calls != 2 {
+		t.Fatalf("login calls after pod change = %d, want 2", login.calls)
 	}
 }
 

@@ -1,19 +1,16 @@
 import type { ViewerApiError } from '@/features/viewer/api/viewer-error'
-import type { ViewerAPI, ViewerSelection, ViewerSession, ViewerToken } from '@/features/viewer/types/viewer'
+import type { ViewerAPI, ViewerSelection, ViewerSession } from '@/features/viewer/types/viewer'
 import type { ManualCloseKind } from '@/features/viewer/utils/session-capability'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { startTransition, useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { viewerApi } from '@/features/viewer/api/viewer-api'
 import { isMissingSessionError, normalizeViewerError } from '@/features/viewer/api/viewer-error'
-import {
-	createViewerSessionMutationOptions,
-	issueViewerTokenMutationOptions,
-} from '@/features/viewer/api/viewer-mutations'
+import { createViewerSessionMutationOptions } from '@/features/viewer/api/viewer-mutations'
 import { viewerSessionQueryOptions } from '@/features/viewer/api/viewer-query-options'
 
-type FlowStatus = 'idle' | 'creating' | 'polling' | 'issuing-token' | 'ready' | 'failed'
+type FlowStatus = 'idle' | 'creating' | 'polling' | 'ready' | 'failed'
 
 interface UseViewerSessionFlowInput {
 	api?: ViewerAPI
@@ -32,7 +29,6 @@ export interface ViewerSessionFlow {
 	session: ViewerSession | null
 	start: (pvc: ViewerSelection) => Promise<void>
 	status: FlowStatus
-	token: ViewerToken | null
 }
 
 function shouldPollStatus(status: ViewerSession['status']) {
@@ -57,42 +53,32 @@ export function useViewerSessionFlow({
 	const [selectedPVC, setSelectedPVC] = useState<ViewerSelection | null>(null)
 	const [session, setSession] = useState<ViewerSession | null>(null)
 	const [status, setStatus] = useState<FlowStatus>('idle')
-	const [token, setToken] = useState<ViewerToken | null>(null)
 	const [manualCloseKind, setManualCloseKind] = useState<ManualCloseKind | null>(null)
 	const [isReconnecting, setIsReconnecting] = useState(false)
-	const issuingTokenRef = useRef(false)
 	const createViewerSession = useMutation(createViewerSessionMutationOptions(queryClient, api))
-	const issueViewerToken = useMutation(issueViewerTokenMutationOptions(api))
 	const createViewerSessionRef = useRef(createViewerSession.mutateAsync)
-	const issueViewerTokenRef = useRef(issueViewerToken.mutateAsync)
 	const manualCloseKindRef = useRef(manualCloseKind)
 	const autoRecoveryCountRef = useRef(0)
 	const selectedPVCRef = useRef(selectedPVC)
 	const pollingSessionID = session?.id ?? null
 	const pollingSessionStatus = session?.status ?? null
-	const tokenSessionID = session?.id ?? null
-	const tokenSessionStatus = session?.status ?? null
-	const tokenReady = session?.token_ready ?? false
-
 	useEffect(() => {
 		createViewerSessionRef.current = createViewerSession.mutateAsync
-		issueViewerTokenRef.current = issueViewerToken.mutateAsync
 		manualCloseKindRef.current = manualCloseKind
 		selectedPVCRef.current = selectedPVC
-	}, [createViewerSession.mutateAsync, issueViewerToken.mutateAsync, manualCloseKind, selectedPVC])
+	}, [createViewerSession.mutateAsync, manualCloseKind, selectedPVC])
 
 	const createForPVC = useCallback(async (pvc: ViewerSelection) => {
 		setStatus('creating')
 		setError(null)
 		setIsReconnecting(false)
 		setManualCloseKind(null)
-		setToken(null)
 		const nextSession = await createViewerSessionRef.current({
 			namespace: pvc.namespace,
 			pvcName: pvc.pvcName,
 		})
 		setSession(nextSession)
-		setStatus(nextSession.status === 'ready' ? 'issuing-token' : 'polling')
+		setStatus(nextSession.status === 'ready' ? 'ready' : 'polling')
 	}, [])
 
 	const start = useCallback(async (pvc: ViewerSelection) => {
@@ -116,8 +102,6 @@ export function useViewerSessionFlow({
 		setSelectedPVC(null)
 		setSession(null)
 		setStatus('idle')
-		setToken(null)
-		issuingTokenRef.current = false
 		autoRecoveryCountRef.current = 0
 	}, [])
 
@@ -133,8 +117,6 @@ export function useViewerSessionFlow({
 			setSession({ ...session, status: 'closed' })
 		}
 		setStatus('idle')
-		setToken(null)
-		issuingTokenRef.current = false
 		autoRecoveryCountRef.current = 0
 	}, [session])
 
@@ -149,18 +131,14 @@ export function useViewerSessionFlow({
 		}
 		if (nextError && shouldRecoverSession(nextError)) {
 			if (autoRecoveryCountRef.current >= maxAutoRecoveries) {
-				setToken(null)
 				setIsReconnecting(false)
 				setStatus('failed')
 				setSession(null)
-				issuingTokenRef.current = false
 				return
 			}
 			autoRecoveryCountRef.current += 1
 		}
 		setIsReconnecting(true)
-		setToken(null)
-		issuingTokenRef.current = false
 		try {
 			await createForPVC(currentPVC)
 		}
@@ -186,7 +164,7 @@ export function useViewerSessionFlow({
 				.then((nextSession) => {
 					setSession(nextSession)
 					if (nextSession.status === 'ready') {
-						setStatus('issuing-token')
+						setStatus('ready')
 					}
 					else if (isTerminalFailureStatus(nextSession.status)) {
 						setStatus('failed')
@@ -212,33 +190,6 @@ export function useViewerSessionFlow({
 		return () => window.clearInterval(id)
 	}, [api, pollIntervalMs, pollingSessionID, pollingSessionStatus, queryClient, recover])
 
-	useEffect(() => {
-		if (!tokenSessionID || tokenSessionStatus !== 'ready' || !tokenReady || issuingTokenRef.current || token) {
-			return
-		}
-		issuingTokenRef.current = true
-		startTransition(() => setStatus('issuing-token'))
-		void issueViewerTokenRef.current(tokenSessionID)
-			.then((nextToken) => {
-				setToken(nextToken)
-				setIsReconnecting(false)
-				setStatus('ready')
-			})
-			.catch((caught) => {
-				const nextError = normalizeViewerError(caught)
-				if (shouldRecoverSession(nextError) && selectedPVCRef.current) {
-					issuingTokenRef.current = false
-					void recover(nextError)
-					return
-				}
-				setError(nextError)
-				setStatus('failed')
-			})
-			.finally(() => {
-				issuingTokenRef.current = false
-			})
-	}, [recover, token, tokenReady, tokenSessionID, tokenSessionStatus])
-
 	return {
 		error,
 		isManualClosed: manualCloseKind !== null,
@@ -250,6 +201,5 @@ export function useViewerSessionFlow({
 		session,
 		start,
 		status,
-		token,
 	}
 }

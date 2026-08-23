@@ -277,15 +277,15 @@ func GetViewerSession(
 }
 
 // Issue Viewer Token
-// Issues a short-lived File Browser login token for a ready viewer session. The
-// response sets no-cache headers because the token grants direct file access.
+// Initializes server-side File Browser access for a ready viewer session. The
+// response confirms readiness and never includes the File Browser credential.
 //
 //encore:api public method=POST path=/viewer-sessions/:viewerSessionID/token
 func IssueViewerToken(
 	ctx context.Context,
 	viewerSessionID string,
 	req *AuthenticatedRequest,
-) (*ViewerTokenResponse, error) {
+) (*ViewerAccessResponse, error) {
 	return runtimeHandler().IssueTokenData(ctx, viewerSessionID, req)
 }
 
@@ -353,6 +353,86 @@ func VerifyFileBrowserHook(
 	req *VerifyFileBrowserHookRequest,
 ) (*FileBrowserHookVerificationResponse, error) {
 	return runtimeHandler().VerifyFileBrowserHookData(ctx, req)
+}
+
+// List Viewer Files
+// Proxies a directory listing through the server-owned File Browser session.
+// The viewer session ID and caller authorization are the only client
+// credentials accepted by this data-plane endpoint.
+//
+//encore:api public raw method=GET path=/viewer-files/resources
+func ViewerFilesResources(w http.ResponseWriter, req *http.Request) {
+	runtimeHandler().ProxyViewerFiles(w, req, fileProxyResources)
+}
+
+// List Viewer Files Recursively
+//
+//encore:api public raw method=GET path=/viewer-files/recursive
+func ViewerFilesRecursive(w http.ResponseWriter, req *http.Request) {
+	runtimeHandler().ProxyViewerFiles(w, req, fileProxyRecursive)
+}
+
+// Get Viewer Usage
+//
+//encore:api public raw method=GET path=/viewer-files/usage
+func ViewerFilesUsage(w http.ResponseWriter, req *http.Request) {
+	runtimeHandler().ProxyViewerFiles(w, req, fileProxyUsage)
+}
+
+// Read or Download Viewer File
+//
+//encore:api public raw method=GET path=/viewer-files/raw
+func ViewerFilesRaw(w http.ResponseWriter, req *http.Request) {
+	runtimeHandler().ProxyViewerFiles(w, req, fileProxyRaw)
+}
+
+// Create or Upload Viewer File
+//
+//encore:api public raw method=POST path=/viewer-files/resources
+func ViewerFilesResourcesPost(w http.ResponseWriter, req *http.Request) {
+	runtimeHandler().ProxyViewerFiles(w, req, fileProxyResources)
+}
+
+// Update Viewer File
+//
+//encore:api public raw method=PUT path=/viewer-files/resources
+func ViewerFilesResourcesPut(w http.ResponseWriter, req *http.Request) {
+	runtimeHandler().ProxyViewerFiles(w, req, fileProxyResources)
+}
+
+// Move or Copy Viewer File
+//
+//encore:api public raw method=PATCH path=/viewer-files/resources
+func ViewerFilesResourcesPatch(w http.ResponseWriter, req *http.Request) {
+	runtimeHandler().ProxyViewerFiles(w, req, fileProxyResources)
+}
+
+// Delete Viewer File
+//
+//encore:api public raw method=DELETE path=/viewer-files/resources
+func ViewerFilesResourcesDelete(w http.ResponseWriter, req *http.Request) {
+	runtimeHandler().ProxyViewerFiles(w, req, fileProxyResources)
+}
+
+// Create TUS Upload
+//
+//encore:api public raw method=POST path=/viewer-files/tus
+func ViewerFilesTUSPost(w http.ResponseWriter, req *http.Request) {
+	runtimeHandler().ProxyViewerFiles(w, req, fileProxyTUS)
+}
+
+// Inspect TUS Upload
+//
+//encore:api public raw method=HEAD path=/viewer-files/tus
+func ViewerFilesTUSHead(w http.ResponseWriter, req *http.Request) {
+	runtimeHandler().ProxyViewerFiles(w, req, fileProxyTUS)
+}
+
+// Continue TUS Upload
+//
+//encore:api public raw method=PATCH path=/viewer-files/tus
+func ViewerFilesTUSPatch(w http.ResponseWriter, req *http.Request) {
+	runtimeHandler().ProxyViewerFiles(w, req, fileProxyTUS)
 }
 
 // Get Metrics

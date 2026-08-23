@@ -7,7 +7,7 @@ import type { PVC } from '@/features/viewer/types/viewer'
 import { vi } from 'vitest'
 
 import { FileManagerView } from '@/features/file-manager/components/file-manager-view'
-import { pvcFixture, viewerSessionFixture, viewerTokenFixture } from '@/features/viewer/test/fakes'
+import { pvcFixture, viewerSessionFixture } from '@/features/viewer/test/fakes'
 import { deriveSessionCapability } from '@/features/viewer/utils/session-capability'
 import { renderWithProviders } from '@/test/render'
 
@@ -46,7 +46,6 @@ export function readyCapability() {
 		selectedPVC: pvcFixture(),
 		session: viewerSessionFixture({ status: 'ready', token_ready: true }),
 		status: 'ready',
-		token: viewerTokenFixture(),
 	})
 }
 
@@ -58,7 +57,6 @@ export function reconnectingCapability() {
 		selectedPVC: pvcFixture(),
 		session: viewerSessionFixture({ status: 'ready', token_ready: true }),
 		status: 'failed',
-		token: null,
 	})
 }
 
@@ -95,7 +93,6 @@ export function renderFileManager(
 				selectedPVC: pvcFixture(),
 				session: viewerSessionFixture({ status: 'creating', token_ready: false }),
 				status: 'polling',
-				token: null,
 			}))
 
 	return renderWithProviders(

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { ViewerApiError } from '@/features/viewer/api/viewer-error'
-import { pvcFixture, viewerSessionFixture, viewerTokenFixture } from '@/features/viewer/test/fakes'
+import { pvcFixture, viewerSessionFixture } from '@/features/viewer/test/fakes'
 import { deriveSessionCapability } from '@/features/viewer/utils/session-capability'
 
 describe('session capability helpers', () => {
@@ -13,7 +13,6 @@ describe('session capability helpers', () => {
 			selectedPVC: null,
 			session: null,
 			status: 'idle',
-			token: null,
 		})
 
 		expect(capability.kind).toBe('none')
@@ -29,7 +28,6 @@ describe('session capability helpers', () => {
 			selectedPVC: pvcFixture(),
 			session: viewerSessionFixture({ status: 'creating', token_ready: false }),
 			status: 'polling',
-			token: null,
 		})
 
 		expect(capability.kind).toBe('pod-only')
@@ -38,7 +36,7 @@ describe('session capability helpers', () => {
 		expect(capability.canUseFiles).toBe(false)
 	})
 
-	it('enables file capabilities only when the viewer token and ready session are present', () => {
+	it('enables file capabilities when the viewer session is ready', () => {
 		const capability = deriveSessionCapability({
 			error: null,
 			isReconnecting: false,
@@ -46,7 +44,6 @@ describe('session capability helpers', () => {
 			selectedPVC: pvcFixture(),
 			session: viewerSessionFixture({ status: 'ready', token_ready: true }),
 			status: 'ready',
-			token: viewerTokenFixture(),
 		})
 
 		expect(capability.kind).toBe('viewer-ready')
@@ -62,7 +59,6 @@ describe('session capability helpers', () => {
 			selectedPVC: pvcFixture(),
 			session: viewerSessionFixture({ status: 'ready', token_ready: true }),
 			status: 'failed',
-			token: null,
 		})
 
 		expect(capability.kind).toBe('viewer-reconnecting')
@@ -78,7 +74,6 @@ describe('session capability helpers', () => {
 			selectedPVC: pvcFixture(),
 			session: viewerSessionFixture({ status: 'closed' }),
 			status: 'idle',
-			token: null,
 		})
 
 		expect(capability.kind).toBe('manual-closed')

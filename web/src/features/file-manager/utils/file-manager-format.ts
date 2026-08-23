@@ -63,12 +63,15 @@ export function formatRelativeTime(date: Date, now: Date) {
 	return `${value}${unit.suffix} ago`
 }
 
-export function downloadEntry(session: FileBrowserSession, entry: FileEntry) {
+export async function downloadEntry(session: FileBrowserSession, entry: FileEntry) {
+	const blob = await session.client.downloadBlob(entry.path)
 	const anchor = document.createElement('a')
-	anchor.href = session.client.downloadUrl(entry.path)
+	const url = URL.createObjectURL(blob)
+	anchor.href = url
 	anchor.download = entry.name
 	anchor.rel = 'noreferrer'
 	anchor.click()
+	window.setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
 export function hasPendingBranches(branches: Record<string, { isLoading?: boolean } | undefined>) {

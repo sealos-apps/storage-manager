@@ -119,7 +119,7 @@ func (h *Handler) issueToken(
 	ctx context.Context,
 	viewerSessionID string,
 	req *AuthenticatedRequest,
-) (*ViewerTokenResponse, *apienv.Error) {
+) (*ViewerAccessResponse, *apienv.Error) {
 	start := time.Now()
 	if apiErr := h.requireFileManagementEnabled(); apiErr != nil {
 		h.observe(ctx, http.MethodPost, "/viewer-sessions/:id/token", apiErr.Status, start)
@@ -143,10 +143,14 @@ func (h *Handler) issueToken(
 		return nil, apiErr
 	}
 	h.observe(ctx, http.MethodPost, "/viewer-sessions/:id/token", http.StatusOK, start)
-	return &ViewerTokenResponse{
+	return &ViewerAccessResponse{
 		CacheControl: "no-store",
 		Pragma:       "no-cache",
-		ViewerToken:  token,
+		ViewerAccess: &ViewerAccess{
+			ViewerSessionID: viewerSessionID,
+			Ready:           true,
+			ExpiresAt:       token.ExpiresAt,
+		},
 	}, nil
 }
 

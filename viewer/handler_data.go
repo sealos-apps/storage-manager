@@ -178,7 +178,7 @@ func (h *Handler) IssueTokenData(
 	ctx context.Context,
 	viewerSessionID string,
 	req *AuthenticatedRequest,
-) (*ViewerTokenResponse, error) {
+) (*ViewerAccessResponse, error) {
 	response, apiErr := h.issueToken(ctx, viewerSessionID, req)
 	return response, toEncoreError(apiErr)
 }

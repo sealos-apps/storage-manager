@@ -31,7 +31,6 @@ export type PVC = Omit<domain.PVC, 'capacity' | 'capacity_bytes' | 'references' 
 export type PodSession = domain.PodSession
 export type ViewerScheduling = domain.ViewerScheduling
 export type ViewerSession = domain.ViewerSession
-export type ViewerToken = domain.ViewerToken
 export type Heartbeat = domain.Heartbeat
 export type StorageClass = domain.StorageClass
 export type PVCDescribe = session.PVCDescribe
@@ -49,6 +48,12 @@ export type StorageQuota = Omit<viewer.StorageQuota, 'available_bytes' | 'availa
 export type ViewerMode = 'readonly' | 'readwrite' | string
 export type ViewerStatus = 'active' | 'ready' | 'creating' | 'closed' | 'expired' | 'failed' | string
 export type PodStatus = 'creating' | 'ready' | 'failed' | 'terminating' | 'terminated' | string
+
+export interface ViewerAccess {
+	expires_at: string
+	ready: boolean
+	viewer_session_id: string
+}
 
 export interface ViewerApiErrorShape {
 	code: ViewerErrorCode
@@ -170,7 +175,7 @@ export interface ViewerAPI {
 	getPVCYAML: (input: DeletePVCInput) => Promise<PVCYAML>
 	getViewerSession: (viewerSessionID: string) => Promise<ViewerSession>
 	heartbeatViewerSession: (viewerSessionID: string) => Promise<Heartbeat>
-	issueViewerToken: (viewerSessionID: string) => Promise<ViewerToken>
+	issueViewerToken: (viewerSessionID: string) => Promise<ViewerAccess>
 	listPVCs: (input: ListPVCsInput) => Promise<PVC[]>
 	listStorageClasses: () => Promise<StorageClass[]>
 	updatePVC: (input: DeletePVCInput & StorageClassYAMLInput) => Promise<PVC>

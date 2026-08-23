@@ -192,7 +192,7 @@ export function FileActions({ disabled, entry, onOpenFolder, session }: FileActi
 							</Button>
 						)
 					: (
-							<Button aria-label={t('files.download')} disabled={disabled} onClick={() => downloadEntry(session, entry)} size="icon" variant="ghost">
+							<Button aria-label={t('files.download')} disabled={disabled} onClick={() => void downloadEntry(session, entry).catch(error => toast.error(error instanceof Error ? error.message : t('errors.generic')))} size="icon" variant="ghost">
 								<Download />
 							</Button>
 						)}

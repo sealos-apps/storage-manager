@@ -2,11 +2,13 @@ package viewer
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/nixieboluo/sealos-storage-manager/internal/accountquota"
 	"github.com/nixieboluo/sealos-storage-manager/internal/authn"
 	"github.com/nixieboluo/sealos-storage-manager/internal/config"
 	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
+	"github.com/nixieboluo/sealos-storage-manager/internal/filebrowser"
 	"github.com/nixieboluo/sealos-storage-manager/internal/observability"
 	"github.com/nixieboluo/sealos-storage-manager/internal/session"
 	corev1 "k8s.io/api/core/v1"
@@ -85,6 +87,7 @@ type Handler struct {
 	managementRESTConfig *rest.Config
 	debug                config.DebugConfig
 	features             config.FeatureConfig
+	fileBrowserProxy     fileBrowserProxy
 }
 
 type HandlerOption func(*Handler)
@@ -162,6 +165,16 @@ func WithManagementRESTConfig(restConfig *rest.Config) HandlerOption {
 	}
 }
 
+type fileBrowserProxy interface {
+	Proxy(ctx context.Context, targetURL string, source *http.Request, token string) (*http.Response, error)
+}
+
+func WithFileBrowserProxy(proxy fileBrowserProxy) HandlerOption {
+	return func(h *Handler) {
+		h.fileBrowserProxy = proxy
+	}
+}
+
 func NewHandler(
 	viewers viewerService,
 	pods podService,
@@ -172,15 +185,16 @@ func NewHandler(
 	options ...HandlerOption,
 ) *Handler {
 	handler := &Handler{
-		viewers:        viewers,
-		storageClasses: unavailableStorageClassService{},
-		pods:           pods,
-		auth:           auth,
-		storageQuota:   disabledStorageQuotaService{},
-		recorder:       recorder,
-		authz:          authz,
-		adminAuthz:     denyAdminAuthorizer{},
-		features:       config.Default().Features(),
+		viewers:          viewers,
+		storageClasses:   unavailableStorageClassService{},
+		pods:             pods,
+		auth:             auth,
+		storageQuota:     disabledStorageQuotaService{},
+		recorder:         recorder,
+		authz:            authz,
+		adminAuthz:       denyAdminAuthorizer{},
+		features:         config.Default().Features(),
+		fileBrowserProxy: filebrowser.NewClient(config.Default().Viewer.FileBrowser.LoginTimeout),
 	}
 	for _, option := range options {
 		option(handler)

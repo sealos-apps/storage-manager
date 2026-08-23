@@ -23,7 +23,7 @@ describe('fileManagerView', () => {
 	it('hides the file table when the viewer session is not ready', () => {
 		renderFileManager(null)
 
-		expect(screen.getByText(/pod session is available/i)).toBeInTheDocument()
+		expect(screen.getAllByLabelText('Loading').length).toBeGreaterThan(0)
 		expect(screen.getByRole('button', { name: /session status/i })).toBeInTheDocument()
 		expect(screen.queryByRole('columnheader', { name: /name/i })).not.toBeInTheDocument()
 		expect(screen.queryByRole('button', { name: /new folder/i })).not.toBeInTheDocument()
@@ -273,10 +273,8 @@ describe('fileManagerView', () => {
 
 	it('keeps non-editable file names inert', async () => {
 		const user = userEvent.setup()
-		const downloadUrl = vi.fn(() => 'https://viewer.example.test/api/raw/archive.zip?auth=token')
 		const readText = vi.fn()
 		const session = sessionWithClient({
-			downloadUrl,
 			list: vi.fn(async () => resource('/', '', true, [
 				resource('/archive.zip', 'archive.zip', false),
 			])),
@@ -287,7 +285,6 @@ describe('fileManagerView', () => {
 
 		await user.click(await screen.findByText('archive.zip'))
 
-		expect(downloadUrl).not.toHaveBeenCalled()
 		expect(readText).not.toHaveBeenCalled()
 		expect(screen.queryByLabelText(/monaco editor/i)).not.toBeInTheDocument()
 	})
@@ -369,7 +366,7 @@ describe('fileManagerView', () => {
 		)
 
 		expect(screen.getByText('readme.md')).toBeInTheDocument()
-		expect(screen.getByRole('status')).toHaveTextContent(/pending file list/i)
+		expect(screen.getByLabelText('Loading')).toBeInTheDocument()
 		expect(screen.getByRole('button', { name: /download/i })).toBeDisabled()
 
 		resolveDocs(resource('/docs', 'docs', true, [
@@ -422,7 +419,7 @@ describe('fileManagerView', () => {
 		)
 
 		expect(screen.getByText('readme.md')).toBeInTheDocument()
-		expect(screen.getByRole('status')).toHaveTextContent(/reconnecting viewer session/i)
+		expect(screen.getAllByLabelText('Loading').length).toBeGreaterThan(0)
 		expect(screen.getByRole('button', { name: /download/i })).toBeDisabled()
 		expect(list).toHaveBeenCalledTimes(1)
 	})

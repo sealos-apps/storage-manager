@@ -11,6 +11,7 @@ import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { flexRender, getCoreRowModel, getSortedRowModel, useReactTable } from '@tanstack/react-table'
 import {
 	ArrowLeft,
+	Loader2,
 	RefreshCw,
 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
@@ -165,6 +166,7 @@ export function FileManagerView({
 
 	const operationsDisabled = !canUseFiles || fileQuery.isFetching || hasPendingBranches(branches)
 	const showOverlay = canShowFileList && (fileQuery.isFetching || sessionCapability.kind === 'viewer-reconnecting')
+	const sessionIsPending = sessionCapability.kind === 'starting-pod' || sessionCapability.kind === 'pod-only' || sessionCapability.kind === 'viewer-reconnecting'
 	const visiblePath = fileQuery.data?.path ?? currentPath
 
 	const toggleFolder = useCallback((entry: FileEntry) => {
@@ -371,8 +373,10 @@ export function FileManagerView({
 
 			{!canShowFileList
 				? (
-						<div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
-							{t(sessionCapability.messageKey)}
+						<div className="flex min-h-24 items-center justify-center rounded-lg border bg-card p-6 text-sm text-muted-foreground" role={sessionIsPending ? 'status' : undefined}>
+							{sessionIsPending
+								? <Loader2 aria-label={t('common.loading')} className="size-5 animate-spin" />
+								: t(sessionCapability.messageKey)}
 						</div>
 					)
 				: (
@@ -398,7 +402,11 @@ export function FileManagerView({
 												</span>
 											)
 										: null}
-									{!canUseFiles ? <span>{t(sessionCapability.messageKey)}</span> : null}
+									{!canUseFiles
+										? sessionIsPending
+											? <Loader2 aria-label={t('common.loading')} className="size-4 animate-spin" />
+											: <span>{t(sessionCapability.messageKey)}</span>
+										: null}
 								</div>
 								{canShowFileList ? <StorageUsageSummary pvc={pvc} /> : null}
 							</div>
@@ -430,7 +438,7 @@ export function FileManagerView({
 												? (
 														<TableRow>
 															<TableCell className="py-12 text-center text-muted-foreground" colSpan={4}>
-																{t('files.pending')}
+																<Loader2 aria-label={t('common.loading')} className="mx-auto size-5 animate-spin" />
 															</TableCell>
 														</TableRow>
 													)
@@ -476,11 +484,7 @@ export function FileManagerView({
 								{showOverlay
 									? (
 											<div className="absolute inset-0 flex items-center justify-center rounded-lg bg-background/70 backdrop-blur-[1px]" role="status">
-												<div className="rounded-md border bg-card px-4 py-3 text-sm text-muted-foreground shadow-sm">
-													{sessionCapability.kind === 'viewer-reconnecting'
-														? t('files.reconnecting')
-														: t('files.pending')}
-												</div>
+												<Loader2 aria-label={t('common.loading')} className="size-6 animate-spin" />
 											</div>
 										)
 									: null}

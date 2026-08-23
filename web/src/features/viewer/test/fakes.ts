@@ -7,10 +7,10 @@ import type {
 	StorageClassDescribe,
 	StorageClassYAML,
 	StorageQuota,
+	ViewerAccess,
 	ViewerAPI,
 	ViewerContext,
 	ViewerSession,
-	ViewerToken,
 } from '@/features/viewer/types/viewer'
 import { quantityFromBytes } from '@/features/viewer/utils/storage-quantity'
 
@@ -172,14 +172,11 @@ export function viewerSessionFixture(overrides: Partial<ViewerSession> = {}): Vi
 	}
 }
 
-export function viewerTokenFixture(overrides: Partial<ViewerToken> = {}): ViewerToken {
+export function viewerAccessFixture(overrides: Partial<ViewerAccess> = {}): ViewerAccess {
 	return {
 		expires_at: '2026-05-14T10:30:00Z',
-		pod_session_id: 'ps_1',
-		token: 'fb-token',
-		token_type: 'Bearer',
+		ready: true,
 		viewer_session_id: 'vs_1',
-		viewer_url: 'https://viewer.example.test',
 		...overrides,
 	}
 }
@@ -288,7 +285,7 @@ export function createFakeViewerAPI(overrides: Partial<ViewerAPI> = {}): ViewerA
 		getPodSession: async id => podSessionFixture({ id }),
 		getViewerSession: async id => viewerSessionFixture({ id, status: 'ready', token_ready: true }),
 		heartbeatViewerSession: async id => heartbeatFixture({ viewer_session_id: id }),
-		issueViewerToken: async id => viewerTokenFixture({ viewer_session_id: id }),
+		issueViewerToken: async id => viewerAccessFixture({ viewer_session_id: id }),
 		listPVCs: async () => [pvcFixture()],
 		listStorageClasses: async () => [storageClassFixture()],
 		updatePVC: async input => pvcFixture({ name: input.name, namespace: input.namespace }),

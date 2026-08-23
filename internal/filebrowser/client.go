@@ -21,7 +21,8 @@ import (
 var defaultTransport = http.DefaultTransport
 
 type Client struct {
-	httpClient *http.Client
+	loginHTTPClient *http.Client
+	proxyHTTPClient *http.Client
 }
 
 type LoginRequest struct {
@@ -32,9 +33,38 @@ type LoginResponse struct {
 	Token string `json:"token"`
 }
 
+// Proxy sends a File Browser request using a token that remains inside the
+// backend. The source request's body and protocol headers are preserved for
+// streaming file operations such as TUS uploads.
+func (c *Client) Proxy(ctx context.Context, targetURL string, source *http.Request, token string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, source.Method, targetURL, source.Body)
+	if err != nil {
+		return nil, fmt.Errorf("building filebrowser proxy request: %w", err)
+	}
+	req.ContentLength = source.ContentLength
+	for key, values := range source.Header {
+		if strings.EqualFold(key, "Authorization") || strings.EqualFold(key, "X-Auth") || strings.EqualFold(key, "Host") || strings.EqualFold(key, "Cookie") || strings.EqualFold(key, "Proxy-Authorization") {
+			continue
+		}
+		for _, value := range values {
+			req.Header.Add(key, value)
+		}
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-Auth", token)
+	// targetURL is assembled by viewer.fileBrowserTarget from server-owned
+	// viewer session URLs; browser input is limited to the validated file path.
+	resp, err := c.proxyHTTPClient.Do(req) //nolint:gosec // The proxy target never comes from the browser.
+	if err != nil {
+		return nil, fmt.Errorf("calling filebrowser proxy: %w", err)
+	}
+	return resp, nil
+}
+
 func NewClient(timeout time.Duration) *Client {
 	return &Client{
-		httpClient: &http.Client{Timeout: timeout},
+		loginHTTPClient: &http.Client{Timeout: timeout},
+		proxyHTTPClient: &http.Client{},
 	}
 }
 
@@ -43,21 +73,26 @@ func NewObservedClient(timeout time.Duration, provider trace.TracerProvider) *Cl
 		return NewClient(timeout)
 	}
 	return &Client{
-		httpClient: &http.Client{
-			Timeout: timeout,
-			Transport: otelhttp.NewTransport(
-				cloneTransport(defaultTransport),
-				otelhttp.WithTracerProvider(provider),
-				otelhttp.WithMeterProvider(noop.NewMeterProvider()),
-				otelhttp.WithPropagators(propagation.NewCompositeTextMapPropagator(
-					propagation.TraceContext{},
-					propagation.Baggage{},
-				)),
-				otelhttp.WithSpanNameFormatter(func(_ string, _ *http.Request) string {
-					return "filebrowser.http.login"
-				}),
-			),
-		},
+		loginHTTPClient: newObservedHTTPClient(timeout, provider, "filebrowser.http.login"),
+		proxyHTTPClient: newObservedHTTPClient(0, provider, "filebrowser.http.proxy"),
+	}
+}
+
+func newObservedHTTPClient(timeout time.Duration, provider trace.TracerProvider, spanName string) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+		Transport: otelhttp.NewTransport(
+			cloneTransport(defaultTransport),
+			otelhttp.WithTracerProvider(provider),
+			otelhttp.WithMeterProvider(noop.NewMeterProvider()),
+			otelhttp.WithPropagators(propagation.NewCompositeTextMapPropagator(
+				propagation.TraceContext{},
+				propagation.Baggage{},
+			)),
+			otelhttp.WithSpanNameFormatter(func(_ string, _ *http.Request) string {
+				return spanName
+			}),
+		),
 	}
 }
 
@@ -83,7 +118,7 @@ func (c *Client) Login(ctx context.Context, viewerURL string, username string, p
 		return "", fmt.Errorf("building filebrowser login request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.loginHTTPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("calling filebrowser login: %w", err)
 	}

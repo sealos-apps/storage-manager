@@ -174,7 +174,6 @@ export const zh = {
 		uploadProgress: '已上传 {{count}} 个文件',
 		uploadProgressWithFailures: '已上传 {{succeeded}} 个文件，失败 {{failed}} 个',
 		noFolders: '当前目录没有文件夹',
-		viewerPending: 'Pod Session 已可用。Viewer Session 就绪后会显示文件访问能力。',
 		viewerUnavailable: 'Viewer Session 不可用。请重新打开 Viewer。',
 	},
 	trash: {

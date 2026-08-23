@@ -12,7 +12,7 @@ Sealos 用户需要一种安全的自助方式，在 Sealos Desktop 工作流内
 
 Storage Manager 提供一个 Sealos Desktop 存储应用，由 typed Encore API 和 React 前端支撑。用户可以查看自己命名空间内的 PVC，检查容量和挂载状态，在策略允许时创建或扩容卷，并为受支持的 PVC 打开临时 File Browser 会话。
 
-文件访问流程由后端控制。后端验证调用者身份，创建或复用挂载目标 PVC 的短生命周期 viewer pod，通过 hook 校验的登录流程签发短生命周期 File Browser token，通过 heartbeat 刷新会话活跃状态，并清理过期或关闭的会话。对于已被挂载的 ReadWriteOnce 卷，后端通过 Kubernetes pod 挂载检测和调度提示判断 viewer 访问是否可用、是否只读、是否需要绑定到特定节点。
+文件访问流程由后端控制。后端验证调用者身份，创建或复用挂载目标 PVC 的短生命周期 viewer pod，通过 hook 校验的登录流程签发短生命周期 File Browser token，并将 token 保留在后端；浏览器通过固定的 `/viewer-files/*` 代理路由执行列表、读写、下载和 TUS 操作，不直接访问 File Browser，也不接收 token。heartbeat 刷新会话活跃状态，系统清理过期或关闭的会话。对于已被挂载的 ReadWriteOnce 卷，后端通过 Kubernetes pod 挂载检测和调度提示判断 viewer 访问是否可用、是否只读、是否需要绑定到特定节点。
 
 管理员侧提供命名空间选择、聚合 PVC 可见性和 StorageClass 管理能力。管理员可以列出命名空间，按授权跨命名空间管理 PVC，查看 StorageClass 元数据，创建或更新 StorageClass YAML，查看 kubectl 风格的描述信息，并且只能删除由 Storage Manager 管理且未被使用的 StorageClass。
 
@@ -38,7 +38,7 @@ Storage Manager 提供一个 Sealos Desktop 存储应用，由 typed Encore API 
 16. 作为 Sealos 用户，我希望为受支持的 PVC 打开文件，以便在浏览器内查看或管理卷内容。
 17. 作为 Sealos 用户，我希望打开 PVC 时 Storage Manager 自动创建临时 viewer 会话，以便无需理解 viewer pod 的实现细节。
 18. 作为 Sealos 用户，我希望 viewer pod 启动时看到会话进度，以便确认系统正在处理。
-19. 作为 Sealos 用户，我希望只有 viewer 会话 ready 且 token 已签发后才显示文件视图，以便直接文件访问从有效状态开始。
+19. 作为 Sealos 用户，我希望只有 viewer 会话 ready 且后端文件访问能力就绪后才显示文件视图，以便文件访问从有效状态开始。
 20. 作为 Sealos 用户，我希望 Kubernetes 语义允许时获得读写访问，以便创建、重命名、修改、上传和删除文件。
 21. 作为 Sealos 用户，我希望写访问不安全或不受支持时仍可只读访问，以便继续检查文件且避免数据风险。
 22. 作为 Sealos 用户，我希望不受支持的 PVC 展示原因，以便理解问题来自访问模式、挂载冲突、pod 调度还是功能策略。
@@ -52,7 +52,7 @@ Storage Manager 提供一个 Sealos Desktop 存储应用，由 typed Encore API 
 30. 作为 Sealos 用户，我希望存在活跃上传时延迟自动关闭行为，以便上传不被页面生命周期事件中断。
 31. 作为 Sealos 用户，我希望轮询或 heartbeat 短暂失败时可以恢复会话，以便临时网络问题不会迫使我重启工作。
 32. 作为 Sealos 用户，我希望提供刷新会话操作，以便从过期或失败的 viewer 流程中恢复。
-33. 作为 Sealos 用户，我希望文件浏览、下载、上传、创建文件夹、编辑文件、复制、移动和删除都通过活跃 token 后面的 File Browser API 完成，以便文件操作始终被限制在当前挂载 PVC 内。
+33. 作为 Sealos 用户，我希望文件浏览、下载、上传、创建文件夹、编辑文件、复制、移动和删除都通过当前 viewer session 的后端代理完成，以便文件操作始终被限制在当前挂载 PVC 内且 File Browser token 不离开后端。
 34. 作为 Sealos 用户，我希望在文件会话支持时访问回收站视图，以便删除文件相关流程可被发现。
 35. 作为 Sealos 用户，我希望看到带后端错误详情的本地化错误信息，以便用偏好的语言理解失败原因。
 36. 作为 Sealos 用户，我希望 file management 关闭时隐藏文件管理导航，以便被关闭的功能不会显示为可操作入口。
@@ -82,14 +82,14 @@ Storage Manager 提供一个 Sealos Desktop 存储应用，由 typed Encore API 
 60. 作为平台运维，我希望 Kubernetes 调用、File Browser 调用、会话生命周期、清理和大规模扫描有可观测性，以便生产问题可被调试。
 61. 作为前端开发者，我希望所有后端调用都经过 Encore 生成 client 边界和 feature API adapter，以便请求形状保持 typed。
 62. 作为后端开发者，我希望所有业务 endpoint 都是 typed Encore API，以便 OpenAPI 和 TypeScript client 生成稳定。
-63. 作为后端开发者，我希望 raw endpoint 限定为 Prometheus metrics，以便业务 API 保持 schema。
+63. 作为后端开发者，我希望 raw endpoint 限定为 Prometheus metrics 和固定的文件流代理，以便业务 API 保持 schema，同时支持下载和 TUS 数据流。
 64. 作为安全审查者，我希望 kubeconfig、token、auth header 和 File Browser token 排除在日志和 trace 之外，以便敏感信息不进入可观测性数据。
 65. 作为支持工程师，我希望 PVC、StorageClass、auth、viewer、hook、quota 和内部失败都有结构化错误码，以便客户端行为和支持文档可以依赖稳定分类。
 
 ## 实现决策
 
 - 后端继续作为 Encore.go 服务运行，所有业务操作使用 typed public API。请求和响应结构显式声明 body、path、query 和 header tag。
-- raw endpoint 只保留 Prometheus 文本指标。所有产品操作使用 typed Encore API 和生成的 client schema。
+- raw endpoint 只保留 Prometheus 文本指标和固定的 `/viewer-files/resources|recursive|usage|raw|tus` 数据流代理。代理只接受 viewer session ID、调用者授权和 allowlist 操作参数，不接受上游 URL，并过滤上游授权响应头。
 - `/healthz` 是 backend 和 web 部署的稳定健康入口，Helm 的 startup/readiness/liveness 探针统一指向它。健康检查只做本地、轻量、稳定的 runtime / config 初始化校验，不依赖 File Browser、PVC 或外部业务流。
 - API 面覆盖 context、PVC list/create/delete/expand、storage quota、StorageClass list、admin capabilities、admin namespaces、admin StorageClass CRUD/describe、viewer session create/get/token/heartbeat/close、pod session get/close 和 File Browser hook verification。
 - Endpoint handler 保持轻量。授权、Kubernetes 交互、会话生命周期、StorageClass 行为、配额查询和 File Browser 交互放在 service interface 后面。
@@ -104,8 +104,8 @@ Storage Manager 提供一个 Sealos Desktop 存储应用，由 typed Encore API 
 - Viewer session 表示用户状态，包括 ID、pod session ID、namespace、PVC name、status、pod status、viewer URL、mode、token readiness、heartbeat 和过期时间。
 - File Browser 登录流程使用一次性 auth request。后端签发 username 和 password secret，File Browser 运行配置的 hook，hook 调用后端校验，File Browser 根据后端决策授予权限。
 - File Browser 权限由 viewer mode 映射为只读或读写能力。命令执行、分享和管理员权限保持关闭。
-- Viewer token 响应包含 no-cache header，并且只在当前浏览器会话需要的响应体中暴露 bearer token。
-- Token record 只存储 token hash，不保存明文 token。
+- Viewer token 响应包含 no-cache header，只返回会话 ID、就绪状态和过期时间，不返回 bearer token。File Browser bearer token 只保存在后端有界内存状态中供代理使用。
+- Token record 同时保存 hash 和后端代理所需的短期明文 token；明文不序列化、不进入日志、trace、前端状态或响应体。
 - 会话状态使用有边界的内存 store，覆盖 pod session、viewer session、auth request、token record 和二级索引。TTL 和 purge interval 可配置。
 - MVP 部署假设 viewer/session 操作使用单个后端副本或 sticky routing，因为会话状态在内存中。
 - Cleanup 通过 Kubernetes 状态同步过期会话和孤儿 viewer pod，避免后端重启和 cache 淘汰造成长期资源泄漏。
@@ -116,7 +116,7 @@ Storage Manager 提供一个 Sealos Desktop 存储应用，由 typed Encore API 
 - 前端通过 service adapter 和 feature API module 使用 Encore 生成 TypeScript client。深层 UI component 接收 typed feature API，不直接构造后端路径。
 - TanStack Query option factory 负责 query key、enabled gate、polling interval、invalidation、乐观 heartbeat 更新和 mutation side effect。
 - UI 根据后端 capability 派生导航。PVC 管理、file management、namespace selection 和 StorageClass administration 按 capability response 展示。
-- File manager 使用从活跃 viewer token 和 viewer URL 初始化的 File Browser client，并被限定到所选 PVC 会话。
+- File manager 使用 API origin、caller authorization 和 viewer session ID 初始化代理 client，并被限定到所选 PVC 会话；下载通过带授权的 Blob 请求完成，不生成带 token 的 URL。
 - 应用在可恢复状态下保留最后一个有效 file session，以便用户仍可看到文件列表上下文；手动关闭或不兼容导航时清理该状态。
 - 浏览器生命周期处理会尽量关闭 viewer session，并考虑活跃上传。
 - 国际化错误渲染把稳定后端错误码映射到本地化消息，并在可用时展示安全的 detail 文本。

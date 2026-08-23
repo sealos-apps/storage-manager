@@ -17,6 +17,7 @@ type Store struct {
 	viewerSessions  *cache[string, *domain.ViewerSession]
 	authRequests    *cache[string, *domain.AuthRequest]
 	tokenRecords    *cache[string, *domain.TokenRecord]
+	tokenByViewer   map[string]string
 	podSessionByPVC *cache[string, string]
 
 	viewerByPod map[string]map[string]struct{}
@@ -33,6 +34,7 @@ func New(cfg config.CacheConfig) *Store {
 		viewerSessions:  newCache[string, *domain.ViewerSession](cfg.ViewerSessionsMaxEntries),
 		authRequests:    newCache[string, *domain.AuthRequest](cfg.AuthRequestsMaxEntries),
 		tokenRecords:    newCache[string, *domain.TokenRecord](cfg.TokenRecordsMaxEntries),
+		tokenByViewer:   map[string]string{},
 		podSessionByPVC: newCache[string, string](cfg.IndexesMaxEntries),
 		viewerByPod:     map[string]map[string]struct{}{},
 	}
@@ -146,6 +148,7 @@ func (s *Store) GetViewerSession(id string, now time.Time) (*domain.ViewerSessio
 
 	session, ok := s.viewerSessions.get(id, now)
 	if !ok {
+		s.deleteTokenForViewerLocked(id)
 		return nil, false
 	}
 	return cloneViewerSession(session), true
@@ -156,10 +159,10 @@ func (s *Store) DeleteViewerSession(id string) {
 	defer s.mu.Unlock()
 
 	session, ok := s.viewerSessions.delete(id)
-	if !ok {
-		return
+	if ok {
+		s.deleteViewerByPodLocked(session.PodSessionID, id)
 	}
-	s.deleteViewerByPodLocked(session.PodSessionID, id)
+	s.deleteTokenForViewerLocked(id)
 }
 
 func (s *Store) ListViewerSessionsByPod(podSessionID string, now time.Time) []*domain.ViewerSession {
@@ -175,6 +178,7 @@ func (s *Store) ListViewerSessionsByPod(podSessionID string, now time.Time) []*d
 		session, ok := s.viewerSessions.get(id, now)
 		if !ok {
 			delete(ids, id)
+			s.deleteTokenForViewerLocked(id)
 			continue
 		}
 		sessions = append(sessions, cloneViewerSession(session))
@@ -214,7 +218,34 @@ func (s *Store) PutTokenRecord(record *domain.TokenRecord) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.tokenRecords.put(record.TokenHash, cloneTokenRecord(record), record.ExpiresAt)
+	if previousHash, ok := s.tokenByViewer[record.ViewerSessionID]; ok && previousHash != record.TokenHash {
+		s.deleteTokenForViewerLocked(record.ViewerSessionID)
+	}
+	evictedHash, evicted := s.tokenRecords.put(record.TokenHash, cloneTokenRecord(record), record.ExpiresAt)
+	if evicted {
+		s.deleteTokenIndexByHashLocked(evictedHash)
+	}
+	s.tokenByViewer[record.ViewerSessionID] = record.TokenHash
+}
+
+func (s *Store) GetTokenRecord(viewerSessionID string, podSessionID string, now time.Time) (*domain.TokenRecord, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	hash, ok := s.tokenByViewer[viewerSessionID]
+	if !ok {
+		return nil, false
+	}
+	record, ok := s.tokenRecords.get(hash, now)
+	if !ok {
+		delete(s.tokenByViewer, viewerSessionID)
+		return nil, false
+	}
+	if record.ViewerSessionID != viewerSessionID || record.PodSessionID != podSessionID || record.RawToken == "" {
+		s.deleteTokenForViewerLocked(viewerSessionID)
+		return nil, false
+	}
+	return cloneTokenRecord(record), true
 }
 
 func (s *Store) PurgeExpired(now time.Time) []ExpiredItem {
@@ -232,9 +263,14 @@ func (s *Store) PurgeExpired(now time.Time) []ExpiredItem {
 				delete(s.viewerByPod, podSessionID)
 			}
 		}
+		s.deleteTokenForViewerLocked(item.ID)
 	}
 	expired = append(expired, purgeCacheLocked("auth_request", s.authRequests, now)...)
-	expired = append(expired, purgeCacheLocked("token_record", s.tokenRecords, now)...)
+	tokenExpired := purgeCacheLocked("token_record", s.tokenRecords, now)
+	expired = append(expired, tokenExpired...)
+	for _, item := range tokenExpired {
+		s.deleteTokenIndexByHashLocked(item.ID)
+	}
 	_ = s.podSessionByPVC.purgeExpired(now)
 	return expired
 }
@@ -256,6 +292,23 @@ func (s *Store) deleteViewerByPodLocked(podSessionID string, viewerSessionID str
 	delete(ids, viewerSessionID)
 	if len(ids) == 0 {
 		delete(s.viewerByPod, podSessionID)
+	}
+}
+
+func (s *Store) deleteTokenForViewerLocked(viewerSessionID string) {
+	tokenHash, ok := s.tokenByViewer[viewerSessionID]
+	if !ok {
+		return
+	}
+	delete(s.tokenByViewer, viewerSessionID)
+	s.tokenRecords.delete(tokenHash)
+}
+
+func (s *Store) deleteTokenIndexByHashLocked(tokenHash string) {
+	for viewerSessionID, indexedHash := range s.tokenByViewer {
+		if indexedHash == tokenHash {
+			delete(s.tokenByViewer, viewerSessionID)
+		}
 	}
 }
 
