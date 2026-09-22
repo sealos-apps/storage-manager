@@ -551,7 +551,7 @@ func pvcListForOperationMode(mode operationMode, namespace string, pvcs []domain
 	if mode != operationModeUser {
 		return pvcs
 	}
-	items := append([]domain.PVC(nil), pvcs...)
+	items := append([]domain.PVC{}, pvcs...)
 	for index := range items {
 		items[index] = filterPVCReferencesForNamespace(items[index], namespace)
 	}

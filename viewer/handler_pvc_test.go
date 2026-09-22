@@ -52,6 +52,31 @@ func TestHandlerListPVCsUsesEnvelope(t *testing.T) {
 	}
 }
 
+func TestHandlerListPVCsReturnsEmptyArrayWhenNoPVCs(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(
+		&fakeViewerService{pvcs: []domain.PVC{}},
+		fakePodService{},
+		fakeAuthService{},
+		nil,
+		observability.MustNew(testObservability(), nil),
+		allowAuthorizer{},
+	)
+	req := httptest.NewRequest(http.MethodGet, "/pvcs?namespace=ns", nil)
+	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))
+	recorder := httptest.NewRecorder()
+
+	handler.ListPVCs(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `"items":[]`) {
+		t.Fatalf("expected empty items array, body = %s", recorder.Body.String())
+	}
+}
+
 func TestHandlerListPVCsShowsOwnNamespaceReferenceDetailsForUser(t *testing.T) {
 	t.Parallel()
 
