@@ -262,7 +262,7 @@ metadata:
 	}
 }
 
-func TestStorageClassServiceListReturnsAllStorageClasses(t *testing.T) {
+func TestStorageClassServiceListFiltersUserVisibleStorageClasses(t *testing.T) {
 	t.Parallel()
 
 	cfg := testConfig()
@@ -271,6 +271,9 @@ func TestStorageClassServiceListReturnsAllStorageClasses(t *testing.T) {
 			&storagev1.StorageClass{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "visible",
+					Annotations: map[string]string{
+						StorageClassAvailableToUsersAnnotation: "true",
+					},
 				},
 				Provisioner: "example.test/provisioner",
 			},
@@ -286,7 +289,7 @@ func TestStorageClassServiceListReturnsAllStorageClasses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListStorageClasses(false) error = %v", err)
 	}
-	if len(visible) != 2 {
+	if len(visible) != 1 || visible[0].Name != "visible" {
 		t.Fatalf("visible = %#v", visible)
 	}
 	all, err := service.ListStorageClasses(t.Context(), true)

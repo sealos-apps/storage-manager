@@ -779,7 +779,7 @@ func TestHandlerListStorageClassesUsesEnvelope(t *testing.T) {
 		fakeAuthService{},
 		nil,
 		observability.MustNew(testObservability(), nil),
-		allowAuthorizer{},
+		denyAuthorizer{},
 	)
 	req := httptest.NewRequest(http.MethodGet, "/storage-classes", nil)
 	req.Header.Set("Authorization", url.QueryEscape(testKubeconfig))

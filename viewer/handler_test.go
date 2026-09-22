@@ -419,10 +419,6 @@ func (allowAuthorizer) CanUpdatePVC(
 	return nil
 }
 
-func (allowAuthorizer) CanListStorageClasses(_ context.Context, _ *authn.Principal) error {
-	return nil
-}
-
 type allowAdminAuthorizer struct{}
 
 func (allowAdminAuthorizer) CanAdmin(_ context.Context, _ *authn.Principal) (AdminAuthorizationResult, error) {

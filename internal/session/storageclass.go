@@ -52,6 +52,9 @@ func (s *StorageClassService) ListStorageClasses(ctx context.Context, includeHid
 	items = make([]domain.StorageClass, 0, len(storageClasses))
 	for _, storageClass := range storageClasses {
 		item := StorageClassToDomain(storageClass)
+		if !includeHidden && !item.AvailableToUsers {
+			continue
+		}
 		item.InUsePVCCount = usage[item.Name]
 		item.DeleteBlockedReason = storageClassDeleteBlockedReason(item)
 		items = append(items, item)

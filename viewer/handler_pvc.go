@@ -708,11 +708,6 @@ func (h *Handler) listStorageClasses(
 		return nil, err
 	}
 	ctx = authn.WithPrincipal(ctx, principal)
-	if err := h.authz.CanListStorageClasses(ctx, principal); err != nil {
-		apiErr := apienv.NewError(403, apienv.CodePVCAccessDenied, "Storage class access denied", nil)
-		h.observe(ctx, http.MethodGet, "/storage-classes", apiErr.Status, start)
-		return nil, apiErr
-	}
 	items, listErr := h.viewers.ListStorageClasses(ctx)
 	if listErr != nil {
 		apiErr := apienv.FromError(listErr)

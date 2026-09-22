@@ -200,7 +200,3 @@ func (denyAuthorizer) CanUpdatePVC(
 ) error {
 	return errRuntimeUnavailable
 }
-
-func (denyAuthorizer) CanListStorageClasses(_ context.Context, _ *authn.Principal) error {
-	return errRuntimeUnavailable
-}

@@ -194,22 +194,6 @@ func (a kubernetesAuthorizer) CanUpdatePVC(
 	return a.canUseResource(ctx, clientset, "update", "", "persistentvolumeclaims", namespace, name)
 }
 
-func (a kubernetesAuthorizer) CanListStorageClasses(
-	ctx context.Context,
-	principal *authn.Principal,
-) (err error) {
-	ctx, finish := a.recorder.TraceOperation(ctx, "kubernetes.authorize.list_storageclasses")
-	defer func() {
-		finish(err)
-	}()
-
-	clientset, err := a.clientsetForPrincipal(principal)
-	if err != nil {
-		return err
-	}
-	return a.canUseResource(ctx, clientset, "list", "storage.k8s.io", "storageclasses", "", "")
-}
-
 func (a kubernetesAuthorizer) sameNamespace(
 	ctx context.Context,
 	userClient kubernetes.Interface,

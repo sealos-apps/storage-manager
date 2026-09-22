@@ -67,7 +67,6 @@ type authorizer interface {
 	CanCreatePVC(ctx context.Context, principal *authn.Principal, namespace string) error
 	CanDeletePVC(ctx context.Context, principal *authn.Principal, namespace string, name string) error
 	CanUpdatePVC(ctx context.Context, principal *authn.Principal, namespace string, name string) error
-	CanListStorageClasses(ctx context.Context, principal *authn.Principal) error
 }
 
 type adminAuthorizer interface {
