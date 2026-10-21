@@ -29,7 +29,7 @@ metadata:
 
 字段约定：
 
-- `storage.sealos.io/pvc-reference-source=true` 是 Storage Manager 的扫描入口。没有这个 label 的资源不会参与 PVC 删除保护。
+- `storage.sealos.io/pvc-reference-source=true` 是声明式引用的扫描入口。除下述原生 BackupRepo 识别外，没有这个 label 的资源不会参与声明式引用保护。
 - `storage.sealos.io/ref-source` 表示引用方来源，例如 `devbox` 或 `applaunchpad`。这是引用方类型，不是 `local`、`shared`、`generated` 这类 PVC 类型。
 - `storage.sealos.io/ref-name` 是给用户看的引用方名称，缺省时使用 Kubernetes resource name。
 - `storage.sealos.io/pvc-references` 是 JSON array。每一项表示当前资源引用的一个 PVC。
@@ -47,6 +47,11 @@ Storage Manager 删除 PVC 前会阻止以下情况：
 - 带 `storage.sealos.io/pvc-reference-source=true` 的 Deployment/StatefulSet/DevBox/App CR 声明了该 PVC，返回 `PVC_REFERENCED`。
 - 带上述 label 的 Deployment/StatefulSet 在 pod template 的 `volumes[].persistentVolumeClaim.claimName` 中引用该 PVC，即使没有显式 `pvc-references` annotation，也会被识别。
 - 带上述 label 的 StatefulSet 使用 `volumeClaimTemplates` 生成的 PVC，例如 `<templateName>-<statefulSetName>-<ordinal>`，会被识别为 `owned`。
+- KubeBlocks `dataprotection.kubeblocks.io/v1alpha1` 的集群级 BackupRepo 通过 `status.backupPVCName` 引用的 PVC，会被识别为 `owned`，返回 `PVC_REFERENCED`，无需添加 Storage Manager label/annotation。该名称按完整 PVC 名匹配当前扫描范围内各 namespace 的 PVC，不使用名称前缀猜测；即使没有活跃备份 Pod、BackupRepo 正在删除，保护仍然生效。
+
+BackupRepo 扫描需要后端 ServiceAccount 的集群级 `list backuprepos.dataprotection.kubeblocks.io` 权限，已包含在 Helm chart 中；使用自定义 RBAC 的部署也必须添加此权限。未安装 BackupRepo CRD 时跳过此扫描；权限不足、API 请求失败或字段格式异常时，删除接口 fail closed。此保护默认启用，无需配置开关。
+
+BackupRepo 是集群级资源，不受现有同 namespace 声明限制。普通用户的 `references[]` 只保留 `source_type=BackupRepo`、relation 和 evidence 以禁用删除并提示原因，不暴露仓库名称、UID 或其他详情；管理员可看到完整引用信息。该契约基于 [KubeBlocks v0.8.2 BackupRepo 定义](https://github.com/apecloud/kubeblocks/blob/v0.8.2/apis/dataprotection/v1alpha1/backuprepo_types.go)。
 
 列表页会 best-effort 展示 `references[]`；普通用户只看到自己 namespace 内的引用方资源，管理员可在允许的 namespace 范围内看到引用方详情。如果引用扫描暂时失败，会记录告警并继续展示 PVC。删除接口会 fail closed：引用扫描失败时不会继续删除。
 

@@ -646,7 +646,11 @@ describe('storageAppShell', () => {
 		}))
 	})
 
-	it('disables delete for PVCs referenced by applications', async () => {
+	it.each([
+		{ type: 'applaunchpad', name: 'Demo App', namespace: 'ns-admin', path: '/data', evidence: 'metadata-annotation', display: 'applaunchpad/Demo App /data' },
+		{ type: 'BackupRepo', name: 'minio', namespace: '', path: '', evidence: 'backuprepo-status', display: 'BackupRepo/minio' },
+		{ type: 'BackupRepo', name: '', namespace: '', path: '', evidence: 'backuprepo-status', display: 'BackupRepo' },
+	])('disables delete for PVCs referenced by $display', async ({ type, name, namespace, path, evidence, display }) => {
 		const user = userEvent.setup()
 		const deletePVC = vi.fn()
 		const api = createFakeViewerAPI({
@@ -657,13 +661,12 @@ describe('storageAppShell', () => {
 					namespace: 'ns-admin',
 					uid: 'uid-data',
 					references: [{
-						evidence: 'metadata-annotation',
-						mount_path: '/data',
+						evidence,
+						mount_path: path,
 						relation: 'mounted',
-						source_name: 'Demo App',
-						source_namespace: 'ns-admin',
-						source_type: 'applaunchpad',
-						source_uid: 'app-uid',
+						source_name: name,
+						source_namespace: namespace,
+						source_type: type,
 					}],
 				}),
 			]),
@@ -672,13 +675,13 @@ describe('storageAppShell', () => {
 		renderWithProviders(<StorageAppShell api={api} />)
 
 		expect(await screen.findByText('Referenced')).toBeInTheDocument()
-		expect(screen.getByRole('button', { name: /referenced by applaunchpad\/Demo App \/data/i })).toBeInTheDocument()
+		expect(screen.getByRole('button', { name: `Referenced by ${display}` })).toBeInTheDocument()
 		await user.click(await screen.findByRole('button', { name: /more actions/i }))
 		const deleteMenuItem = await screen.findByRole('menuitem', { name: /^delete$/i })
 		expect(deleteMenuItem).toHaveAttribute('aria-disabled', 'true')
 		await user.hover(deleteMenuItem)
 		expect(await screen.findByRole('tooltip')).toHaveTextContent(
-			'Referenced by applaunchpad/Demo App /data. Remove the reference before deleting it.',
+			`Referenced by ${display}. Remove the reference before deleting it.`,
 		)
 		await user.click(deleteMenuItem)
 		expect(deletePVC).not.toHaveBeenCalled()

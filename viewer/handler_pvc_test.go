@@ -136,6 +136,32 @@ func TestHandlerListPVCsShowsOwnNamespaceReferenceDetailsForUser(t *testing.T) {
 	}
 }
 
+func TestPVCOperationModesPreserveBackupRepoGuardWithoutLeakingDetails(t *testing.T) {
+	t.Parallel()
+
+	reference := domain.PVCReference{
+		SourceType: "BackupRepo", SourceName: "private-repo", SourceUID: "private-uid",
+		Relation: "owned", Evidence: "backuprepo-status",
+	}
+	pvc := &domain.PVC{Namespace: "ns", Name: "backup-data", References: []domain.PVCReference{reference}}
+	apiErr := apienv.NewError(409, apienv.CodePVCReferenced, "PVC is still referenced", map[string]any{
+		"references": []domain.PVCReference{reference},
+	})
+	listed := pvcListForOperationMode(operationModeUser, "ns", []domain.PVC{*pvc})[0]
+	detail := pvcForOperationMode(operationModeUser, "ns", pvc)
+	filteredError := pvcErrorForOperationMode(operationModeUser, "ns", apiErr)
+	for _, refs := range [][]domain.PVCReference{listed.References, detail.References, filteredError.Details["references"].([]domain.PVCReference)} {
+		want := domain.PVCReference{SourceType: "BackupRepo", Relation: "owned", Evidence: "backuprepo-status"}
+		if len(refs) != 1 || refs[0] != want {
+			t.Fatalf("user references = %#v, want generic BackupRepo guard", refs)
+		}
+	}
+	admin := pvcForOperationMode(operationModeAdmin, "ns", pvc)
+	if admin.References[0] != reference || pvc.References[0] != reference {
+		t.Fatal("filtering mutated admin or original reference details")
+	}
+}
+
 func TestHandlerListPVCsKeepsReferenceDetailsForAdmin(t *testing.T) {
 	t.Parallel()
 

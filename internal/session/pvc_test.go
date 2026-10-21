@@ -2,6 +2,7 @@ package session
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -15,8 +16,11 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
 	ktesting "k8s.io/client-go/testing"
 )
@@ -345,6 +349,67 @@ func TestViewerServiceDeletePVCRejectsReferencedPVC(t *testing.T) {
 	}
 	if _, err := clientset.CoreV1().PersistentVolumeClaims("default").Get(t.Context(), "data", metav1.GetOptions{}); err != nil {
 		t.Fatalf("referenced pvc was deleted: %v", err)
+	}
+}
+
+func TestViewerServiceBackupRepoPVCProtection(t *testing.T) {
+	t.Parallel()
+
+	for _, scanFails := range []bool{false, true} {
+		t.Run(fmt.Sprintf("scanFails=%t", scanFails), func(t *testing.T) {
+			cfg := testConfig()
+			clientset := fake.NewSimpleClientset(&corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "backup-data"},
+			})
+			dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{
+				{Group: "devbox.sealos.io", Version: "v1alpha2", Resource: "devboxes"}:                "DevboxList",
+				{Group: "devbox.sealos.io", Version: "v1alpha1", Resource: "devboxes"}:                "DevboxList",
+				{Group: "app.sealos.io", Version: "v1", Resource: "apps"}:                             "AppList",
+				{Group: "dataprotection.kubeblocks.io", Version: "v1alpha1", Resource: "backuprepos"}: "BackupRepoList",
+			})
+			dynamicClient.PrependReactor("list", "*", func(action ktesting.Action) (bool, runtime.Object, error) {
+				if action.GetResource().Resource != "backuprepos" {
+					return true, &unstructured.UnstructuredList{}, nil
+				}
+				if scanFails {
+					return true, nil, errors.New("backup repository scan unavailable")
+				}
+				return true, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{{Object: map[string]any{
+					"apiVersion": "dataprotection.kubeblocks.io/v1alpha1", "kind": "BackupRepo",
+					"metadata": map[string]any{"name": "minio"},
+					"status":   map[string]any{"backupPVCName": "backup-data"},
+				}}}}, nil
+			})
+			client := kube.NewWithDynamic(clientset, dynamicClient)
+			store := state.New(cfg.Cache)
+			recorder := observability.MustNew(cfg.Observability, nil)
+			pods := NewPodService(cfg, store, client, recorder)
+			service := NewViewerService(cfg, store, client, pods, nil, recorder)
+
+			// Listing remains best-effort; successful scans must also protect the UI.
+			items, err := service.ListPVCs(t.Context(), "default")
+			if err != nil || len(items) != 1 {
+				t.Fatalf("ListPVCs() = %#v, %v", items, err)
+			}
+			if !scanFails && (len(items[0].References) != 1 || items[0].References[0].SourceType != "BackupRepo") {
+				t.Fatalf("missing BackupRepo reference: %#v", items[0])
+			}
+			_, err = service.DeletePVC(t.Context(), DeletePVCInput{Namespace: "default", Name: "backup-data"})
+			if err == nil {
+				t.Fatal("DeletePVC() unexpectedly allowed deleting a backup PVC")
+			}
+			if !scanFails {
+				var apiErr *apienv.Error
+				if !errors.As(err, &apiErr) || apiErr.Code != apienv.CodePVCReferenced || apiErr.Status != 409 {
+					t.Fatalf("DeletePVC() = %v, want PVC_REFERENCED/409", err)
+				}
+			}
+			for _, action := range clientset.Actions() {
+				if action.GetVerb() == "delete" {
+					t.Fatalf("unexpected Kubernetes delete: %#v", action)
+				}
+			}
+		})
 	}
 }
 

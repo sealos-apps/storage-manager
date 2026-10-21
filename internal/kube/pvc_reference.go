@@ -30,7 +30,12 @@ const (
 	PVCReferenceEvidenceAnnotation           = "metadata-annotation"
 	PVCReferenceEvidenceWorkloadVolume       = "workload-volume"
 	PVCReferenceEvidenceStatefulSetClaimName = "statefulset-volume-claim-template"
+	PVCReferenceEvidenceBackupRepoStatus     = "backuprepo-status"
 )
+
+var backupRepoGVR = schema.GroupVersionResource{
+	Group: "dataprotection.kubeblocks.io", Version: "v1alpha1", Resource: "backuprepos",
+}
 
 var pvcReferenceCustomGVRs = []schema.GroupVersionResource{
 	{Group: "devbox.sealos.io", Version: "v1alpha2", Resource: "devboxes"},
@@ -112,8 +117,53 @@ func (c *Client) listPVCReferences(
 		return nil, err
 	}
 	references = append(references, customRefs...)
+	backupRefs, err := c.listBackupRepoPVCReferences(ctx, pvcNamesByNamespace)
+	if err != nil {
+		return nil, err
+	}
+	references = append(references, backupRefs...)
 
 	return dedupePVCReferenceBindings(filterPVCReferenceBindings(references, pvcNamesByNamespace)), nil
+}
+
+func (c *Client) listBackupRepoPVCReferences(
+	ctx context.Context,
+	pvcNamesByNamespace map[string]map[string]struct{},
+) ([]PVCReferenceBinding, error) {
+	if c.dynamic == nil || len(pvcNamesByNamespace) == 0 {
+		return nil, nil
+	}
+	// BackupRepo is cluster-scoped. KubeBlocks creates status.backupPVCName
+	// in each consuming namespace, without the Storage Manager reference label.
+	list, err := c.dynamic.Resource(backupRepoGVR).List(ctx, metav1.ListOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil, nil // KubeBlocks is optional.
+	}
+	if err != nil {
+		return nil, referenceListError(backupRepoGVR.String(), "", err)
+	}
+	var references []PVCReferenceBinding
+	for _, repo := range list.Items {
+		claimName, _, err := unstructured.NestedString(repo.Object, "status", "backupPVCName")
+		if err != nil {
+			return nil, fmt.Errorf("reading BackupRepo %s backupPVCName: %w", repo.GetName(), err)
+		}
+		if claimName == "" {
+			continue
+		}
+		source := pvcReferenceSource{SourceType: "BackupRepo", Name: repo.GetName(), UID: string(repo.GetUID())}
+		for namespace, names := range pvcNamesByNamespace {
+			if _, exists := names[claimName]; !exists {
+				continue
+			}
+			references = append(references, PVCReferenceBinding{
+				PVCNamespace: namespace,
+				PVCName:      claimName,
+				Reference:    domainReference(source, PVCReferenceRelationOwned, "", PVCReferenceEvidenceBackupRepoStatus),
+			})
+		}
+	}
+	return references, nil
 }
 
 func (c *Client) listReferencePVCs(
