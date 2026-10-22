@@ -10,6 +10,7 @@ import (
 	"github.com/nixieboluo/sealos-storage-manager/internal/apienv"
 	"github.com/nixieboluo/sealos-storage-manager/internal/authn"
 	"github.com/nixieboluo/sealos-storage-manager/internal/domain"
+	"github.com/nixieboluo/sealos-storage-manager/internal/kube"
 	"github.com/nixieboluo/sealos-storage-manager/internal/session"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
@@ -596,6 +597,16 @@ func filterPVCReferencesForNamespace(pvc domain.PVC, namespace string) domain.PV
 func filterPVCReferenceListForNamespace(references []domain.PVCReference, namespace string) []domain.PVCReference {
 	filtered := make([]domain.PVCReference, 0, len(references))
 	for _, reference := range references {
+		if reference.SourceNamespace == "" && reference.SourceType == "BackupRepo" &&
+			reference.Evidence == kube.PVCReferenceEvidenceBackupRepoStatus {
+			// Preserve the deletion guard without exposing cluster-level resource details.
+			filtered = append(filtered, domain.PVCReference{
+				SourceType: "BackupRepo",
+				Relation:   reference.Relation,
+				Evidence:   reference.Evidence,
+			})
+			continue
+		}
 		if reference.SourceNamespace != namespace {
 			continue
 		}

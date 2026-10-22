@@ -314,7 +314,7 @@ function DeletePVCMenuItem({
 			<TooltipTrigger asChild>
 				<DropdownMenuItem
 					aria-disabled="true"
-					className="cursor-not-allowed text-muted-foreground focus:bg-accent focus:text-muted-foreground"
+					className="cursor-not-allowed opacity-50"
 					onSelect={(event) => {
 						event.preventDefault()
 					}}
