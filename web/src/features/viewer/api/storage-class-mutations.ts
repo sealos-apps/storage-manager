@@ -67,6 +67,7 @@ export function adminUpdateStorageClassMetadataMutationOptions(
 			api.adminUpdateStorageClassMetadata(input.name, {
 				availableToUsers: input.availableToUsers,
 				displayNames: input.displayNames,
+				...(input.storageMode ? { storageMode: input.storageMode } : {}),
 			}),
 		onSuccess: (storageClass: StorageClass) => {
 			queryClient.setQueryData<StorageClass[]>(

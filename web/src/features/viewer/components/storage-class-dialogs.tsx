@@ -1,7 +1,7 @@
 import type { UseMutationResult } from '@tanstack/react-query'
 import type React from 'react'
 
-import type { PVC, StorageClass, ViewerAPI } from '@/features/viewer/types/viewer'
+import type { PVC, StorageClass, StorageClassMetadataInput, StorageMode, ViewerAPI } from '@/features/viewer/types/viewer'
 import { useForm } from '@tanstack/react-form'
 import { useQuery } from '@tanstack/react-query'
 import { lazy, Suspense, useState } from 'react'
@@ -146,20 +146,39 @@ export function StorageClassEditorDialog({
 }
 
 export function StorageClassMetadataDialog({
+	storageModePrototype = false,
 	mutation,
 	onOpenChange,
 	storageClass,
 }: {
-	mutation: UseMutationResult<StorageClass, Error, { availableToUsers: boolean, displayNames: Record<string, string>, name: string }>
+	storageModePrototype?: boolean
+	mutation: UseMutationResult<StorageClass, Error, { name: string } & StorageClassMetadataInput>
 	onOpenChange: (name: string | null) => void
 	storageClass: StorageClass | null
 }) {
-	const { t } = useTranslation()
+	const { i18n, t } = useTranslation()
+	const [pendingHide, setPendingHide] = useState<({ name: string } & StorageClassMetadataInput) | null>(null)
+	const [modeError, setModeError] = useState(false)
+	const modeLocked = Boolean(storageClass?.in_use_pvc_count && storageClass.storage_mode)
+	function save(input: { name: string } & StorageClassMetadataInput) {
+		mutation.mutate(input, {
+			onSuccess: () => {
+				toast.success(t('storageClasses.metadataSaved'))
+				setPendingHide(null)
+				onOpenChange(null)
+			},
+			onError: error => showViewerErrorToast(error, t),
+		})
+	}
+	const [defaultValues] = useState(() => ({
+		storageMode: storageClass?.storage_mode ?? '' as StorageMode | '',
+		availableToUsers: storageClass?.available_to_users ?? false,
+		displayNames: storageModePrototype && Object.keys(storageClass?.display_names ?? {}).length === 0
+			? [{ id: newRowID(), locale: 'zh', name: '' }]
+			: displayNameRows(storageClass),
+	}))
 	const form = useForm({
-		defaultValues: {
-			availableToUsers: storageClass?.available_to_users ?? false,
-			displayNames: displayNameRows(storageClass),
-		},
+		defaultValues,
 		onSubmit: ({ value }) => {
 			if (!storageClass) {
 				return
@@ -169,99 +188,178 @@ export function StorageClassMetadataDialog({
 				toast.error(parsed.error.issues[0]?.message ?? t('storageClasses.displayNameInvalid'))
 				return
 			}
-			mutation.mutate({
+			if (storageModePrototype && !value.storageMode) {
+				setModeError(true)
+				return
+			}
+			if (storageModePrototype && parsed.data.length === 0) {
+				toast.error(t('storageClasses.displayNameRequired'))
+				return
+			}
+			const input = {
 				name: storageClass.name,
 				availableToUsers: value.availableToUsers,
 				displayNames: Object.fromEntries(parsed.data.map(row => [row.locale.trim(), row.name.trim()])),
-			}, {
-				onSuccess: () => {
-					toast.success(t('storageClasses.metadataSaved'))
-					onOpenChange(null)
-				},
-				onError: error => showViewerErrorToast(error, t),
-			})
+				...(storageModePrototype && value.storageMode ? { storageMode: value.storageMode } : {}),
+			}
+			if (storageClass.available_to_users && !input.availableToUsers) {
+				setPendingHide(input)
+				return
+			}
+			save(input)
 		},
 	})
 
 	return (
-		<Dialog onOpenChange={open => onOpenChange(open ? storageClass?.name ?? null : null)} open={Boolean(storageClass)}>
-			<DialogContent>
-				<DialogHeader>
-					<DialogTitle>{t('storageClasses.editMetadata')}</DialogTitle>
-					<DialogDescription>{storageClass?.name ?? ''}</DialogDescription>
-				</DialogHeader>
-				<form
-					className="grid gap-4"
-					onSubmit={(event) => {
-						event.preventDefault()
-						void form.handleSubmit()
-					}}
-				>
-					<form.Field name="availableToUsers">
-						{field => (
-							<label className="flex items-center gap-2 text-sm">
-								<Checkbox
-									checked={field.state.value}
-									onCheckedChange={value => field.handleChange(value === true)}
-								/>
-								{t('storageClasses.availableToUsers')}
-							</label>
-						)}
-					</form.Field>
-					<div className="grid gap-2">
-						<form.Field name="displayNames">
+		<>
+			<Dialog onOpenChange={open => !mutation.isPending && onOpenChange(open ? storageClass?.name ?? null : null)} open={Boolean(storageClass)}>
+				<DialogContent className="max-h-[90vh] overflow-y-auto">
+					<DialogHeader>
+						<DialogTitle>{t('storageClasses.editMetadata')}</DialogTitle>
+						<DialogDescription>{storageClass?.name ?? ''}</DialogDescription>
+					</DialogHeader>
+					<form
+						className="grid gap-4"
+						onSubmit={(event) => {
+							event.preventDefault()
+							void form.handleSubmit()
+						}}
+					>
+						{storageModePrototype
+							? (
+									<form.Field name="storageMode">
+										{field => (
+											<fieldset className="grid gap-2">
+												<legend className="mb-2 text-sm font-medium">{t('storageClasses.storageMode')}</legend>
+												<div className="grid grid-cols-2 gap-3">
+													{(['shared', 'exclusive'] as const).map(mode => (
+														<label className={`flex gap-3 rounded-lg border p-3 text-sm ${field.state.value === mode ? 'border-primary bg-muted' : ''} ${modeLocked ? 'opacity-60' : 'cursor-pointer'}`} key={mode}>
+															<input
+																checked={field.state.value === mode}
+																disabled={modeLocked || mutation.isPending}
+																name="storageMode"
+																onChange={() => {
+																	field.handleChange(mode)
+																	setModeError(false)
+																}}
+																type="radio"
+																value={mode}
+															/>
+															<span>
+																<span className="font-medium">{t(`storageClasses.${mode}`)}</span>
+																<span className="mt-1 block text-xs text-muted-foreground">{t(`storageClasses.${mode}Description`)}</span>
+															</span>
+														</label>
+													))}
+												</div>
+												{modeError ? <p className="text-sm text-destructive" role="alert">{t('storageClasses.modeRequired')}</p> : null}
+												<p className="text-xs text-muted-foreground">{t(modeLocked ? 'storageClasses.modeLocked' : 'storageClasses.modeHint')}</p>
+											</fieldset>
+										)}
+									</form.Field>
+								)
+							: null}
+						<form.Field name="availableToUsers">
 							{field => (
-								<>
-									<div className="flex items-center justify-between gap-3">
-										<Label>{t('storageClasses.displayNames')}</Label>
-										<Button
-											onClick={() => field.handleChange([...field.state.value, { id: newRowID(), locale: '', name: '' }])}
-											size="sm"
-											type="button"
-											variant="outline"
-										>
-											{t('storageClasses.addDisplayName')}
-										</Button>
-									</div>
-									<div className="grid gap-2">
-										{field.state.value.map((row, index) => (
-											<div className="grid grid-cols-[7rem_1fr_auto] gap-2" key={row.id}>
-												<Input
-													aria-label={t('storageClasses.locale')}
-													onChange={event => field.handleChange(field.state.value.map((item, rowIndex) => rowIndex === index ? { ...item, locale: event.target.value } : item))}
-													placeholder="zh"
-													value={row.locale}
-												/>
-												<Input
-													aria-label={t('storageClasses.displayName')}
-													onChange={event => field.handleChange(field.state.value.map((item, rowIndex) => rowIndex === index ? { ...item, name: event.target.value } : item))}
-													value={row.name}
-												/>
-												<Button
-													onClick={() => field.handleChange(field.state.value.filter((_, rowIndex) => rowIndex !== index))}
-													type="button"
-													variant="outline"
-												>
-													{t('actions.delete')}
-												</Button>
-											</div>
-										))}
-									</div>
-								</>
+								<label className="flex items-center gap-2 text-sm">
+									<Checkbox
+										disabled={mutation.isPending}
+										checked={field.state.value}
+										onCheckedChange={value => field.handleChange(value === true)}
+									/>
+									{t('storageClasses.availableToUsers')}
+								</label>
 							)}
 						</form.Field>
-					</div>
+						<p className="text-xs text-muted-foreground">{t('storageClasses.visibilityHint')}</p>
+						<div className="grid gap-2">
+							<form.Field name="displayNames">
+								{field => (
+									<>
+										<div className="flex items-center justify-between gap-3">
+											<Label>{t('storageClasses.displayNames')}</Label>
+											<Button
+												onClick={() => field.handleChange([...field.state.value, { id: newRowID(), locale: '', name: '' }])}
+												size="sm"
+												type="button"
+												variant="outline"
+											>
+												{t('storageClasses.addDisplayName')}
+											</Button>
+										</div>
+										<div className="grid gap-2">
+											{field.state.value.map((row, index) => (
+												<div className="grid grid-cols-[7rem_1fr_auto] gap-2" key={row.id}>
+													<Input
+														aria-label={t('storageClasses.locale')}
+														onChange={event => field.handleChange(field.state.value.map((item, rowIndex) => rowIndex === index ? { ...item, locale: event.target.value } : item))}
+														placeholder="zh"
+														value={row.locale}
+													/>
+													<Input
+														aria-label={t('storageClasses.displayName')}
+														onChange={event => field.handleChange(field.state.value.map((item, rowIndex) => rowIndex === index ? { ...item, name: event.target.value } : item))}
+														value={row.name}
+													/>
+													<Button
+														onClick={() => field.handleChange(field.state.value.filter((_, rowIndex) => rowIndex !== index))}
+														type="button"
+														variant="outline"
+													>
+														{t('actions.delete')}
+													</Button>
+												</div>
+											))}
+										</div>
+									</>
+								)}
+							</form.Field>
+						</div>
+						{storageModePrototype
+							? (
+									<form.Subscribe selector={state => state.values}>
+										{values => (
+											<div className="rounded-lg border bg-muted/40 p-3 text-sm">
+												<p className="mb-2 text-xs text-muted-foreground">{t('storageClasses.preview')}</p>
+												<p className="font-medium">{values.displayNames.find(row => row.locale === i18n.language)?.name || values.displayNames[0]?.name || storageClass?.name}</p>
+												<p className="mt-1 text-xs text-muted-foreground">
+													{t(`storageClasses.${values.storageMode || 'unconfigured'}`)}
+													{' '}
+													·
+													{' '}
+													{t(values.availableToUsers ? 'storageClasses.visible' : 'storageClasses.hidden')}
+												</p>
+											</div>
+										)}
+									</form.Subscribe>
+								)
+							: null}
+						<DialogFooter>
+							<Button disabled={mutation.isPending} onClick={() => onOpenChange(null)} type="button" variant="outline">
+								{t('actions.cancel')}
+							</Button>
+							<Button disabled={mutation.isPending} type="submit">
+								{t('actions.save')}
+							</Button>
+						</DialogFooter>
+					</form>
+				</DialogContent>
+			</Dialog>
+			<Dialog open={pendingHide !== null} onOpenChange={open => !open && !mutation.isPending && setPendingHide(null)}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>{t('storageClasses.hideTitle')}</DialogTitle>
+						<DialogDescription>{storageClass?.name}</DialogDescription>
+					</DialogHeader>
+					<p className="text-sm">{t('storageClasses.hideDescription')}</p>
+					<p className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">{t('storageClasses.hideExisting', { count: storageClass?.in_use_pvc_count ?? 0 })}</p>
 					<DialogFooter>
-						<Button onClick={() => onOpenChange(null)} type="button" variant="outline">
-							{t('actions.cancel')}
-						</Button>
-						<Button disabled={mutation.isPending} type="submit">
-							{t('actions.save')}
-						</Button>
+						<Button disabled={mutation.isPending} onClick={() => setPendingHide(null)} type="button" variant="outline">{t('actions.cancel')}</Button>
+						<Button disabled={mutation.isPending} onClick={() => pendingHide && save(pendingHide)} type="button">{t('storageClasses.confirmHide')}</Button>
 					</DialogFooter>
-				</form>
-			</DialogContent>
-		</Dialog>
+				</DialogContent>
+			</Dialog>
+		</>
 	)
 }
 

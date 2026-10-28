@@ -464,6 +464,7 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 							</TabsContent>
 							<TabsContent className="m-0 flex h-full min-h-0 flex-col" value="storageClasses">
 								<StorageClassAdminView
+									storageModePrototype={api.storageModePrototype}
 									actions={storageClassActions}
 									deleteMutation={deleteStorageClassMutation}
 									onDelete={setDeleteStorageClassName}
@@ -533,6 +534,7 @@ export function StorageAppShell({ api = viewerApi }: StorageAppShellProps) {
 				onOpenChange={setDescribeStorageClassName}
 			/>
 			<StorageClassMetadataDialog
+				storageModePrototype={api.storageModePrototype}
 				key={metadataStorageClassName ?? 'closed'}
 				mutation={updateStorageClassMetadataMutation}
 				onOpenChange={setMetadataStorageClassName}

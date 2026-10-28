@@ -32,7 +32,9 @@ export type PodSession = domain.PodSession
 export type ViewerScheduling = domain.ViewerScheduling
 export type ViewerSession = domain.ViewerSession
 export type Heartbeat = domain.Heartbeat
-export type StorageClass = domain.StorageClass
+// Frontend-only prototype field; the Encore API contract remains unchanged.
+export type StorageMode = 'shared' | 'exclusive'
+export type StorageClass = domain.StorageClass & { storage_mode?: StorageMode }
 export type PVCDescribe = session.PVCDescribe
 export type PVCYAML = session.PVCYAML
 export type StorageClassDescribe = session.StorageClassDescribe
@@ -129,6 +131,7 @@ export interface StorageClassYAMLInput {
 }
 
 export interface StorageClassMetadataInput {
+	storageMode?: StorageMode
 	availableToUsers: boolean
 	displayNames: Record<string, string>
 }
@@ -153,6 +156,8 @@ export interface GetStorageQuotaInput {
 }
 
 export interface ViewerAPI {
+	/** Enabled only by the in-memory storage policy prototype adapter. */
+	storageModePrototype?: boolean
 	adminCapabilities: () => Promise<AdminCapabilities>
 	adminCreateStorageClass: (input: StorageClassYAMLInput) => Promise<StorageClass>
 	adminDeleteStorageClass: (name: string) => Promise<StorageClass>

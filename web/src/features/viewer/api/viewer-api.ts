@@ -190,6 +190,9 @@ export function createViewerApi(
 		},
 
 		async adminUpdateStorageClassMetadata(name: string, input: StorageClassMetadataInput): Promise<StorageClass> {
+			if (input.storageMode !== undefined) {
+				throw new Error('Storage mode is available only in the local prototype.')
+			}
 			try {
 				const response = await activeClient.viewer.AdminUpdateStorageClassMetadata(name, {
 					Authorization: authorization(),

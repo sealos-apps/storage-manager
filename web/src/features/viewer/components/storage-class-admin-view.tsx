@@ -20,6 +20,7 @@ import { translateViewerError } from '@/features/viewer/api/viewer-error'
 import { ErrorCallout } from '@/features/viewer/components/error-callout'
 
 interface StorageClassAdminViewProps {
+	storageModePrototype?: boolean
 	actions: ReactNode
 	deleteMutation: UseMutationResult<StorageClass, Error, string>
 	onDelete: (name: string) => void
@@ -30,6 +31,7 @@ interface StorageClassAdminViewProps {
 }
 
 export function StorageClassAdminView({
+	storageModePrototype = false,
 	actions,
 	onDelete,
 	onDescribe,
@@ -63,6 +65,8 @@ export function StorageClassAdminView({
 						<TableRow>
 							<TableHead>{t('storageClasses.name')}</TableHead>
 							<TableHead>{t('storageClasses.displayName')}</TableHead>
+							{storageModePrototype ? <TableHead>{t('storageClasses.storageMode')}</TableHead> : null}
+							<TableHead>{t('storageClasses.visibility')}</TableHead>
 							<TableHead>{t('storageClasses.provisioner')}</TableHead>
 							<TableHead>{t('storageClasses.reclaimPolicy')}</TableHead>
 							<TableHead>{t('storageClasses.volumeBindingMode')}</TableHead>
@@ -83,6 +87,12 @@ export function StorageClassAdminView({
 								<TableCell>
 									<StorageClassDisplayName storageClass={storageClass} locale={i18n.language} />
 								</TableCell>
+								{storageModePrototype
+									? (
+											<TableCell><Badge variant="secondary">{t(`storageClasses.${storageClass.storage_mode ?? 'unconfigured'}`)}</Badge></TableCell>
+										)
+									: null}
+								<TableCell><Badge variant={storageClass.available_to_users ? 'default' : 'outline'}>{t(storageClass.available_to_users ? 'storageClasses.visible' : 'storageClasses.hidden')}</Badge></TableCell>
 								<TableCell>{storageClass.provisioner}</TableCell>
 								<TableCell>{storageClass.reclaim_policy || '-'}</TableCell>
 								<TableCell>{storageClass.volume_binding_mode || '-'}</TableCell>
@@ -110,7 +120,7 @@ export function StorageClassAdminView({
 						{items.length === 0
 							? (
 									<TableRow>
-										<TableCell className="py-12 text-center text-muted-foreground" colSpan={8}>
+										<TableCell className="py-12 text-center text-muted-foreground" colSpan={storageModePrototype ? 10 : 9}>
 											{query.isLoading ? t('common.loading') : t('common.empty')}
 										</TableCell>
 									</TableRow>
